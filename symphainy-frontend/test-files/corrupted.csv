@@ -1,0 +1,7 @@
+Name,Age,Email,Status
+John Doe,30,john@example.com,Active
+Jane Smith,25,jane@example.com,Inactive
+Bob Johnson,35,bob@example.com,Active
+Alice Brown,28,alice@example.com,Active
+Charlie Wilson,42,charlie@example.com,Inactive
+Invalid,Row,With,Extra,Columns 

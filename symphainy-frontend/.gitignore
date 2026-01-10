@@ -1,0 +1,12 @@
+
+# Playwright
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+.next/
+.env
+
+# Authentication state (contains sensitive tokens)
+tests/.auth/

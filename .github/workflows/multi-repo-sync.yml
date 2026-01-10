@@ -1,0 +1,99 @@
+name: Sync from Old Repository
+
+on:
+  workflow_dispatch:  # Manual trigger only for safety
+    inputs:
+      source_repo:
+        description: 'Source repository (format: owner/repo)'
+        required: true
+        default: 'YOUR_ORG/old-repo-name'
+      source_path:
+        description: 'Source path to sync from'
+        required: false
+        default: ''
+      target_path:
+        description: 'Target path to sync to'
+        required: false
+        default: ''
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      
+    steps:
+    - name: Checkout current repo (target)
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        path: target-repo
+        
+    - name: Checkout source repo
+      uses: actions/checkout@v4
+      with:
+        repository: ${{ github.event.inputs.source_repo }}
+        path: source-repo
+        token: ${{ secrets.OLD_REPO_ACCESS_TOKEN }}  # PAT with access to old repo
+        
+    - name: Setup Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Sync files
+      run: |
+        SOURCE_PATH="${{ github.event.inputs.source_path }}"
+        TARGET_PATH="${{ github.event.inputs.target_path }}"
+        
+        if [ -z "$SOURCE_PATH" ]; then
+          SOURCE_PATH="."
+        fi
+        if [ -z "$TARGET_PATH" ]; then
+          TARGET_PATH="."
+        fi
+        
+        echo "Syncing from: source-repo/$SOURCE_PATH"
+        echo "Syncing to: target-repo/$TARGET_PATH"
+        
+        # Create target directory if it doesn't exist
+        mkdir -p "target-repo/$TARGET_PATH"
+        
+        # Copy files (preserving structure)
+        rsync -av --exclude='.git' --exclude='__pycache__' --exclude='*.pyc' \
+          "source-repo/$SOURCE_PATH/" "target-repo/$TARGET_PATH/"
+        
+    - name: Check for changes
+      id: check-changes
+      run: |
+        cd target-repo
+        if [ -n "$(git status --porcelain)" ]; then
+          echo "has_changes=true" >> $GITHUB_OUTPUT
+        else
+          echo "has_changes=false" >> $GITHUB_OUTPUT
+        fi
+        
+    - name: Create Pull Request
+      if: steps.check-changes.outputs.has_changes == 'true'
+      uses: peter-evans/create-pull-request@v5
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        path: target-repo
+        commit-message: "Sync from ${{ github.event.inputs.source_repo }}"
+        title: "Sync: Update from ${{ github.event.inputs.source_repo }}"
+        body: |
+          Automated sync from old repository.
+          
+          **Source:** ${{ github.event.inputs.source_repo }}
+          **Source Path:** ${{ github.event.inputs.source_path || '.' }}
+          **Target Path:** ${{ github.event.inputs.target_path || '.' }}
+          
+          ⚠️ **Please review all changes carefully before merging.**
+          
+          - [ ] Code compiles
+          - [ ] Tests pass
+          - [ ] Imports updated correctly
+          - [ ] Architecture patterns followed
+        branch: sync/from-${{ github.event.inputs.source_repo }}
+        delete-branch: true

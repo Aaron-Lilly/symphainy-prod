@@ -1,0 +1,152 @@
+# Cursor Rules for Symphainy Platform
+
+## Platform Architecture
+
+Symphainy is an **Agentic Integrated Development Platform (IDP) + Agentic Operating System (AOS)** that enables enterprises to build AI-powered solutions incrementally.
+
+### Core Principles
+
+1. **Platform-First, Not MVP-First**: Build the execution spine first, express use cases on top
+2. **Execution Ownership**: Runtime Plane owns execution, Curator owns capability registration, Realms compose logic, Agents reason
+3. **Capability by Design, Enabled by Policy**: WAL, Saga, Zero Trust, multi-tenancy exist structurally from day one
+
+### Architecture Layers
+
+```
+Runtime Plane (Execution Core)
+  ↓
+Smart City Plane (Capability Governor)
+  ↓
+Realm Plane (Operating Domains)
+  ↓
+Experience Plane (Delivery Surface)
+```
+
+### Directory Structure
+
+```
+symphainy_platform/
+  runtime/          # Runtime Plane - execution control, WAL, Saga, state
+  agentic/          # Agent Foundation - shared reasoning substrate
+  realms/           # Realms - semantic ownership zones
+    content/        # Deterministic extraction & normalization
+    insights/       # Semantic interpretation & data quality
+    journey/        # SOP ↔ Workflow dual views
+    solution/       # Solution landing & business outcomes
+  experience/       # Experience Plane - REST, WebSocket, UI
+  infra/            # Infrastructure adapters (if needed)
+```
+
+**Note:** Package is named `symphainy_platform` (not `platform`) to avoid conflict with Python's built-in `platform` module.
+
+### Key Patterns
+
+#### Runtime Plane
+- **Sessions**: First-class, tenant-scoped, required for all intents
+- **State Surface**: Centralized recording (Redis hot, ArangoDB durable)
+- **WAL**: Append-only log for audit, replay, recovery
+- **Saga**: Async workflow coordination with compensation
+- **Intent Ingestion**: Experience → Runtime → Realms
+
+#### Agents
+- **GroundedReasoningAgentBase**: Fact gathering → Reasoning → Validation
+- **No State Storage**: Agents request state from State Surface
+- **No Side Effects**: Agents reason, Runtime executes
+- **Tool Invocation**: Via Runtime, not direct
+
+#### Realms
+- **Register Saga Steps**: Realms register, Runtime executes
+- **Emit Facts**: Realms emit facts, Runtime records
+- **No Direct State**: Realms request state from State Surface
+- **Compose Logic**: Realms compose business logic, not orchestration
+
+#### Experience Plane
+- **Submit Intents**: Experience submits, never runs logic
+- **Stream State**: Experience streams state from Runtime
+- **Deliver Outcomes**: Experience delivers, never invents
+
+### Code Style
+
+- **Python 3.10+**: Use type hints, async/await
+- **Protocols for Contracts**: Use `typing.Protocol` for contracts
+- **Dataclasses for Data**: Use `@dataclass` for structured data
+- **Async First**: All I/O operations are async
+- **Type Safety**: Use type hints everywhere, validate with mypy
+
+### Testing
+
+- **pytest**: Test framework
+- **Markers**: `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.e2e`
+- **Fixtures**: Use `conftest.py` for shared fixtures
+- **Test Structure**: `tests/unit/`, `tests/integration/`, `tests/e2e/`
+
+### Anti-Patterns (DON'T DO)
+
+❌ **Direct State Storage**: Don't store state in services/agents
+   - Use State Surface instead
+
+❌ **Ad Hoc Orchestration**: Don't orchestrate in realms
+   - Use Runtime Plane instead
+
+❌ **Agents Executing**: Don't let agents execute side effects
+   - Agents reason, Runtime executes
+
+❌ **Experience Running Logic**: Don't run business logic in Experience
+   - Experience submits intents, streams state
+
+❌ **Circular Dependencies**: Don't create circular imports
+   - Runtime → Realms → Smart City (one-way flow)
+
+### When Adding New Code
+
+1. **Check Architecture**: Does it belong in Runtime, Curator, Realm, or Experience?
+2. **Use Contracts**: Implement Protocol-based contracts
+3. **Request State**: Use State Surface, don't store directly
+4. **Register Capabilities**: Register with Curator
+5. **Write Tests**: Add unit/integration tests
+6. **Document**: Add docstrings explaining WHAT and HOW
+
+### Import Paths
+
+**Important:** Package is named `symphainy_platform` (not `platform`) to avoid conflict with Python's built-in `platform` module.
+
+- ✅ Correct: `from symphainy_platform.runtime import Session`
+- ❌ Wrong: `from platform.runtime import Session` (conflicts with built-in)
+
+### Common Tasks
+
+#### Adding a New Realm Service
+1. Create service in `platform/realms/{realm_name}/`
+2. Inherit from `RealmServiceBase`
+3. Register saga steps (don't orchestrate)
+4. Emit facts (don't store state)
+5. Register with Curator
+
+#### Adding a New Agent
+1. Create agent in `platform/agentic/` or `platform/realms/{realm}/agents/`
+2. Inherit from `GroundedReasoningAgentBase` (if reasoning) or `AgentBase` (if deterministic)
+3. Use Runtime for tool invocation
+4. Request state from State Surface
+5. No direct state storage
+
+#### Adding a New Runtime Surface
+1. Create surface in `platform/runtime/surfaces/`
+2. Implement Protocol-based contract
+3. Coordinate with Smart City services
+4. Use State Surface for state operations
+5. Emit WAL events
+
+### Questions to Ask
+
+- **Where does this belong?** Runtime, Curator, Realm, or Experience?
+- **Who owns execution?** Runtime owns execution, not realms/agents
+- **Who owns state?** State Surface owns state, not services/agents
+- **Is this orchestration?** If yes, it belongs in Runtime, not realms
+- **Is this reasoning?** If yes, it belongs in Agents, not realms
+- **Is this delivery?** If yes, it belongs in Experience, not realms
+
+### References
+
+- **Architecture Docs**: `docs/final_platform_architecture.md`
+- **Implementation Plan**: `docs/rebuild_implementation_plan_v1.md`
+- **Discovery**: `docs/week0_discovery.md`

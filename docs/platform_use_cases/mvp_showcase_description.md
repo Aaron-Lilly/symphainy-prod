@@ -1,0 +1,9 @@
+## Use Case 0: Platform Showcase (MVP Solution)
+a login page with an option for first time users to create an account
+a landing page that allows clients to define their solution context upfront and tell us what they want to do or navigate to any of the pillars if they prefer to just dive in
+a content pillar (showcasing the content realm) that allows clients to upload their files and then see our parsed result and our semantic interpretation of their data
+An insights pillar (showcasing the insights realm) that uses the semantic embeddings to provide an initial quality assessment, interactive analysis with both structured and unstructured data, and a data mapping feature (showcasing the data mash virtual pipeline feature).
+An operations pillar (showcasing the journey realm) that uses the semantic embeddings from user's uploaded workflow and/or SOP files to create visuals of both (generating one from the other) or to generate an SOP from scratch via interactive chat and analyzes those for coexistence (human+AI) optimization opportunities and creates a coexistence blueprint for the optimized process.  finally it turns that blueprint into an actual platform journey that our development teams can start bringing to life.
+A business outcomes pillar (showcasing the solution realm) that creates a summary visual of the outputs from the other realms and then uses those to generate a roadmap and a POC proposal and turns both the roadmap and the POC proposal into platform solutions that our development teams can also start bringing to life.
+An Admin Dashboard that displays platform statistics and showcases our client config foundation SDKs (how users interact with the platform)
+we also have a two part chat interface (guide agent - global concierge and pillar liaison agents (one per pillar) - handles pillar specific interactions (deep dives on analysis with the insights pillar, generating SOPs in the operations pillar, etc.))

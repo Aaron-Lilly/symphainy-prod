@@ -1,0 +1,72 @@
+# Dependencies
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+# package-lock.json - NEEDED for npm ci
+yarn.lock
+
+# Next.js
+.next/
+out/
+
+# Tests
+__tests__/
+**/__tests__/
+**/testing/
+**/*.test.js
+**/*.test.jsx
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.js
+**/*.spec.jsx
+**/*.spec.ts
+**/*.spec.tsx
+coverage/
+*.test.*
+*.spec.*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Documentation
+*.md
+docs/
+LICENSE
+
+# CI/CD
+.github/
+Dockerfile.ci
+docker-compose*.yml
+
+# Environment
+.env
+.env.local
+.env.*.local
+*.env
+
+# Archives
+archive/
+*.tar.gz
+*.zip
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Misc
+.eslintcache
+.stylelintcache
+
+
+
+

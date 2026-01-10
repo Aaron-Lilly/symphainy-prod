@@ -1,0 +1,31 @@
+export enum SecondaryChatbotTitle {
+    ANOMALY_DETECTION = "Anomaly Detection",
+    BUSINESS_ANALYSIS = "Business Analysis",
+    EDA_ANALYSIS = "EDA Analysis",
+    DATA_VISUALIZATION = "Data Visualization",
+    EXPERIENCE_PLAN = "Experience Plan",
+    SOP_TO_WORKFLOW = "SOP to Workflow",
+    WORKFLOW_TO_SOP = "Workflow to SOP",
+    INSIGHTS_LIAISON = "Insights Liaison",
+    OPERATIONS_LIAISON = "Operations Liaison",
+    CONTENT_LIAISON = "Content Liaison",
+    BUSINESS_OUTCOMES_LIAISON = "Business Outcomes Liaison",
+    EXPERIENCE_LIAISON = "Experience Liaison",
+    SOLUTION_LIAISON = "Solution Liaison",
+}
+
+export enum SecondaryChatbotAgent {
+    ANOMALY_DETECTION = "InsightsAnomalyDetectionAgent",
+    BUSINESS_ANALYSIS = "InsightsBusinessAnalystAgent",
+    EDA_ANALYSIS = "InsightsEDAAgent",
+    DATA_VISUALIZATION = "InsightsVisualizationAgent",
+    EXPERIENCE_PLAN = "ExperiencePlanAgent",
+    SOP_TO_WORKFLOW = "SOPToWorkflowAgent",
+    WORKFLOW_TO_SOP = "WorkflowToSOPAgent",
+    INSIGHTS_LIAISON = "InsightsLiaisonAgent",
+    OPERATIONS_LIAISON = "OperationsLiaisonAgent",
+    CONTENT_LIAISON = "ContentLiaisonAgent",
+    BUSINESS_OUTCOMES_LIAISON = "BusinessOutcomesLiaisonAgent",
+    EXPERIENCE_LIAISON = "ExperienceLiaisonAgent",
+    SOLUTION_LIAISON = "SolutionLiaisonAgent",
+}

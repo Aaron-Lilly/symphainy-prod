@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      arangodb:
+        image: arangodb:3.11
+        ports:
+          - 8529:8529
+        env:
+          ARANGO_ROOT_PASSWORD: test
+          ARANGO_NO_AUTH: 1
+        options: >-
+          --health-cmd "wget --spider -q -O /dev/null http://127.0.0.1:8529/_api/version"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r tests/requirements.txt
+    
+    - name: Run tests
+      env:
+        TEST_USE_REAL_INFRASTRUCTURE: true
+        TEST_REDIS_URL: redis://localhost:6379
+        TEST_ARANGODB_URL: http://localhost:8529
+      run: |
+        pytest tests/ -v --tb=short
+    
+    - name: Generate coverage report
+      run: |
+        pytest tests/ --cov=platform --cov-report=xml --cov-report=html
+    
+    - name: Upload coverage
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+        fail_ci_if_error: false

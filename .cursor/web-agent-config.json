@@ -1,0 +1,30 @@
+{
+  "version": "1.0",
+  "github": {
+    "repositories": [
+      {
+        "name": "symphainy-prod",
+        "owner": "Aaron-Lilly",
+        "path": "symphainy_source_code",
+        "default_branch": "main",
+        "primary": true
+      }
+    ],
+    "sync_strategy": "manual",
+    "auto_commit": false,
+    "create_prs": true,
+    "require_review": true
+  },
+  "code_migration": {
+    "enabled": true,
+    "source_repos": ["Aaron-Lilly/symphainy-production"],
+    "target_repo": "Aaron-Lilly/symphainy-prod",
+    "mapping_file": ".cursor/migration-mapping.json",
+    "auto_transform_imports": true
+  },
+  "architecture": {
+    "rules_file": ".cursorrules",
+    "enforce_patterns": true,
+    "validate_before_commit": true
+  }
+}

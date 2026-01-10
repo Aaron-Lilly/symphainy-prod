@@ -1,0 +1,20 @@
+# Test Dependencies for Symphainy Platform
+
+# Core testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-timeout>=2.1.0
+pytest-mock>=3.11.0
+pytest-cov>=4.1.0
+
+# Test utilities
+faker>=19.0.0
+freezegun>=1.2.0
+
+# Infrastructure mocking
+redis>=5.0.0
+python-arango>=7.6.0
+
+# HTTP testing
+httpx>=0.24.0
+websockets>=11.0.0

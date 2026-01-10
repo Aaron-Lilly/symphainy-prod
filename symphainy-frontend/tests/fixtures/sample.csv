@@ -1,0 +1,6 @@
+customer_id,name,amount,days_late
+1,Acme Corp,50000,15
+2,TechStart,75000,95
+3,BuildCo,30000,120
+4,GlobalInc,100000,45
+5,LocalBiz,25000,0

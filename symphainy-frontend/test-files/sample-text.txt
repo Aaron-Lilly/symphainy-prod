@@ -1,0 +1,11 @@
+Sample Text File for Testing
+
+This is a sample text file to test the Content pillar's text file upload and parsing functionality.
+
+The file contains:
+- Multiple paragraphs
+- Various text content
+- Numbers and special characters: 123, !@#$%
+- Line breaks and formatting
+
+This should be parsed and displayed in the Text tab of the ParsePreview component. 

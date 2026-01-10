@@ -1,0 +1,137 @@
+version: '3.8'
+
+services:
+  # ============================================================================
+  # INFRASTRUCTURE SERVICES
+  # ============================================================================
+  
+  redis:
+    image: redis:7-alpine
+    container_name: symphainy-redis
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - symphainy_net
+
+  arango:
+    image: arangodb:3.11
+    container_name: symphainy-arango
+    ports:
+      - "${ARANGO_PORT:-8529}:8529"
+    environment:
+      ARANGO_ROOT_PASSWORD: ${ARANGO_ROOT_PASSWORD:-changeme}
+    volumes:
+      - arango_data:/var/lib/arangodb3
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8529/_api/version"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - symphainy_net
+
+  # ============================================================================
+  # PLATFORM SERVICES
+  # ============================================================================
+  
+  runtime:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime
+    container_name: symphainy-runtime
+    ports:
+      - "${RUNTIME_PORT:-8000}:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - ARANGO_URL=http://arango:8529
+      - ARANGO_ROOT_PASSWORD=${ARANGO_ROOT_PASSWORD:-changeme}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      redis:
+        condition: service_healthy
+      arango:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - symphainy_net
+
+  smart-city:
+    build:
+      context: .
+      dockerfile: Dockerfile.smart-city
+    container_name: symphainy-smart-city
+    ports:
+      - "${SMART_CITY_PORT:-8001}:8001"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - ARANGO_URL=http://arango:8529
+      - ARANGO_ROOT_PASSWORD=${ARANGO_ROOT_PASSWORD:-changeme}
+      - RUNTIME_URL=http://runtime:8000
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      - runtime
+      redis:
+        condition: service_healthy
+      arango:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - symphainy_net
+
+  realms:
+    build:
+      context: .
+      dockerfile: Dockerfile.realms
+    container_name: symphainy-realms
+    ports:
+      - "${REALMS_PORT:-8002}:8002"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - ARANGO_URL=http://arango:8529
+      - ARANGO_ROOT_PASSWORD=${ARANGO_ROOT_PASSWORD:-changeme}
+      - RUNTIME_URL=http://runtime:8000
+      - SMART_CITY_URL=http://smart-city:8001
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    depends_on:
+      - runtime
+      - smart-city
+      redis:
+        condition: service_healthy
+      arango:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - symphainy_net
+
+volumes:
+  redis_data:
+  arango_data:
+
+networks:
+  symphainy_net:
+    driver: bridge

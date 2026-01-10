@@ -1,0 +1,49 @@
+{
+  "version": "1.0",
+  "description": "Mapping configuration for migrating code from old repository to new repository",
+  "file_mappings": {
+    "symphainy_source/symphainy-platform/backend/platform/": "symphainy_source_code/symphainy_platform/",
+    "symphainy_source/symphainy-platform/backend/smart_cities/": "symphainy_source_code/symphainy_platform/realms/",
+    "symphainy_source/tests/": "symphainy_source_code/tests/",
+    "symphainy_source/docs/": "symphainy_source_code/docs/"
+  },
+  "exclude_patterns": [
+    "**/__pycache__/",
+    "**/*.pyc",
+    "**/.env*",
+    "**/node_modules/",
+    "**/.git/",
+    "**/venv/",
+    "**/.pytest_cache/"
+  ],
+  "transformations": {
+    "import_paths": {
+      "from platform.": "from symphainy_platform.",
+      "from smart_cities.": "from symphainy_platform.realms.",
+      "import platform.": "import symphainy_platform."
+    },
+    "package_names": {
+      "platform": "symphainy_platform"
+    }
+  },
+  "architecture_adaptations": {
+    "runtime_plane": {
+      "old_pattern": "from runtime import",
+      "new_pattern": "from symphainy_platform.runtime import"
+    },
+    "realms": {
+      "old_pattern": "from realms import",
+      "new_pattern": "from symphainy_platform.realms import"
+    },
+    "agentic": {
+      "old_pattern": "from agentic import",
+      "new_pattern": "from symphainy_platform.agentic import"
+    }
+  },
+  "validation_rules": {
+    "check_imports": true,
+    "check_architecture_patterns": true,
+    "run_tests_after_migration": true,
+    "require_pr_review": true
+  }
+}

@@ -1,0 +1,5 @@
+region,segment,value,score,date
+North,A,10,0.5,2024-01-01
+North,B,20,0.7,2024-01-02
+South,A,15,0.6,2024-01-01
+South,B,25,0.8,2024-01-02
