@@ -270,3 +270,204 @@ class StateSurface:
         except Exception as e:
             self.logger.error(f"Failed to list executions: {e}", exc_info=True)
             return []
+    
+    async def store_file(
+        self,
+        session_id: str,
+        tenant_id: str,
+        file_data: bytes,
+        filename: str,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Store file in State Surface and return reference.
+        
+        Files are stored in State Surface using StateManagementProtocol.
+        For large files, consider using blob storage (S3, GCS) and storing references.
+        
+        Args:
+            session_id: Session identifier
+            tenant_id: Tenant identifier (for isolation)
+            file_data: File data as bytes
+            filename: Original filename
+            metadata: Optional file metadata (e.g., {"content_type": "application/pdf", "size": 12345})
+        
+        Returns:
+            File reference string (e.g., "file:tenant_123:session_456:file_789")
+        """
+        import hashlib
+        import uuid
+        
+        # Generate unique file ID
+        file_id = str(uuid.uuid4())
+        file_ref = f"file:{tenant_id}:{session_id}:{file_id}"
+        
+        # Calculate file hash for deduplication (optional)
+        file_hash = hashlib.sha256(file_data).hexdigest()
+        
+        # Prepare file state data
+        file_state = {
+            "file_data": file_data,  # Store file data in state
+            "filename": filename,
+            "file_hash": file_hash,
+            "size": len(file_data),
+            "metadata": metadata or {},
+            "created_at": self.clock.now_iso()
+        }
+        
+        # Store in State Surface
+        state_id = file_ref
+        success = await self.state_abstraction.store_state(
+            state_id=state_id,
+            state_data=file_state,
+            metadata={
+                "backend": "redis",
+                "strategy": "hot",
+                "type": "file",
+                "tenant_id": tenant_id,
+                "session_id": session_id
+            },
+            ttl=86400  # 24 hour TTL for files
+        ) if self.state_abstraction else False
+        
+        if not success and not self.use_memory:
+            # Fallback to memory if state abstraction fails
+            self._memory_store[state_id] = file_state
+            self.logger.warning(f"State abstraction failed, using in-memory storage for file: {file_ref}")
+        elif self.use_memory:
+            self._memory_store[state_id] = file_state
+        
+        self.logger.debug(f"File stored in State Surface: {file_ref} ({len(file_data)} bytes)")
+        return file_ref
+    
+    async def get_file(
+        self,
+        file_reference: str
+    ) -> Optional[bytes]:
+        """
+        Retrieve file data from State Surface.
+        
+        Args:
+            file_reference: File reference string (e.g., "file:tenant:session:file_id")
+        
+        Returns:
+            File data as bytes or None if not found
+        """
+        if self.use_memory:
+            file_state = self._memory_store.get(file_reference)
+            if file_state:
+                return file_state.get("file_data")
+            return None
+        
+        if not self.state_abstraction:
+            self.logger.warning("State abstraction not available, using in-memory fallback")
+            file_state = self._memory_store.get(file_reference)
+            if file_state:
+                return file_state.get("file_data")
+            return None
+        
+        try:
+            state_data = await self.state_abstraction.retrieve_state(file_reference)
+            if state_data:
+                file_state = state_data.get("state_data", {})
+                return file_state.get("file_data")
+        except Exception as e:
+            self.logger.error(f"Failed to get file {file_reference}: {e}", exc_info=True)
+        
+        return None
+    
+    async def get_file_metadata(
+        self,
+        file_reference: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get file metadata from State Surface.
+        
+        Args:
+            file_reference: File reference string
+        
+        Returns:
+            File metadata dictionary or None if not found
+            {
+                "filename": str,
+                "size": int,
+                "file_hash": str,
+                "metadata": Dict,
+                "created_at": str
+            }
+        """
+        if self.use_memory:
+            file_state = self._memory_store.get(file_reference)
+            if file_state:
+                return {
+                    "filename": file_state.get("filename"),
+                    "size": file_state.get("size"),
+                    "file_hash": file_state.get("file_hash"),
+                    "metadata": file_state.get("metadata", {}),
+                    "created_at": file_state.get("created_at")
+                }
+            return None
+        
+        if not self.state_abstraction:
+            self.logger.warning("State abstraction not available, using in-memory fallback")
+            file_state = self._memory_store.get(file_reference)
+            if file_state:
+                return {
+                    "filename": file_state.get("filename"),
+                    "size": file_state.get("size"),
+                    "file_hash": file_state.get("file_hash"),
+                    "metadata": file_state.get("metadata", {}),
+                    "created_at": file_state.get("created_at")
+                }
+            return None
+        
+        try:
+            state_data = await self.state_abstraction.retrieve_state(file_reference)
+            if state_data:
+                file_state = state_data.get("state_data", {})
+                return {
+                    "filename": file_state.get("filename"),
+                    "size": file_state.get("size"),
+                    "file_hash": file_state.get("file_hash"),
+                    "metadata": file_state.get("metadata", {}),
+                    "created_at": file_state.get("created_at")
+                }
+        except Exception as e:
+            self.logger.error(f"Failed to get file metadata {file_reference}: {e}", exc_info=True)
+        
+        return None
+    
+    async def delete_file(
+        self,
+        file_reference: str
+    ) -> bool:
+        """
+        Delete file from State Surface.
+        
+        Args:
+            file_reference: File reference string
+        
+        Returns:
+            True if successful
+        """
+        if self.use_memory:
+            if file_reference in self._memory_store:
+                del self._memory_store[file_reference]
+                return True
+            return False
+        
+        if not self.state_abstraction:
+            self.logger.warning("State abstraction not available, using in-memory fallback")
+            if file_reference in self._memory_store:
+                del self._memory_store[file_reference]
+                return True
+            return False
+        
+        try:
+            success = await self.state_abstraction.delete_state(file_reference)
+            if success:
+                self.logger.debug(f"File deleted from State Surface: {file_reference}")
+            return success
+        except Exception as e:
+            self.logger.error(f"Failed to delete file {file_reference}: {e}", exc_info=True)
+            return False

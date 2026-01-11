@@ -15,8 +15,6 @@ from pydantic import BaseModel, Field
 from typing import Dict, Any, Optional
 from datetime import datetime
 
-from typing import Optional
-
 from .session import Session
 from .state_surface import StateSurface
 from .wal import WriteAheadLog, WALEventType
@@ -102,6 +100,7 @@ class RuntimeService:
         self.saga_coordinator = saga_coordinator
         self.curator = curator
         self._sessions: Dict[str, Session] = {}  # In-memory session cache
+        self._observers: Dict[str, Any] = {}  # Smart City observers
     
     async def create_session(
         self,
@@ -291,6 +290,17 @@ class RuntimeService:
                 }
             )
             
+            # Notify observers (Smart City services)
+            await self._notify_observers(execution_id, {
+                "event_type": "intent_submitted",
+                "execution_id": execution_id,
+                "session_id": request.session_id,
+                "intent_type": request.intent_type,
+                "realm": request.realm,
+                "tenant_id": request.tenant_id,
+                "timestamp": get_clock().now_iso()
+            })
+            
             return SubmitIntentResponse(
                 success=True,
                 execution_id=execution_id
@@ -335,6 +345,36 @@ class RuntimeService:
                 success=False,
                 error=str(e)
             )
+    
+    async def register_observer(self, observer_id: str, observer: Any) -> None:
+        """
+        Register Smart City service as observer.
+        
+        Args:
+            observer_id: Unique identifier for the observer
+            observer: Observer instance (must implement observe_execution method)
+        """
+        self._observers[observer_id] = observer
+        from utilities import get_logger
+        logger = get_logger("runtime_service")
+        logger.info(f"Registered observer: {observer_id}")
+    
+    async def _notify_observers(self, execution_id: str, event: dict) -> None:
+        """
+        Notify all observers of execution event.
+        
+        Args:
+            execution_id: Execution identifier
+            event: Event dict with event_type, payload, etc.
+        """
+        for observer_id, observer in self._observers.items():
+            try:
+                if hasattr(observer, 'observe_execution'):
+                    await observer.observe_execution(execution_id, event)
+            except Exception as e:
+                from utilities import get_logger
+                logger = get_logger("runtime_service")
+                logger.error(f"Observer {observer_id} error: {e}", exc_info=e)
 
 
 # FastAPI App Factory

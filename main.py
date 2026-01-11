@@ -2,14 +2,14 @@
 """
 Symphainy Platform - Main Entry Point
 
-Week 1: Runtime Plane v0
-- Runtime Service (FastAPI)
-- Session Lifecycle
-- State Surface (Redis-backed)
-- WAL (Write-Ahead Log)
-- Saga Skeleton
+Phase 0-4: Complete Platform Stack
+- Phase 0: Containers, Infra, Guardrails
+- Phase 1: Runtime Plane
+- Phase 2: Foundations (Public Works + Curator)
+- Phase 3: Agent Foundation
+- Phase 4: Smart City Plane
 
-No business logic. No realms imported.
+All foundations initialized and wired together.
 """
 
 import sys
@@ -25,26 +25,42 @@ import signal
 from contextlib import asynccontextmanager
 from typing import Optional
 
-import redis.asyncio as redis
 from fastapi import FastAPI
 import uvicorn
 
 from utilities import get_logger, LogLevel, LogCategory, get_clock
 from config import get_env_contract
+
+# Phase 2 Foundations
+from symphainy_platform.foundations.public_works.foundation_service import PublicWorksFoundationService
+from symphainy_platform.foundations.curator.foundation_service import CuratorFoundationService
+
+# Phase 3 Agent Foundation
+from symphainy_platform.agentic.foundation_service import AgentFoundationService
+
+# Phase 4 Smart City
+from symphainy_platform.smart_city.foundation_service import SmartCityFoundationService
+
+# Phase 1 Runtime Plane
 from symphainy_platform.runtime import (
     StateSurface,
     WriteAheadLog,
     SagaCoordinator,
     create_runtime_app
 )
+from symphainy_platform.runtime.runtime_service import RuntimeService
 
 # Initialize Phase 0 utilities
 env = get_env_contract()
 clock = get_clock()
-logger = get_logger("runtime_plane", LogLevel.INFO, LogCategory.PLATFORM)
+logger = get_logger("platform", LogLevel.INFO, LogCategory.PLATFORM)
 
 # Global shutdown event for graceful shutdown
 shutdown_event = asyncio.Event()
+
+# Global references for graceful shutdown
+_foundations = {}
+_runtime_components = {}
 
 
 def signal_handler(signum, frame):
@@ -56,120 +72,255 @@ def signal_handler(signum, frame):
     shutdown_event.set()
 
 
-async def create_redis_client() -> Optional[redis.Redis]:
-    """
-    Create Redis client if available.
-    
-    Returns:
-        Redis client or None if not available
-    """
-    redis_url = env.REDIS_URL
-    
-    try:
-        client = await redis.from_url(redis_url, decode_responses=True)
-        # Test connection
-        await client.ping()
-        logger.info(
-            "Connected to Redis",
-            metadata={"redis_url": redis_url}
-        )
-        return client
-    except Exception as e:
-        logger.warning(
-            "Redis not available, using in-memory storage",
-            metadata={"error": str(e), "redis_url": redis_url}
-        )
-        return None
-
-
-# Global references for graceful shutdown
-_runtime_components = {}
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
     Lifespan context manager for graceful shutdown.
     
     Handles:
-    - Startup: Initialize components
+    - Startup: Initialize all foundations and Runtime components
     - Shutdown: Gracefully close connections and finish in-flight requests
     """
     # Startup
-    logger.info("Starting Runtime Plane", metadata={"version": "0.1.0"})
-    
-    # Create Redis client (or None for in-memory)
-    redis_client = await create_redis_client()
-    use_memory = redis_client is None
-    
-    # Initialize components
-    state_surface = StateSurface(redis_client=redis_client, use_memory=use_memory)
-    wal = WriteAheadLog(redis_client=redis_client, use_memory=use_memory)
-    saga_coordinator = SagaCoordinator(state_surface=state_surface)
-    
-    # Store references for shutdown
-    _runtime_components["state_surface"] = state_surface
-    _runtime_components["wal"] = wal
-    _runtime_components["saga_coordinator"] = saga_coordinator
-    _runtime_components["redis_client"] = redis_client
-    
-    storage_type = "in-memory" if use_memory else "Redis-backed"
-    logger.info(
-        "Runtime Plane components initialized",
-        metadata={
-            "state_surface": storage_type,
-            "wal": storage_type,
-            "saga_coordinator": "initialized"
-        }
-    )
-    
-    # Create FastAPI app
-    runtime_app = create_runtime_app(
-        state_surface=state_surface,
-        wal=wal,
-        saga_coordinator=saga_coordinator
-    )
-    
-    # Merge routes into main app
-    app.mount("/api", runtime_app)
-    
-    logger.info("Runtime Plane ready", metadata={"port": env.RUNTIME_PORT})
-    
-    yield
-    
-    # Shutdown
-    logger.info("Shutting down Runtime Plane")
+    logger.info("Starting Symphainy Platform", metadata={"version": "0.4.0"})
     
     try:
-        # Close Redis connection
-        if redis_client:
-            await redis_client.aclose()
-            logger.info("Redis connection closed")
+        # ========================================================================
+        # Phase 2: Initialize Foundations
+        # ========================================================================
         
-        # Flush any pending WAL entries (if needed)
-        # Note: WAL is append-only, so we just ensure Redis connection is closed
+        # 1. Public Works Foundation (infrastructure)
+        logger.info("Initializing Public Works Foundation...")
+        # Parse Redis URL for Public Works config
+        redis_url = env.REDIS_URL
+        redis_host = "localhost"
+        redis_port = 6379
+        redis_password = None
         
-        logger.info("Graceful shutdown complete")
-    except Exception as e:
-        logger.error(
-            "Error during shutdown",
-            metadata={"error": str(e)},
-            exc_info=e
+        if redis_url and "://" in redis_url:
+            # Parse redis://host:port or redis://:password@host:port
+            parts = redis_url.replace("redis://", "").split("@")
+            if len(parts) == 2:
+                redis_password = parts[0].replace(":", "")
+                host_port = parts[1]
+            else:
+                host_port = parts[0]
+            
+            if ":" in host_port:
+                redis_host, port_str = host_port.split(":")
+                redis_port = int(port_str)
+            else:
+                redis_host = host_port
+        
+        public_works_config = {
+            "redis": {
+                "host": redis_host,
+                "port": redis_port,
+                "db": 0,
+                "password": redis_password
+            },
+            "consul": {
+                "host": env.CONSUL_HOST,
+                "port": env.CONSUL_PORT,
+                "token": env.CONSUL_TOKEN
+            }
+        }
+        
+        public_works = PublicWorksFoundationService(config=public_works_config)
+        await public_works.initialize()
+        _foundations["public_works"] = public_works
+        logger.info("✅ Public Works Foundation initialized")
+        
+        # 2. Curator Foundation (registry)
+        logger.info("Initializing Curator Foundation...")
+        curator = CuratorFoundationService(public_works_foundation=public_works)
+        await curator.initialize()
+        _foundations["curator"] = curator
+        logger.info("✅ Curator Foundation initialized")
+        
+        # ========================================================================
+        # Phase 1: Initialize Runtime Components (using Foundations)
+        # ========================================================================
+        
+        # Get state abstraction from Public Works
+        state_abstraction = public_works.get_state_abstraction()
+        use_memory = state_abstraction is None
+        
+        # Initialize Runtime components
+        state_surface = StateSurface(state_abstraction=state_abstraction, use_memory=use_memory)
+        
+        # WAL uses Redis directly (for list operations) or in-memory fallback
+        # Get Redis adapter from Public Works
+        redis_adapter = public_works.redis_adapter
+        wal_redis_client = None
+        if redis_adapter and hasattr(redis_adapter, '_client') and redis_adapter._client:
+            wal_redis_client = redis_adapter._client
+        elif not use_memory:
+            # Fallback: create Redis client for WAL
+            import redis.asyncio as redis
+            try:
+                wal_redis_client = await redis.from_url(env.REDIS_URL, decode_responses=True)
+                await wal_redis_client.ping()
+            except Exception as e:
+                logger.warning(f"WAL Redis not available: {e}, using in-memory for WAL")
+                wal_redis_client = None
+        
+        wal = WriteAheadLog(redis_client=wal_redis_client, use_memory=(wal_redis_client is None))
+        saga_coordinator = SagaCoordinator(state_surface=state_surface)
+        
+        # Create Runtime Service with Curator
+        runtime_service = RuntimeService(
+            state_surface=state_surface,
+            wal=wal,
+            saga_coordinator=saga_coordinator,
+            curator=curator
         )
+        
+        # Store references
+        _runtime_components["state_surface"] = state_surface
+        _runtime_components["wal"] = wal
+        _runtime_components["saga_coordinator"] = saga_coordinator
+        _runtime_components["runtime_service"] = runtime_service
+        
+        logger.info(
+            "✅ Runtime Plane components initialized",
+            metadata={
+                "state_surface": "Public Works abstraction" if not use_memory else "in-memory",
+                "wal": "Redis-backed" if wal_redis_client else "in-memory"
+            }
+        )
+        
+        # ========================================================================
+        # Phase 3: Initialize Agent Foundation
+        # ========================================================================
+        
+        logger.info("Initializing Agent Foundation...")
+        agent_foundation = AgentFoundationService(
+            curator_foundation=curator,
+            runtime_service=runtime_service,
+            state_surface=state_surface
+        )
+        await agent_foundation.initialize()
+        _foundations["agent"] = agent_foundation
+        logger.info("✅ Agent Foundation initialized")
+        
+        # ========================================================================
+        # Phase 4: Initialize Smart City Foundation
+        # ========================================================================
+        
+        logger.info("Initializing Smart City Foundation...")
+        smart_city = SmartCityFoundationService(
+            public_works_foundation=public_works,
+            curator_foundation=curator,
+            runtime_service=runtime_service,
+            agent_foundation=agent_foundation
+        )
+        await smart_city.initialize()
+        _foundations["smart_city"] = smart_city
+        logger.info("✅ Smart City Foundation initialized")
+        
+        # ========================================================================
+        # Initialize Content Realm (Parsing Services)
+        # ========================================================================
+        
+        logger.info("Initializing Content Realm Foundation...")
+        
+        # Create Platform Gateway
+        from symphainy_platform.runtime.platform_gateway import PlatformGateway
+        platform_gateway = PlatformGateway(
+            public_works_foundation=public_works,
+            curator=curator
+        )
+        
+        # Set State Surface for parsing abstractions (they need it for file retrieval)
+        public_works.set_state_surface(state_surface)
+        
+        # Initialize Content Realm Foundation
+        from symphainy_platform.realms.content.foundation_service import ContentRealmFoundationService
+        content_realm = ContentRealmFoundationService(
+            state_surface=state_surface,
+            platform_gateway=platform_gateway,
+            curator=curator
+        )
+        await content_realm.initialize()
+        _foundations["content_realm"] = content_realm
+        logger.info("✅ Content Realm Foundation initialized")
+        
+        # ========================================================================
+        # Create FastAPI App
+        # ========================================================================
+        
+        # Create FastAPI app
+        runtime_app = create_runtime_app(
+            state_surface=state_surface,
+            wal=wal,
+            saga_coordinator=saga_coordinator,
+            curator=curator
+        )
+        
+        # Merge routes into main app
+        app.mount("/api", runtime_app)
+        
+        logger.info("✅ Symphainy Platform ready", metadata={"port": env.RUNTIME_PORT})
+        
+        yield
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize platform: {e}", exc_info=e)
+        raise
+    
+    finally:
+        # Shutdown
+        logger.info("Shutting down Symphainy Platform")
+        
+        try:
+            # Shutdown Smart City
+            if "smart_city" in _foundations:
+                await _foundations["smart_city"].shutdown()
+                logger.info("✅ Smart City Foundation shut down")
+            
+            # Shutdown Agent Foundation
+            if "agent" in _foundations:
+                await _foundations["agent"].shutdown()
+                logger.info("✅ Agent Foundation shut down")
+            
+            # Shutdown foundations
+            if "curator" in _foundations:
+                # Curator doesn't have explicit shutdown, but log it
+                logger.info("✅ Curator Foundation shut down")
+            
+            if "public_works" in _foundations:
+                await _foundations["public_works"].shutdown()
+                logger.info("✅ Public Works Foundation shut down")
+            
+            # Close WAL Redis connection if exists
+            if "wal" in _runtime_components:
+                wal = _runtime_components.get("wal")
+                if wal and wal.redis_client:
+                    await wal.redis_client.aclose()
+                    logger.info("✅ WAL Redis connection closed")
+            
+            logger.info("✅ Graceful shutdown complete")
+        except Exception as e:
+            logger.error(
+                "Error during shutdown",
+                metadata={"error": str(e)},
+                exc_info=e
+            )
 
 
-async def setup_runtime_plane() -> FastAPI:
+async def setup_platform() -> FastAPI:
     """
-    Set up Runtime Plane components.
+    Set up platform components.
     
     Returns:
         FastAPI application with lifespan context
     """
     # Create FastAPI app with lifespan
     app = FastAPI(
-        title="Symphainy Runtime Plane",
-        description="Runtime execution kernel for Symphainy Platform",
-        version="0.1.0",
+        title="Symphainy Platform",
+        description="Agentic Integrated Development Platform",
+        version="0.4.0",
         lifespan=lifespan
     )
     
@@ -187,18 +338,18 @@ def main():
     port = env.RUNTIME_PORT
     
     logger.info(
-        "Starting Symphainy Runtime Plane",
+        "Starting Symphainy Platform",
         metadata={
             "host": host,
             "port": port,
-            "version": "0.1.0",
+            "version": "0.4.0",
             "container_aware": True
         }
     )
     
     # Create app (async setup)
     loop = asyncio.get_event_loop()
-    app = loop.run_until_complete(setup_runtime_plane())
+    app = loop.run_until_complete(setup_platform())
     
     # Run server
     uvicorn.run(

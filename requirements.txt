@@ -9,6 +9,7 @@ pydantic>=2.5.0
 # Infrastructure
 redis>=5.0.0
 python-arango>=7.6.0
+python-consul>=1.1.0
 
 # Communication
 websockets>=11.0.0
