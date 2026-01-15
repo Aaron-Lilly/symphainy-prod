@@ -1,229 +1,213 @@
 """
-Content Orchestrator
+Content Orchestrator - Coordinates Content Operations
 
-Routes parsing requests to the appropriate parsing service based on file type and parsing pattern.
+Coordinates enabling services for content processing.
 
-WHAT (Content Realm): I orchestrate file parsing operations
-HOW (Orchestrator): I route to appropriate parsing services (structured, unstructured, hybrid, workflow/SOP)
+WHAT (Orchestrator Role): I coordinate content operations
+HOW (Orchestrator Implementation): I route intents to enabling services and compose results
+
+⚠️ CRITICAL: Orchestrators coordinate within a single intent only.
+They may NOT spawn long-running sagas, manage retries, or track cross-intent progress.
 """
 
-import logging
+import sys
+from pathlib import Path
+
+# Add project root to path
+project_root = Path(__file__).resolve().parents[5]
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
 from typing import Dict, Any, Optional
-from datetime import datetime
 
-from symphainy_platform.foundations.public_works.protocols.parsing_service_protocol import (
-    ParsingRequest,
-    ParsingResult
-)
-
-logger = logging.getLogger(__name__)
+from utilities import get_logger
+from symphainy_platform.runtime.intent_model import Intent
+from symphainy_platform.runtime.execution_context import ExecutionContext
+from ..enabling_services.file_parser_service import FileParserService
 
 
 class ContentOrchestrator:
     """
-    Content Orchestrator.
+    Content Orchestrator - Coordinates content operations.
     
-    Routes parsing requests to appropriate parsing services:
-    - Structured Parsing Service (Excel, CSV, JSON, Binary/Mainframe)
-    - Unstructured Parsing Service (PDF, Word, Text, Image)
-    - Hybrid Parsing Service (Kreuzberg + fallback)
-    - Workflow/SOP Parsing Service (BPMN, Draw.io, JSON workflows, SOP documents)
+    Coordinates:
+    - File parsing
+    - Embedding creation
+    - Semantic storage
     """
     
-    def __init__(
-        self,
-        structured_service: Optional[Any] = None,
-        unstructured_service: Optional[Any] = None,
-        hybrid_service: Optional[Any] = None,
-        workflow_sop_service: Optional[Any] = None,
-        state_surface: Optional[Any] = None
-    ):
-        """
-        Initialize Content Orchestrator.
+    def __init__(self):
+        """Initialize Content Orchestrator."""
+        self.logger = get_logger(self.__class__.__name__)
         
-        Args:
-            structured_service: Structured Parsing Service instance
-            unstructured_service: Unstructured Parsing Service instance
-            hybrid_service: Hybrid Parsing Service instance
-            workflow_sop_service: Workflow/SOP Parsing Service instance
-            state_surface: State Surface instance
-        """
-        self.structured_service = structured_service
-        self.unstructured_service = unstructured_service
-        self.hybrid_service = hybrid_service
-        self.workflow_sop_service = workflow_sop_service
-        self.state_surface = state_surface
-        self.logger = logger
-        
-        self.logger.info("✅ Content Orchestrator initialized")
+        # Initialize enabling services
+        # In production, these would be injected via DI
+        self.file_parser_service = FileParserService()
     
-    async def parse_file(
+    async def handle_intent(
         self,
-        file_reference: str,
-        filename: str,
-        parsing_type: Optional[str] = None,
-        options: Optional[Dict[str, Any]] = None
-    ) -> ParsingResult:
+        intent: Intent,
+        context: ExecutionContext
+    ) -> Dict[str, Any]:
         """
-        Parse file by routing to appropriate parsing service.
+        Handle intent by coordinating enabling services.
         
         Args:
-            file_reference: State Surface reference to file
-            filename: Original filename
-            parsing_type: Explicit parsing type (structured, unstructured, hybrid, workflow, sop)
-                        If not provided, will be inferred from file type
-            options: Parsing options (copybook_reference for mainframe, etc.)
+            intent: The intent to handle
+            context: Runtime execution context
         
         Returns:
-            ParsingResult with parsed data
+            Dict with "artifacts" and "events" keys
         """
-        try:
-            # Create parsing request
-            request = ParsingRequest(
-                file_reference=file_reference,
-                filename=filename,
-                options=options
-            )
-            
-            # Determine parsing type if not provided
-            if not parsing_type:
-                parsing_type = self._determine_parsing_type(filename, options)
-            
-            # Route to appropriate service
-            if parsing_type == "structured":
-                return await self._parse_structured(request)
-            elif parsing_type == "unstructured":
-                return await self._parse_unstructured(request)
-            elif parsing_type == "hybrid":
-                return await self._parse_hybrid(request)
-            elif parsing_type == "workflow":
-                return await self._parse_workflow(request)
-            elif parsing_type == "sop":
-                return await self._parse_sop(request)
-            else:
-                return ParsingResult(
-                    success=False,
-                    error=f"Unknown parsing type: {parsing_type}",
-                    timestamp=datetime.utcnow().isoformat()
-                )
+        intent_type = intent.intent_type
         
-        except Exception as e:
-            self.logger.error(f"❌ Content orchestration failed: {e}", exc_info=True)
-            return ParsingResult(
-                success=False,
-                error=f"Content orchestration failed: {str(e)}",
-                timestamp=datetime.utcnow().isoformat()
-            )
+        if intent_type == "ingest_file":
+            return await self._handle_ingest_file(intent, context)
+        elif intent_type == "parse_content":
+            return await self._handle_parse_content(intent, context)
+        elif intent_type == "extract_embeddings":
+            return await self._handle_extract_embeddings(intent, context)
+        elif intent_type == "get_parsed_file":
+            return await self._handle_get_parsed_file(intent, context)
+        elif intent_type == "get_semantic_interpretation":
+            return await self._handle_get_semantic_interpretation(intent, context)
+        else:
+            raise ValueError(f"Unknown intent type: {intent_type}")
     
-    def _determine_parsing_type(
+    async def _handle_ingest_file(
         self,
-        filename: str,
-        options: Optional[Dict[str, Any]]
-    ) -> str:
-        """
-        Determine parsing type from filename and options.
+        intent: Intent,
+        context: ExecutionContext
+    ) -> Dict[str, Any]:
+        """Handle ingest_file intent."""
+        file_id = intent.parameters.get("file_id")
         
-        Args:
-            filename: Original filename
-            options: Parsing options
+        if not file_id:
+            raise ValueError("file_id is required for ingest_file intent")
         
-        Returns:
-            Parsing type: "structured", "unstructured", "hybrid", "workflow", "sop"
-        """
-        # Check explicit type in options
-        if options and options.get("parsing_type"):
-            return options.get("parsing_type")
+        # Parse file
+        parsed_result = await self.file_parser_service.parse_file(
+            file_id=file_id,
+            tenant_id=context.tenant_id,
+            context=context
+        )
         
-        # Get file extension
-        file_type = self._get_file_type(filename)
-        
-        # Structured types
-        structured_types = ["xlsx", "xls", "csv", "json", "bin", "binary"]
-        if file_type in structured_types:
-            return "structured"
-        
-        # Unstructured types
-        unstructured_types = ["pdf", "docx", "doc", "txt", "text", "png", "jpg", "jpeg", "gif", "bmp", "tiff"]
-        if file_type in unstructured_types:
-            return "unstructured"
-        
-        # Hybrid types (can be parsed as both structured and unstructured)
-        hybrid_types = ["excel_with_text"]  # Can be extended
-        if file_type in hybrid_types or (options and options.get("hybrid")):
-            return "hybrid"
-        
-        # Workflow types
-        workflow_types = ["bpmn", "drawio"]
-        if file_type in workflow_types:
-            return "workflow"
-        
-        # SOP types
-        sop_types = ["md", "sop"]
-        if file_type in sop_types:
-            return "sop"
-        
-        # Default: unstructured
-        return "unstructured"
+        return {
+            "artifacts": {
+                "parsed_file_id": parsed_result.get("parsed_file_id"),
+                "file_id": file_id,
+                "parsing_status": "completed"
+            },
+            "events": [
+                {
+                    "type": "file_parsed",
+                    "file_id": file_id,
+                    "parsed_file_id": parsed_result.get("parsed_file_id")
+                }
+            ]
+        }
     
-    def _get_file_type(self, filename: str) -> str:
-        """Get file type from filename."""
-        if not filename:
-            return "unknown"
+    async def _handle_parse_content(
+        self,
+        intent: Intent,
+        context: ExecutionContext
+    ) -> Dict[str, Any]:
+        """Handle parse_content intent."""
+        # Similar to ingest_file, but for content that's already uploaded
+        content_id = intent.parameters.get("content_id")
         
-        ext = filename.lower().split('.')[-1]
-        return ext
+        if not content_id:
+            raise ValueError("content_id is required for parse_content intent")
+        
+        parsed_result = await self.file_parser_service.parse_file(
+            file_id=content_id,
+            tenant_id=context.tenant_id,
+            context=context
+        )
+        
+        return {
+            "artifacts": {
+                "parsed_file_id": parsed_result.get("parsed_file_id"),
+                "content_id": content_id
+            },
+            "events": [
+                {
+                    "type": "content_parsed",
+                    "content_id": content_id
+                }
+            ]
+        }
     
-    async def _parse_structured(self, request: ParsingRequest) -> ParsingResult:
-        """Route to Structured Parsing Service."""
-        if not self.structured_service:
-            return ParsingResult(
-                success=False,
-                error="Structured Parsing Service not available",
-                timestamp=datetime.utcnow().isoformat()
-            )
+    async def _handle_extract_embeddings(
+        self,
+        intent: Intent,
+        context: ExecutionContext
+    ) -> Dict[str, Any]:
+        """Handle extract_embeddings intent."""
+        parsed_file_id = intent.parameters.get("parsed_file_id")
         
-        return await self.structured_service.parse_structured_file(request)
+        if not parsed_file_id:
+            raise ValueError("parsed_file_id is required for extract_embeddings intent")
+        
+        # For MVP: Return placeholder
+        # In full implementation: Create embeddings via EmbeddingService
+        return {
+            "artifacts": {
+                "embeddings_created": True,
+                "parsed_file_id": parsed_file_id
+            },
+            "events": [
+                {
+                    "type": "embeddings_created",
+                    "parsed_file_id": parsed_file_id
+                }
+            ]
+        }
     
-    async def _parse_unstructured(self, request: ParsingRequest) -> ParsingResult:
-        """Route to Unstructured Parsing Service."""
-        if not self.unstructured_service:
-            return ParsingResult(
-                success=False,
-                error="Unstructured Parsing Service not available",
-                timestamp=datetime.utcnow().isoformat()
-            )
+    async def _handle_get_parsed_file(
+        self,
+        intent: Intent,
+        context: ExecutionContext
+    ) -> Dict[str, Any]:
+        """Handle get_parsed_file intent."""
+        parsed_file_id = intent.parameters.get("parsed_file_id")
         
-        return await self.unstructured_service.parse_unstructured_file(request)
+        if not parsed_file_id:
+            raise ValueError("parsed_file_id is required for get_parsed_file intent")
+        
+        # Get parsed file via FileParserService
+        parsed_file = await self.file_parser_service.get_parsed_file(
+            parsed_file_id=parsed_file_id,
+            tenant_id=context.tenant_id,
+            context=context
+        )
+        
+        return {
+            "artifacts": {
+                "parsed_file": parsed_file
+            },
+            "events": []
+        }
     
-    async def _parse_hybrid(self, request: ParsingRequest) -> ParsingResult:
-        """Route to Hybrid Parsing Service."""
-        if not self.hybrid_service:
-            return ParsingResult(
-                success=False,
-                error="Hybrid Parsing Service not available",
-                timestamp=datetime.utcnow().isoformat()
-            )
+    async def _handle_get_semantic_interpretation(
+        self,
+        intent: Intent,
+        context: ExecutionContext
+    ) -> Dict[str, Any]:
+        """Handle get_semantic_interpretation intent."""
+        parsed_file_id = intent.parameters.get("parsed_file_id")
         
-        return await self.hybrid_service.parse_hybrid_file(request)
-    
-    async def _parse_workflow(self, request: ParsingRequest) -> ParsingResult:
-        """Route to Workflow/SOP Parsing Service for workflows."""
-        if not self.workflow_sop_service:
-            return ParsingResult(
-                success=False,
-                error="Workflow/SOP Parsing Service not available",
-                timestamp=datetime.utcnow().isoformat()
-            )
+        if not parsed_file_id:
+            raise ValueError("parsed_file_id is required for get_semantic_interpretation intent")
         
-        return await self.workflow_sop_service.parse_workflow_file(request)
-    
-    async def _parse_sop(self, request: ParsingRequest) -> ParsingResult:
-        """Route to Workflow/SOP Parsing Service for SOPs."""
-        if not self.workflow_sop_service:
-            return ParsingResult(
-                success=False,
-                error="Workflow/SOP Parsing Service not available",
-                timestamp=datetime.utcnow().isoformat()
-            )
-        
-        return await self.workflow_sop_service.parse_sop_file(request)
+        # For MVP: Return placeholder
+        # In full implementation: Get semantic interpretation from SemanticDataAbstraction
+        return {
+            "artifacts": {
+                "semantic_interpretation": {
+                    "parsed_file_id": parsed_file_id,
+                    "interpretation": "Semantic interpretation (3-layer pattern)"
+                }
+            },
+            "events": []
+        }

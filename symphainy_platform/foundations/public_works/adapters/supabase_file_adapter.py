@@ -289,3 +289,187 @@ class SupabaseFileAdapter:
                 "message": f"Supabase File Management adapter error: {e}",
                 "timestamp": self.clock.now_iso()
             }
+    
+    # ============================================================================
+    # RAW PARSED FILE OPERATIONS
+    # ============================================================================
+    
+    async def create_parsed_file(self, parsed_file_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Raw parsed file creation - no business logic."""
+        try:
+            result = self._client.table("parsed_data_files").insert(parsed_file_data).execute()
+            return result.data[0] if result.data else {}
+        except Exception as e:
+            self.logger.error(f"Failed to create parsed file: {e}")
+            raise
+    
+    async def get_parsed_file(self, parsed_file_id: str) -> Optional[Dict[str, Any]]:
+        """Raw parsed file retrieval - no business logic."""
+        try:
+            result = self._client.table("parsed_data_files").select("*").eq("parsed_file_id", parsed_file_id).execute()
+            return result.data[0] if result.data else None
+        except Exception as e:
+            self.logger.error(f"Failed to get parsed file {parsed_file_id}: {e}")
+            return None
+    
+    async def list_parsed_files(self, user_id: str, tenant_id: Optional[str] = None,
+                               file_id: Optional[str] = None,
+                               filters: Optional[Dict[str, Any]] = None,
+                               limit: Optional[int] = None, offset: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Raw parsed file listing - no business logic."""
+        try:
+            query = self._client.table("parsed_data_files").select("*").eq("user_id", user_id)
+            
+            if tenant_id:
+                query = query.eq("tenant_id", tenant_id)
+            
+            if file_id:
+                query = query.eq("file_id", file_id)
+            
+            if filters:
+                for key, value in filters.items():
+                    if isinstance(value, list):
+                        query = query.in_(key, value)
+                    else:
+                        query = query.eq(key, value)
+            
+            if limit:
+                query = query.limit(limit)
+            if offset:
+                query = query.range(offset, offset + (limit or 10) - 1)
+            
+            result = query.order("parsed_at", desc=True).execute()
+            return result.data
+            
+        except Exception as e:
+            self.logger.error(f"Failed to list parsed files: {e}")
+            return []
+    
+    async def get_parsed_file_by_ui_name(self, ui_name: str, user_id: str, tenant_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Raw parsed file retrieval by ui_name - no business logic."""
+        try:
+            query = self._client.table("parsed_data_files").select("*").eq("ui_name", ui_name).eq("user_id", user_id)
+            if tenant_id:
+                query = query.eq("tenant_id", tenant_id)
+            result = query.execute()
+            return result.data[0] if result.data else None
+        except Exception as e:
+            self.logger.error(f"Failed to get parsed file by ui_name {ui_name}: {e}")
+            return None
+    
+    # ============================================================================
+    # RAW EMBEDDING FILE OPERATIONS
+    # ============================================================================
+    
+    async def create_embedding_file(self, embedding_file_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Raw embedding file creation - no business logic."""
+        try:
+            result = self._client.table("embedding_files").insert(embedding_file_data).execute()
+            return result.data[0] if result.data else {}
+        except Exception as e:
+            self.logger.error(f"Failed to create embedding file: {e}")
+            raise
+    
+    async def get_embedding_file(self, embedding_id: str) -> Optional[Dict[str, Any]]:
+        """Raw embedding file retrieval - no business logic."""
+        try:
+            result = self._client.table("embedding_files").select("*").eq("uuid", embedding_id).execute()
+            return result.data[0] if result.data else None
+        except Exception as e:
+            self.logger.error(f"Failed to get embedding file {embedding_id}: {e}")
+            return None
+    
+    async def list_embedding_files(self, user_id: str, tenant_id: Optional[str] = None,
+                                  parsed_file_id: Optional[str] = None,
+                                  file_id: Optional[str] = None,
+                                  filters: Optional[Dict[str, Any]] = None,
+                                  limit: Optional[int] = None, offset: Optional[int] = None) -> List[Dict[str, Any]]:
+        """Raw embedding file listing - no business logic."""
+        try:
+            query = self._client.table("embedding_files").select("*").eq("user_id", user_id)
+            
+            if tenant_id:
+                query = query.eq("tenant_id", tenant_id)
+            
+            if parsed_file_id:
+                query = query.eq("parsed_file_id", parsed_file_id)
+            
+            if file_id:
+                query = query.eq("file_id", file_id)
+            
+            if filters:
+                for key, value in filters.items():
+                    if isinstance(value, list):
+                        query = query.in_(key, value)
+                    else:
+                        query = query.eq(key, value)
+            
+            if limit:
+                query = query.limit(limit)
+            if offset:
+                query = query.range(offset, offset + (limit or 10) - 1)
+            
+            result = query.order("created_at", desc=True).execute()
+            return result.data
+            
+        except Exception as e:
+            self.logger.error(f"Failed to list embedding files: {e}")
+            return []
+    
+    async def get_embedding_file_by_ui_name(self, ui_name: str, user_id: str, tenant_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+        """Raw embedding file retrieval by ui_name - no business logic."""
+        try:
+            query = self._client.table("embedding_files").select("*").eq("ui_name", ui_name).eq("user_id", user_id)
+            if tenant_id:
+                query = query.eq("tenant_id", tenant_id)
+            result = query.execute()
+            return result.data[0] if result.data else None
+        except Exception as e:
+            self.logger.error(f"Failed to get embedding file by ui_name {ui_name}: {e}")
+            return None
+    
+    # ============================================================================
+    # RAW LINEAGE QUERIES
+    # ============================================================================
+    
+    async def get_file_lineage(self, file_id: str, user_id: str, tenant_id: Optional[str] = None) -> Dict[str, Any]:
+        """
+        Raw lineage retrieval - no business logic.
+        
+        Returns complete lineage: original → parsed → embedded
+        """
+        try:
+            # Get original file
+            original_file = await self.get_file(file_id)
+            if not original_file:
+                return {"original_file": None, "parsed_files": [], "embedded_files": []}
+            
+            # Get parsed files linked to original
+            parsed_files = await self.list_parsed_files(
+                user_id=user_id,
+                tenant_id=tenant_id,
+                file_id=file_id
+            )
+            
+            # Get embedded files linked to original and parsed files
+            embedded_files = []
+            for parsed_file in parsed_files:
+                parsed_file_id = parsed_file.get("parsed_file_id")
+                if parsed_file_id:
+                    embeddings = await self.list_embedding_files(
+                        user_id=user_id,
+                        tenant_id=tenant_id,
+                        parsed_file_id=parsed_file_id,
+                        file_id=file_id
+                    )
+                    embedded_files.extend(embeddings)
+            
+            return {
+                "original_file": original_file,
+                "parsed_files": parsed_files,
+                "embedded_files": embedded_files
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get file lineage for {file_id}: {e}")
+            return {"original_file": None, "parsed_files": [], "embedded_files": []}

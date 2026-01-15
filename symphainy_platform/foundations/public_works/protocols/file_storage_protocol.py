@@ -19,7 +19,7 @@ class FileStorageProtocol(Protocol):
         file_path: str,
         file_data: bytes,
         metadata: Optional[Dict[str, Any]] = None
-    ) -> bool:
+    ) -> Dict[str, Any]:
         """
         Upload a file.
         
@@ -29,7 +29,9 @@ class FileStorageProtocol(Protocol):
             metadata: Optional metadata
         
         Returns:
-            bool: True if successful
+            Dict with success status and file_id if successful:
+            {"success": True, "file_id": "...", "file_path": "..."}
+            or {"success": False, "error": "..."}
         """
         ...
     

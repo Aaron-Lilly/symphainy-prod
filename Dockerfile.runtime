@@ -28,4 +28,4 @@ HEALTHCHECK --interval=10s --timeout=5s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Run runtime service
-CMD ["python3", "main.py"]
+CMD ["python3", "runtime_main.py"]

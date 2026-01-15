@@ -1,8 +1,8 @@
 """
-Tenant Abstraction - Business Logic Implementation (Layer 1)
+Tenant Abstraction - Pure Infrastructure Implementation (Layer 1)
 
 Implements tenancy operations using Supabase adapter.
-Provides tenant management, validation, and caching.
+Returns raw tenant data only - no business logic.
 
 WHAT (Infrastructure Role): I provide tenant services
 HOW (Infrastructure Implementation): I use Supabase adapter with Redis caching
@@ -19,10 +19,11 @@ from ..adapters.redis_adapter import RedisAdapter
 
 class TenantAbstraction(TenancyProtocol):
     """
-    Tenant abstraction with business logic.
+    Tenant abstraction - pure infrastructure.
     
-    Implements tenancy operations using Supabase adapter with Redis caching.
-    Provides tenant management, validation, and configuration.
+    Returns raw tenant data only (Dict[str, Any]), not business objects.
+    Business logic (tenant access validation, config management) belongs
+    in Security Guard Primitive and Platform SDK, not here.
     """
     
     def __init__(
@@ -42,7 +43,7 @@ class TenantAbstraction(TenancyProtocol):
         self.logger = get_logger(self.__class__.__name__)
         self.clock = get_clock()
         
-        self.logger.info("Tenant Abstraction initialized")
+        self.logger.info("Tenant Abstraction initialized (pure infrastructure)")
     
     async def get_tenant(
         self,
@@ -88,86 +89,42 @@ class TenantAbstraction(TenancyProtocol):
             self.logger.error(f"Failed to get tenant {tenant_id}: {e}", exc_info=True)
             return None
     
-    async def validate_tenant_access(
-        self,
-        user_tenant_id: str,
-        resource_tenant_id: str
-    ) -> bool:
+    async def get_user_tenant_info(self, user_id: str) -> Dict[str, Any]:
         """
-        Validate tenant access.
+        Get raw tenant information for a given user.
+        
+        This method is pure infrastructure and returns raw data, not business objects.
+        Delegates to SupabaseAdapter.get_user_tenant_info().
         
         Args:
-            user_tenant_id: User's tenant ID
-            resource_tenant_id: Resource's tenant ID
+            user_id: User ID
         
         Returns:
-            bool: True if access is allowed
+            Dict[str, Any]: Raw tenant information from database
+            Structure:
+            {
+                "tenant_id": str,
+                "primary_tenant_id": str,
+                "tenant_type": str,
+                "roles": List[str],
+                "permissions": List[str],
+                "raw_user_tenant_data": Dict[str, Any]  # Full data from user_tenants table
+            }
         """
         try:
-            # Same tenant = always allowed
-            if user_tenant_id == resource_tenant_id:
-                return True
+            # Delegate to Supabase adapter (pure infrastructure)
+            tenant_info = await self.supabase.get_user_tenant_info(user_id)
             
-            # No tenant isolation if either is None
-            if not user_tenant_id or not resource_tenant_id:
-                self.logger.warning("Tenant access validation skipped: missing tenant IDs")
-                return True
-            
-            # For now, strict isolation: only same tenant allowed
-            # Future: could check tenant relationships, sharing policies, etc.
-            self.logger.warning(f"Tenant access denied: {user_tenant_id} -> {resource_tenant_id}")
-            return False
-            
-        except Exception as e:
-            self.logger.error(f"Tenant access validation error: {e}", exc_info=True)
-            return False
-    
-    async def get_tenant_config(self, tenant_id: str) -> Dict[str, Any]:
-        """
-        Get tenant configuration (extended method for Smart City services).
-        
-        Args:
-            tenant_id: Tenant ID
-        
-        Returns:
-            Dict: Tenant configuration
-        """
-        try:
-            tenant = await self.get_tenant(tenant_id)
-            
-            if tenant:
-                return {
-                    "tenant_id": tenant_id,
-                    "tenant_name": tenant.get("name", f"Tenant {tenant_id}"),
-                    "tenant_type": tenant.get("type", "standard"),
-                    "status": tenant.get("status", "active"),
-                    "isolation_level": tenant.get("isolation_level", "strict"),
-                    "rls_enabled": tenant.get("rls_enabled", True),
-                    "created_at": tenant.get("created_at"),
-                    "updated_at": tenant.get("updated_at")
-                }
+            if tenant_info:
+                self.logger.debug(f"Retrieved tenant info for user: {user_id}")
+                return tenant_info
             else:
-                # Return default config if tenant not found
-                return {
-                    "tenant_id": tenant_id,
-                    "tenant_name": f"Tenant {tenant_id}",
-                    "tenant_type": "standard",
-                    "status": "active",
-                    "isolation_level": "strict",
-                    "rls_enabled": True
-                }
+                self.logger.debug(f"No tenant info found for user: {user_id}")
+                return {}
                 
         except Exception as e:
-            self.logger.error(f"Failed to get tenant config {tenant_id}: {e}", exc_info=True)
-            # Return default config on error
-            return {
-                "tenant_id": tenant_id,
-                "tenant_name": f"Tenant {tenant_id}",
-                "tenant_type": "standard",
-                "status": "active",
-                "isolation_level": "strict",
-                "rls_enabled": True
-            }
+            self.logger.error(f"Failed to get user tenant info for {user_id}: {e}", exc_info=True)
+            return {}
     
     async def create_tenant(self, tenant_data: Dict[str, Any]) -> Optional[str]:
         """

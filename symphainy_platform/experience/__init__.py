@@ -1,18 +1,10 @@
 """
-Experience Plane - Delivery Surface
+Experience Plane
 
-Delivers platform capabilities to humans and systems.
-
-Includes:
-- REST APIs
-- WebSocket handlers
-- Admin / Builder UI
-- Solution UIs (customer-facing)
-- Event streams
+Separate service for user interaction.
 
 Experience:
-- Accepts intent
-- Streams state
-- Delivers outcomes
-- Never owns state
+- Submits intents to Runtime
+- Streams execution updates
+- Never calls domain services directly
 """

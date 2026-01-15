@@ -1,0 +1,11 @@
+# AS2 Decryption Support (Optional)
+# Install this if you need full AS2 decryption capabilities
+# 
+# Usage:
+#   pip install -r requirements-as2.txt
+#   OR
+#   poetry install --extras as2
+#
+# Note: Without this, AS2 decryption will use fallback method (limited features)
+
+pyas2lib>=1.4.4

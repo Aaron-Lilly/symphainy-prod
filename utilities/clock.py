@@ -38,6 +38,15 @@ class Clock:
             return self._override_time
         return datetime.now(timezone.utc)
     
+    def now_utc(self) -> datetime:
+        """
+        Get current time (UTC) - alias for now().
+        
+        Returns:
+            Current datetime in UTC, or override time if set
+        """
+        return self.now()
+    
     def now_iso(self) -> str:
         """
         Get current time as ISO string.

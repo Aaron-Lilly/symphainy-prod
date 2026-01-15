@@ -105,3 +105,4 @@ logs/
 *.swp
 *~
 symphainy-platform/
+secrets_for_cursor.md

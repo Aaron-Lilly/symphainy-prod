@@ -1,5 +1,5 @@
 # OpenTelemetry Collector Configuration
-# Minimal configuration for Phase 4
+# Phase 1: Metrics export to Prometheus
 
 receivers:
   otlp:
@@ -19,6 +19,8 @@ exporters:
     endpoint: tempo:4317
     tls:
       insecure: true
+  prometheus:
+    endpoint: "0.0.0.0:8889"
   debug:
     verbosity: normal
 
@@ -31,4 +33,4 @@ service:
     metrics:
       receivers: [otlp]
       processors: [batch]
-      exporters: [debug]
+      exporters: [prometheus, debug]

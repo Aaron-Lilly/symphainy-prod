@@ -24,50 +24,80 @@ class SecurityContext:
 
 
 class AuthenticationProtocol(Protocol):
-    """Protocol for authentication operations."""
+    """
+    Protocol for authentication operations.
+    
+    Returns raw data (Dict[str, Any]) - no business objects.
+    Platform SDK translates raw data to SecurityContext.
+    """
     
     async def authenticate(
         self,
         credentials: Dict[str, Any]
-    ) -> Optional[SecurityContext]:
+    ) -> Optional[Dict[str, Any]]:
         """
         Authenticate user.
+        
+        Returns raw data only - no business logic, no SecurityContext.
+        Platform SDK will translate this to SecurityContext.
         
         Args:
             credentials: Authentication credentials
         
         Returns:
-            Optional[SecurityContext]: User session or None if failed
+            Optional[Dict[str, Any]]: Raw authentication data or None if failed
+            Structure:
+            {
+                "success": bool,
+                "user_id": str,
+                "email": str,
+                "access_token": str,
+                "refresh_token": str,
+                "expires_in": int,
+                "expires_at": int,
+                "raw_user_data": Dict[str, Any],
+                "raw_session_data": Dict[str, Any],
+                "raw_user_metadata": Dict[str, Any],
+                "raw_app_metadata": Dict[str, Any],
+                "raw_provider_data": Dict[str, Any],
+                "error": Optional[str]
+            }
         """
         ...
     
     async def validate_token(
         self,
         token: str
-    ) -> Optional[SecurityContext]:
+    ) -> Optional[Dict[str, Any]]:
         """
         Validate token.
+        
+        Returns raw data only - no business logic, no SecurityContext.
+        Platform SDK will translate this to SecurityContext.
         
         Args:
             token: Authentication token
         
         Returns:
-            Optional[SecurityContext]: User context or None if invalid
+            Optional[Dict[str, Any]]: Raw validation data or None if invalid
         """
         ...
     
     async def refresh_token(
         self,
         refresh_token: str
-    ) -> Optional[SecurityContext]:
+    ) -> Optional[Dict[str, Any]]:
         """
         Refresh token.
+        
+        Returns raw data only - no business logic, no SecurityContext.
+        Platform SDK will translate this to SecurityContext.
         
         Args:
             refresh_token: Refresh token
         
         Returns:
-            Optional[SecurityContext]: New user session or None if failed
+            Optional[Dict[str, Any]]: Raw refresh data or None if failed
         """
         ...
 
@@ -120,27 +150,36 @@ class TenancyProtocol(Protocol):
         """
         Get tenant information.
         
+        Returns raw tenant data only - no business logic.
+        
         Args:
             tenant_id: Tenant ID
         
         Returns:
-            Optional[Dict]: Tenant information or None if not found
+            Optional[Dict[str, Any]]: Raw tenant information or None if not found
         """
         ...
     
-    async def validate_tenant_access(
-        self,
-        user_tenant_id: str,
-        resource_tenant_id: str
-    ) -> bool:
+    async def get_user_tenant_info(self, user_id: str) -> Dict[str, Any]:
         """
-        Validate tenant access.
+        Get raw tenant information for a specific user.
+        
+        Returns raw data from user_tenants table and user metadata.
+        No business logic - just infrastructure data access.
         
         Args:
-            user_tenant_id: User's tenant ID
-            resource_tenant_id: Resource's tenant ID
+            user_id: User ID
         
         Returns:
-            bool: True if access is allowed
+            Dict[str, Any]: Raw tenant information
+            Structure:
+            {
+                "tenant_id": str,
+                "primary_tenant_id": str,
+                "tenant_type": str,
+                "roles": List[str],
+                "permissions": List[str],
+                "raw_user_tenant_data": Dict[str, Any]
+            }
         """
         ...

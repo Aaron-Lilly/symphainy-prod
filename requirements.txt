@@ -1,5 +1,10 @@
 # Symphainy Platform Dependencies
 # Generated from pyproject.toml
+#
+# Optional dependencies:
+# - For AS2 decryption support: Install pyas2lib>=1.4.4
+#   Or use: poetry install --extras as2
+#   Or install from: requirements-as2.txt
 
 # Core
 fastapi>=0.104.0
@@ -14,3 +19,9 @@ python-consul>=1.1.0
 # Communication
 websockets>=11.0.0
 httpx>=0.24.0
+meilisearch>=0.38.0
+supabase>=2.0.0
+python-multipart>=0.0.6
+
+# Cryptography (used for JWT, AS2 fallback, etc.)
+cryptography>=41.0.0

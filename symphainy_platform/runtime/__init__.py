@@ -1,64 +1,55 @@
 """
-Runtime Plane - Execution Core
+Runtime Execution Engine
+
+The single execution authority for the platform.
 
 Owns:
-- Session lifecycle
-- Tenant context
+- Intent acceptance and validation
 - Execution lifecycle
-- State surface
-- WAL (Write-Ahead Log)
-- Saga coordination
-- Intent ingestion
-- Deterministic replay boundaries
+- Session & tenant context
+- Write-ahead log (WAL)
+- Saga orchestration
+- Retries & failure recovery
+- Deterministic replay
+- State transitions
+- Runtime-native data cognition (Data Brain)
 """
 
-from .session import Session
+# Core Runtime Components
+from .intent_model import Intent, IntentType, IntentFactory
+from .intent_registry import IntentRegistry, IntentHandler
+from .execution_context import ExecutionContext, ExecutionContextFactory
+from .execution_lifecycle_manager import ExecutionLifecycleManager, ExecutionResult
+from .transactional_outbox import TransactionalOutbox, OutboxEvent
+from .data_brain import DataBrain, DataReference, ProvenanceEntry
 from .state_surface import StateSurface
 from .wal import WriteAheadLog, WALEvent, WALEventType
-from .saga import (
-    Saga,
-    SagaStep,
-    SagaState,
-    SagaStepInterface,
-    SagaCoordinator
-)
-from .runtime_service import (
-    RuntimeService,
-    create_runtime_app,
-    CreateSessionRequest,
-    CreateSessionResponse,
-    GetSessionResponse,
-    SubmitIntentRequest,
-    SubmitIntentResponse,
-    GetExecutionStatusResponse
-)
 
 __all__ = [
-    # Session
-    "Session",
-    
+    # Intent Model
+    "Intent",
+    "IntentType",
+    "IntentFactory",
+    # Intent Registry
+    "IntentRegistry",
+    "IntentHandler",
+    # Execution Context
+    "ExecutionContext",
+    "ExecutionContextFactory",
+    # Execution Lifecycle
+    "ExecutionLifecycleManager",
+    "ExecutionResult",
+    # Transactional Outbox
+    "TransactionalOutbox",
+    "OutboxEvent",
+    # Data Brain
+    "DataBrain",
+    "DataReference",
+    "ProvenanceEntry",
     # State Surface
     "StateSurface",
-    
     # WAL
     "WriteAheadLog",
     "WALEvent",
     "WALEventType",
-    
-    # Saga
-    "Saga",
-    "SagaStep",
-    "SagaState",
-    "SagaStepInterface",
-    "SagaCoordinator",
-    
-    # Runtime Service
-    "RuntimeService",
-    "create_runtime_app",
-    "CreateSessionRequest",
-    "CreateSessionResponse",
-    "GetSessionResponse",
-    "SubmitIntentRequest",
-    "SubmitIntentResponse",
-    "GetExecutionStatusResponse",
 ]

@@ -1,7 +1,5 @@
 """
-Content Orchestrators
-
-Orchestrators for Content Realm operations.
+Content Orchestrator - Coordination Logic for Content Operations
 """
 
 from .content_orchestrator import ContentOrchestrator

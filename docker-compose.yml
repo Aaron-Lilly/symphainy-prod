@@ -137,6 +137,31 @@ services:
         condition: service_started
     restart: unless-stopped
 
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: symphainy-prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    volumes:
+      - ./prometheus-config.yaml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - symphainy_net
+    depends_on:
+      - otel-collector
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "-O", "/dev/null", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    restart: unless-stopped
+
   grafana:
     image: grafana/grafana:latest
     container_name: symphainy-grafana
@@ -151,6 +176,7 @@ services:
     depends_on:
       - tempo
       - otel-collector
+      - prometheus
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "-O", "/dev/null", "http://localhost:3000/api/health"]
       interval: 10s
@@ -276,6 +302,7 @@ volumes:
   arango_data:
   consul_data:
   tempo_data:
+  prometheus_data:
   grafana_data:
 
 networks:

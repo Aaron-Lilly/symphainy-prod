@@ -52,7 +52,7 @@ class FileStorageAbstraction(FileStorageProtocol):
         file_path: str,
         file_data: bytes,
         metadata: Optional[Dict[str, Any]] = None
-    ) -> bool:
+    ) -> Dict[str, Any]:
         """
         Upload a file to GCS and create metadata in Supabase.
         
@@ -62,7 +62,7 @@ class FileStorageAbstraction(FileStorageProtocol):
             metadata: Optional metadata
         
         Returns:
-            bool: True if successful
+            Dict with success status and file_id if successful
         """
         try:
             # Calculate file hash
@@ -99,12 +99,15 @@ class FileStorageAbstraction(FileStorageProtocol):
             
             if not success:
                 self.logger.error(f"Failed to upload file to GCS: {file_path}")
-                return False
+                return {"success": False, "error": "GCS upload failed"}
+            
+            # Generate file_id
+            file_id = generate_session_id()  # Generate unique file ID
             
             # Create metadata in Supabase if metadata provided
             if metadata and metadata.get("user_id"):
                 file_metadata = {
-                    "uuid": generate_session_id(),  # Generate unique file ID
+                    "uuid": file_id,
                     "user_id": metadata.get("user_id"),
                     "tenant_id": metadata.get("tenant_id"),
                     "ui_name": metadata.get("ui_name", file_path.split('/')[-1]),
@@ -121,17 +124,21 @@ class FileStorageAbstraction(FileStorageProtocol):
                 
                 try:
                     await self.supabase.create_file(file_metadata)
-                    self.logger.info(f"File metadata created in Supabase: {file_metadata.get('uuid')}")
+                    self.logger.info(f"File metadata created in Supabase: {file_id}")
                 except Exception as meta_error:
                     self.logger.warning(f"File uploaded to GCS but metadata creation failed: {meta_error}")
                     # Continue - file is stored, metadata can be fixed later
             
             self.logger.info(f"File uploaded successfully: {file_path} ({file_size} bytes)")
-            return True
+            return {
+                "success": True,
+                "file_id": file_id,
+                "file_path": file_path
+            }
             
         except Exception as e:
             self.logger.error(f"Failed to upload file {file_path}: {e}", exc_info=True)
-            return False
+            return {"success": False, "error": str(e)}
     
     async def download_file(
         self,

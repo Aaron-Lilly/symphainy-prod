@@ -1,0 +1,257 @@
+# Phase 0 File Management Audit
+
+**Date:** January 2026  
+**Status:** 🔍 **AUDIT COMPLETE**  
+**Purpose:** Ensure we're not losing or reinventing working patterns from the old architecture
+
+---
+
+## 🎯 Key Findings
+
+### ✅ What We're Preserving Correctly
+
+1. **Three-Table Pattern** ✅
+   - `project_files` - Original uploaded files
+   - `parsed_data_files` - Parsed file metadata
+   - `embedding_files` - Embedding metadata
+   - All three tables exist in old architecture
+
+2. **Lineage Links** ✅
+   - `parsed_data_files.file_id` → `project_files.uuid`
+   - `embedding_files.parsed_file_id` → `parsed_data_files.parsed_file_id`
+   - `embedding_files.file_id` → `project_files.uuid`
+
+3. **ui_name Pattern** ✅
+   - All three tables have `ui_name` column
+   - Pattern: `"Balances"` → `"parsed_Balances"` → `"embedded_Balances"`
+
+---
+
+## ⚠️ Critical Schema Differences Found
+
+### 1. `parsed_data_files` Table Schema
+
+**Old Schema (Actual):**
+```sql
+CREATE TABLE parsed_data_files (
+  uuid UUID PRIMARY KEY,              -- Primary key
+  file_id UUID NOT NULL,              -- Links to project_files.uuid
+  parsed_file_id TEXT NOT NULL,       -- GCS path (NOT UUID!)
+  user_id UUID,                       -- Added via migration
+  ui_name TEXT,                       -- Added via migration
+  data_classification TEXT NOT NULL,
+  tenant_id TEXT,
+  format_type TEXT NOT NULL,
+  content_type TEXT,
+  -- ... other fields
+);
+```
+
+**What We Need to Fix:**
+- ✅ `parsed_file_id` is **TEXT** (GCS path), not UUID
+- ✅ `uuid` is the primary key (not `parsed_file_id`)
+- ✅ `user_id` is UUID (references auth.users)
+- ✅ `ui_name` exists (added via migration)
+
+**Our Current Implementation:**
+- ❌ We're using `parsed_file_id` as if it's a UUID
+- ❌ We're not handling `uuid` as primary key
+- ❌ We're using `user_id` as TEXT, but it should be UUID
+
+### 2. `embedding_files` Table Schema
+
+**Old Schema (Actual):**
+```sql
+CREATE TABLE embedding_files (
+  uuid UUID PRIMARY KEY,              -- Primary key
+  file_id TEXT NOT NULL,              -- TEXT, not UUID!
+  parsed_file_id TEXT NOT NULL,       -- TEXT, not UUID!
+  user_id TEXT NOT NULL,              -- TEXT (not UUID)
+  ui_name TEXT NOT NULL,
+  data_classification TEXT NOT NULL,
+  tenant_id TEXT,
+  -- ... other fields
+);
+```
+
+**What We Need to Fix:**
+- ✅ `file_id` is **TEXT** (not UUID)
+- ✅ `parsed_file_id` is **TEXT** (not UUID)
+- ✅ `user_id` is **TEXT** (not UUID)
+- ✅ `uuid` is the primary key
+
+**Our Current Implementation:**
+- ❌ We're treating `file_id` and `parsed_file_id` as UUIDs
+- ❌ We're using `user_id` as TEXT (correct, but need to verify)
+
+### 3. Old Adapter Methods
+
+**Old `SupabaseFileManagementAdapter` has:**
+- ✅ `create_file()` - for project_files
+- ✅ `create_embedding_file()` - for embedding_files
+- ✅ `list_embedding_files()` - for embedding_files
+- ❌ **NO methods for parsed_data_files** (missing!)
+
+**What We Need:**
+- ✅ Add `create_parsed_file()` method
+- ✅ Add `get_parsed_file()` method
+- ✅ Add `list_parsed_files()` method
+- ✅ Match old adapter's embedding_files methods exactly
+
+---
+
+## 🔧 Required Fixes
+
+### Fix 1: Update SupabaseFileAdapter for parsed_data_files
+
+**Current:** We added methods, but need to verify they match the schema.
+
+**Required:**
+```python
+async def create_parsed_file(self, parsed_file_data: Dict[str, Any]) -> Dict[str, Any]:
+    # parsed_file_data must include:
+    # - uuid (optional, auto-generated)
+    # - file_id (UUID from project_files)
+    # - parsed_file_id (TEXT - GCS path)
+    # - user_id (UUID - references auth.users)
+    # - ui_name (TEXT)
+    # - data_classification (TEXT)
+    # - tenant_id (TEXT, optional)
+    # - format_type (TEXT)
+    # - content_type (TEXT, optional)
+    result = self._client.table("parsed_data_files").insert(parsed_file_data).execute()
+    return result.data[0] if result.data else {}
+```
+
+### Fix 2: Update FileMetadataService to Match Schema
+
+**Current:** We're using incorrect field types.
+
+**Required:**
+```python
+async def create_parsed_file_metadata(
+    self,
+    parsed_file_id: str,  # TEXT - GCS path
+    file_id: str,          # UUID from project_files (as string)
+    ui_name: str,
+    tenant_id: str,
+    user_id: str,          # UUID as string
+    metadata: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    parsed_file_data = {
+        "file_id": file_id,              # UUID (as string)
+        "parsed_file_id": parsed_file_id, # TEXT (GCS path)
+        "ui_name": ui_name,
+        "user_id": user_id,              # UUID (as string)
+        "tenant_id": tenant_id,
+        "data_classification": metadata.get("data_classification", "client"),
+        "format_type": metadata.get("format_type", "json_structured"),
+        "content_type": metadata.get("content_type"),
+        "status": "parsed",
+        "parsed_at": self.clock.now_iso(),
+        # uuid will be auto-generated by Supabase
+    }
+    # ... rest of implementation
+```
+
+### Fix 3: Update embedding_files Methods to Match Old Adapter
+
+**Old Adapter Methods:**
+- `create_embedding_file(embedding_file_data)` ✅
+- `get_embedding_file(embedding_file_uuid)` ✅
+- `update_embedding_file(embedding_file_uuid, updates)` ✅
+- `delete_embedding_file(embedding_file_uuid)` ✅ (soft delete: status="deleted")
+- `list_embedding_files(user_id, tenant_id, parsed_file_id, file_id, filters, limit, offset)` ✅
+
+**Our Implementation:**
+- ✅ We have these methods, but need to verify:
+  - `file_id` and `parsed_file_id` are TEXT (not UUID)
+  - `user_id` is TEXT (not UUID)
+  - Soft delete uses `status="deleted"` (not hard delete)
+
+---
+
+## 📋 SQL Functions We Should Preserve
+
+### Old Schema Has SQL Functions:
+
+1. **`get_parsed_files_for_file(file_uuid UUID)`**
+   - Returns parsed files for a given file
+   - We should use this or replicate its logic
+
+2. **`get_latest_parsed_file(file_uuid UUID)`**
+   - Returns latest parsed file for a given file
+   - Useful for getting most recent parse
+
+3. **`get_embedding_files_for_parsed_file(parsed_file_uuid TEXT)`**
+   - Returns embedding files for a parsed file
+   - Uses `parsed_file_id` (TEXT)
+
+4. **`get_embedding_files_for_file(file_uuid TEXT)`**
+   - Returns embedding files for an original file
+   - Uses `file_id` (TEXT)
+
+**Our Implementation:**
+- ❌ We're not using these SQL functions
+- ✅ We should add adapter methods that call these RPC functions
+
+---
+
+## 🔍 Missing from Old Adapter
+
+### What the Old Adapter Doesn't Have (But We Need):
+
+1. **Parsed Data Files Methods** ❌
+   - Old adapter has NO methods for `parsed_data_files` table
+   - We need to add these (which we did, but need to verify schema alignment)
+
+2. **Lineage Query Methods** ✅
+   - Old adapter has `get_lineage_tree()` and `get_file_descendants()`
+   - These use SQL functions from `project_files` schema
+   - We should preserve these
+
+---
+
+## ✅ Action Items
+
+1. **Update SupabaseFileAdapter:**
+   - [ ] Verify `parsed_data_files` methods use correct schema (uuid, file_id UUID, parsed_file_id TEXT, user_id UUID)
+   - [ ] Verify `embedding_files` methods use TEXT for file_id and parsed_file_id
+   - [ ] Add RPC calls for SQL functions (get_parsed_files_for_file, etc.)
+
+2. **Update FileMetadataService:**
+   - [ ] Fix field types to match actual schema
+   - [ ] Use `uuid` as primary key for parsed_data_files (not parsed_file_id)
+   - [ ] Use TEXT for file_id and parsed_file_id in embedding_files
+
+3. **Verify Schema Alignment:**
+   - [ ] Ensure all three tables match old schema exactly
+   - [ ] Ensure indexes match
+   - [ ] Ensure RLS policies match
+
+4. **Preserve Old Patterns:**
+   - [ ] Keep SQL functions for lineage queries
+   - [ ] Keep soft delete pattern (status="deleted")
+   - [ ] Keep data_classification pattern
+
+---
+
+## 📝 Summary
+
+**What We're Doing Right:**
+- ✅ Three-table pattern
+- ✅ Lineage links
+- ✅ ui_name pattern
+- ✅ Basic adapter structure
+
+**What We Need to Fix:**
+- ❌ Field types (UUID vs TEXT)
+- ❌ Primary key usage (uuid vs parsed_file_id)
+- ❌ Missing SQL function calls
+- ❌ Schema alignment verification
+
+**Next Steps:**
+1. Update SupabaseFileAdapter to match old schema exactly
+2. Update FileMetadataService to use correct field types
+3. Add SQL function RPC calls
+4. Test against actual Supabase schema

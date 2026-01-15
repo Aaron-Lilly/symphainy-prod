@@ -1,18 +1,18 @@
 """
-Auth Abstraction - Business Logic Implementation (Layer 1)
+Auth Abstraction - Pure Infrastructure Implementation (Layer 1)
 
 Implements authentication operations using Supabase adapter.
-Provides user authentication, token validation, and user management.
+Returns raw data only - no business logic, no business objects.
 
 WHAT (Infrastructure Role): I provide authentication services
-HOW (Infrastructure Implementation): I use Supabase adapter with business logic
+HOW (Infrastructure Implementation): I use Supabase adapter and return raw data
 """
 
 from typing import Dict, Any, Optional
 
-from utilities import get_logger, get_clock, generate_session_id
+from utilities import get_logger, get_clock
 from utilities.errors import DomainError
-from ..protocols.auth_protocol import AuthenticationProtocol, SecurityContext
+from ..protocols.auth_protocol import AuthenticationProtocol
 from ..adapters.supabase_adapter import SupabaseAdapter
 
 
@@ -23,10 +23,11 @@ class AuthenticationError(DomainError):
 
 class AuthAbstraction(AuthenticationProtocol):
     """
-    Authentication abstraction with business logic.
+    Authentication abstraction - pure infrastructure.
     
-    Implements authentication operations using Supabase adapter.
-    Provides user authentication, token validation, and user management.
+    Returns raw data only (Dict[str, Any]), not business objects.
+    Business logic (SecurityContext creation, tenant creation, role extraction)
+    belongs in Platform SDK, not here.
     """
     
     def __init__(self, supabase_adapter: SupabaseAdapter):
@@ -40,20 +41,39 @@ class AuthAbstraction(AuthenticationProtocol):
         self.logger = get_logger(self.__class__.__name__)
         self.clock = get_clock()
         
-        self.logger.info("Auth Abstraction initialized")
+        self.logger.info("Auth Abstraction initialized (pure infrastructure)")
     
     async def authenticate(
         self,
         credentials: Dict[str, Any]
-    ) -> Optional[SecurityContext]:
+    ) -> Optional[Dict[str, Any]]:
         """
         Authenticate user using Supabase adapter.
+        
+        Returns raw data only - no business logic, no SecurityContext.
+        Platform SDK will translate this to SecurityContext.
         
         Args:
             credentials: Authentication credentials (email, password)
         
         Returns:
-            Optional[SecurityContext]: User session or None if failed
+            Optional[Dict[str, Any]]: Raw authentication data or None if failed
+            Structure:
+            {
+                "success": bool,
+                "user_id": str,
+                "email": str,
+                "access_token": str,
+                "refresh_token": str,
+                "expires_in": int,
+                "expires_at": int,
+                "raw_user_data": Dict[str, Any],  # Full user data from Supabase
+                "raw_session_data": Dict[str, Any],  # Full session data from Supabase
+                "raw_user_metadata": Dict[str, Any],  # User metadata
+                "raw_app_metadata": Dict[str, Any],  # App metadata
+                "raw_provider_data": Dict[str, Any],  # Provider data
+                "error": Optional[str]  # Error message if failed
+            }
         """
         try:
             email = credentials.get("email")
@@ -62,499 +82,288 @@ class AuthAbstraction(AuthenticationProtocol):
             if not email or not password:
                 raise AuthenticationError("Email and password are required")
             
-            # Use Supabase adapter
+            # Use Supabase adapter - pure infrastructure call
             result = await self.supabase.sign_in_with_password(email, password)
             
             if not result.get("success"):
-                raise AuthenticationError(f"Authentication failed: {result.get('error')}")
+                error_msg = result.get("error", "Unknown error")
+                self.logger.error(f"Authentication failed: {error_msg}")
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "error_type": result.get("error_type", "auth_error")
+                }
             
+            # Extract raw data from Supabase response
             user_data = result.get("user", {})
             session_data = result.get("session", {})
             
-            # Extract user information
-            user_id = user_data.get("id")
-            email = user_data.get("email", "")
+            # Return raw data only - no business logic
+            return {
+                "success": True,
+                "user_id": user_data.get("id"),
+                "email": user_data.get("email", ""),
+                "access_token": session_data.get("access_token"),
+                "refresh_token": session_data.get("refresh_token"),
+                "expires_in": session_data.get("expires_in"),
+                "expires_at": session_data.get("expires_at"),
+                "raw_user_data": user_data,  # Full user data
+                "raw_session_data": session_data,  # Full session data
+                "raw_user_metadata": user_data.get("user_metadata", {}),
+                "raw_app_metadata": user_data.get("app_metadata", {}),
+                "raw_provider_data": result.get("provider_data", {})
+            }
             
-            # Check tenant status - query user_tenants table first
-            tenant_info = await self.supabase.get_user_tenant_info(user_id)
-            tenant_id = tenant_info.get("tenant_id")
-            
-            # If no tenant_id from database, check user_metadata as fallback
-            if not tenant_id:
-                tenant_id = user_data.get("user_metadata", {}).get("tenant_id")
-            
-            # If still no tenant, create one automatically
-            if not tenant_id:
-                self.logger.warning(f"User {user_id} has no tenant - creating default tenant")
-                try:
-                    tenant_result = await self._create_tenant_for_user(
-                        user_id=user_id,
-                        tenant_type="individual",
-                        tenant_name=f"Tenant for {email or user_id}",
-                        email=email
-                    )
-                    
-                    if tenant_result.get("success"):
-                        tenant_id = tenant_result.get("tenant_id")
-                        # Link user to tenant with owner role
-                        link_result = await self.supabase.link_user_to_tenant(
-                            user_id=user_id,
-                            tenant_id=tenant_id,
-                            role="owner",
-                            is_primary=True
-                        )
-                        if link_result.get("success"):
-                            self.logger.info(f"Created and linked tenant {tenant_id} for user {user_id}")
-                            # Re-fetch tenant info to get permissions
-                            tenant_info = await self.supabase.get_user_tenant_info(user_id)
-                        else:
-                            self.logger.warning(f"Tenant created but linking failed: {link_result.get('error')}")
-                    else:
-                        self.logger.error(f"Failed to create tenant for user {user_id}: {tenant_result.get('error')}")
-                except Exception as tenant_error:
-                    self.logger.error(f"Error creating tenant for user {user_id}: {tenant_error}", exc_info=True)
-                    # Continue without tenant - graceful degradation
-            
-            # Get roles and permissions from tenant info (if available)
-            if tenant_info and tenant_info.get("tenant_id"):
-                roles = tenant_info.get("roles", [])
-                permissions = tenant_info.get("permissions", [])
-            else:
-                # Fallback to user_metadata if tenant_info not available
-                roles = user_data.get("user_metadata", {}).get("roles", [])
-                permissions = user_data.get("user_metadata", {}).get("permissions", [])
-            
-            # Create security context
-            context = SecurityContext(
-                user_id=user_id,
-                tenant_id=tenant_id,
-                email=email,
-                roles=roles if isinstance(roles, list) else [roles] if roles else [],
-                permissions=permissions if isinstance(permissions, list) else [permissions] if permissions else [],
-                origin="supabase_auth"
-            )
-            
-            self.logger.info(f"User authenticated: {user_id}, tenant: {tenant_id}, permissions: {len(context.permissions)}")
-            
-            return context
-            
-        except AuthenticationError:
-            raise
         except Exception as e:
             self.logger.error(f"Authentication error: {str(e)}", exc_info=True)
-            raise AuthenticationError(f"Authentication failed: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "error_type": "unexpected_error"
+            }
     
     async def validate_token(
         self,
         token: str
-    ) -> Optional[SecurityContext]:
+    ) -> Optional[Dict[str, Any]]:
         """
-        Validate token using Supabase JWKS local verification (fast, no network calls).
+        Validate token using Supabase adapter.
         
-        Falls back to network validation if JWKS is unavailable.
+        Returns raw data only - no business logic, no SecurityContext.
+        Platform SDK will translate this to SecurityContext.
         
         Args:
             token: Authentication token
         
         Returns:
-            Optional[SecurityContext]: User context or None if invalid
+            Optional[Dict[str, Any]]: Raw validation data or None if invalid
+            Structure:
+            {
+                "success": bool,
+                "user_id": str,
+                "email": str,
+                "access_token": str,
+                "raw_user_data": Dict[str, Any],
+                "raw_user_metadata": Dict[str, Any],
+                "raw_app_metadata": Dict[str, Any],
+                "error": Optional[str]
+            }
         """
         try:
-            self.logger.info("Starting token validation (JWKS)...")
-            
-            # Use local JWT verification via JWKS (fast, no network calls)
+            # Use Supabase adapter for token validation
             if hasattr(self.supabase, 'validate_token_local'):
-                self.logger.info("Using local JWKS validation...")
+                # Prefer local JWKS validation (faster)
                 result = await self.supabase.validate_token_local(token)
             else:
-                # Fallback to network call if local verification not available
-                self.logger.warning("Local token validation not available, using network call")
+                # Fallback to network validation
                 result = await self.supabase.get_user(token)
             
             if not result.get("success"):
-                error_message = result.get("error", "Unknown error")
-                self.logger.error(f"Token validation failed: {error_message}")
-                raise AuthenticationError(f"Token validation failed: {error_message}")
+                error_msg = result.get("error", "Unknown error")
+                self.logger.error(f"Token validation failed: {error_msg}")
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "error_type": result.get("error_type", "validation_error")
+                }
             
-            self.logger.info("Token validation succeeded (JWKS)")
-            
+            # Extract raw data
             user_data = result.get("user", {})
             
-            # Extract user information
-            user_id = user_data.get("id")
-            email = user_data.get("email", "")
+            # Return raw data only - no business logic
+            return {
+                "success": True,
+                "user_id": user_data.get("id"),
+                "email": user_data.get("email", ""),
+                "access_token": token,  # Return the validated token
+                "raw_user_data": user_data,
+                "raw_user_metadata": user_data.get("user_metadata", {}),
+                "raw_app_metadata": user_data.get("app_metadata", {}),
+                "raw_provider_data": result.get("provider_data", {})
+            }
             
-            # Check tenant status - query user_tenants table first
-            tenant_info = await self.supabase.get_user_tenant_info(user_id)
-            tenant_id = tenant_info.get("tenant_id")
-            
-            # If no tenant_id from database, check user_data/user_metadata as fallback
-            if not tenant_id:
-                tenant_id = user_data.get("tenant_id") or user_data.get("user_metadata", {}).get("tenant_id")
-            
-            # If still no tenant, create one automatically
-            if not tenant_id:
-                self.logger.warning(f"User {user_id} has no tenant - creating default tenant")
-                try:
-                    tenant_result = await self._create_tenant_for_user(
-                        user_id=user_id,
-                        tenant_type="individual",
-                        tenant_name=f"Tenant for {email or user_id}",
-                        email=email
-                    )
-                    
-                    if tenant_result.get("success"):
-                        tenant_id = tenant_result.get("tenant_id")
-                        # Link user to tenant with owner role
-                        link_result = await self.supabase.link_user_to_tenant(
-                            user_id=user_id,
-                            tenant_id=tenant_id,
-                            role="owner",
-                            is_primary=True
-                        )
-                        if link_result.get("success"):
-                            self.logger.info(f"Created and linked tenant {tenant_id} for user {user_id}")
-                            # Re-fetch tenant info to get permissions
-                            tenant_info = await self.supabase.get_user_tenant_info(user_id)
-                        else:
-                            self.logger.warning(f"Tenant created but linking failed: {link_result.get('error')}")
-                    else:
-                        self.logger.error(f"Failed to create tenant for user {user_id}: {tenant_result.get('error')}")
-                except Exception as tenant_error:
-                    self.logger.error(f"Error creating tenant for user {user_id}: {tenant_error}", exc_info=True)
-                    # Continue without tenant - graceful degradation
-            
-            # Get roles and permissions from tenant info (if available)
-            if tenant_info and tenant_info.get("tenant_id"):
-                roles = tenant_info.get("roles", [])
-                permissions = tenant_info.get("permissions", [])
-            else:
-                # Fallback to user_data if tenant_info not available
-                roles = user_data.get("roles", [])
-                permissions = user_data.get("permissions", [])
-            
-            if not permissions:
-                self.logger.warning(f"No permissions found for user_id: {user_id}")
-            
-            # Create security context
-            context = SecurityContext(
-                user_id=user_id,
-                tenant_id=tenant_id,
-                email=email,
-                roles=roles if isinstance(roles, list) else [roles] if roles else [],
-                permissions=permissions if isinstance(permissions, list) else [permissions] if permissions else [],
-                origin="supabase_validation"
-            )
-            
-            self.logger.info(f"Token validated for user: {user_id}, tenant: {tenant_id}, permissions: {len(context.permissions)}")
-            
-            return context
-            
-        except AuthenticationError:
-            raise
         except Exception as e:
             self.logger.error(f"Token validation error: {str(e)}", exc_info=True)
-            raise AuthenticationError(f"Token validation failed: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "error_type": "validation_error"
+            }
     
     async def refresh_token(
         self,
         refresh_token: str
-    ) -> Optional[SecurityContext]:
+    ) -> Optional[Dict[str, Any]]:
         """
         Refresh token using Supabase adapter.
+        
+        Returns raw data only - no business logic, no SecurityContext.
+        Platform SDK will translate this to SecurityContext.
         
         Args:
             refresh_token: Refresh token
         
         Returns:
-            Optional[SecurityContext]: New user session or None if failed
+            Optional[Dict[str, Any]]: Raw refresh data or None if failed
         """
         try:
-            # Use Supabase adapter to refresh token
+            # Use Supabase adapter
             result = await self.supabase.refresh_session(refresh_token)
             
             if not result.get("success"):
-                raise AuthenticationError(f"Token refresh failed: {result.get('error')}")
+                error_msg = result.get("error", "Unknown error")
+                self.logger.error(f"Token refresh failed: {error_msg}")
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "error_type": "refresh_error"
+                }
             
+            # Extract raw data
             user_data = result.get("user", {})
             session_data = result.get("session", {})
             
-            # Extract user information
-            user_id = user_data.get("id")
-            tenant_id = user_data.get("user_metadata", {}).get("tenant_id")
-            roles = user_data.get("user_metadata", {}).get("roles", [])
-            permissions = user_data.get("user_metadata", {}).get("permissions", [])
+            # Return raw data only
+            return {
+                "success": True,
+                "user_id": user_data.get("id"),
+                "email": user_data.get("email", ""),
+                "access_token": session_data.get("access_token"),
+                "refresh_token": session_data.get("refresh_token"),
+                "expires_in": session_data.get("expires_in"),
+                "expires_at": session_data.get("expires_at"),
+                "raw_user_data": user_data,
+                "raw_session_data": session_data,
+                "raw_user_metadata": user_data.get("user_metadata", {}),
+                "raw_app_metadata": user_data.get("app_metadata", {}),
+                "raw_provider_data": result.get("provider_data", {})
+            }
             
-            # Create security context
-            context = SecurityContext(
-                user_id=user_id,
-                tenant_id=tenant_id,
-                email=user_data.get("email"),
-                roles=roles if isinstance(roles, list) else [roles] if roles else [],
-                permissions=permissions if isinstance(permissions, list) else [permissions] if permissions else [],
-                origin="supabase_refresh"
-            )
-            
-            self.logger.info(f"Token refreshed for user: {user_id}")
-            
-            return context
-            
-        except AuthenticationError:
-            raise
         except Exception as e:
             self.logger.error(f"Token refresh error: {str(e)}", exc_info=True)
-            raise AuthenticationError(f"Token refresh failed: {str(e)}")
+            return {
+                "success": False,
+                "error": str(e),
+                "error_type": "refresh_error"
+            }
     
-    async def get_user_context(self, token: str) -> SecurityContext:
+    async def register_user(
+        self,
+        credentials: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
         """
-        Get user/tenant context via Supabase API.
+        Register new user using Supabase adapter.
         
-        Use case: ForwardAuth endpoint (needs user context in headers)
+        Returns raw data only - no business logic, no tenant creation, no SecurityContext.
+        Platform SDK will handle tenant creation and SecurityContext creation.
+        
+        Args:
+            credentials: Registration credentials (email, password, user_metadata, etc.)
+        
+        Returns:
+            Optional[Dict[str, Any]]: Raw registration data or None if failed
+        """
+        try:
+            email = credentials.get("email")
+            password = credentials.get("password")
+            user_metadata = credentials.get("user_metadata", {})
+            
+            if not email or not password:
+                raise AuthenticationError("Email and password are required")
+            
+            # Use Supabase adapter - pure infrastructure call
+            result = await self.supabase.sign_up_with_password(
+                email=email,
+                password=password,
+                user_metadata=user_metadata
+            )
+            
+            if not result.get("success"):
+                error_msg = result.get("error", "Unknown error")
+                self.logger.error(f"Registration failed: {error_msg}")
+                return {
+                    "success": False,
+                    "error": error_msg,
+                    "error_type": result.get("error_type", "registration_error")
+                }
+            
+            # Extract raw data
+            user_data = result.get("user", {})
+            session_data = result.get("session", {})
+            
+            # Return raw data only - no business logic
+            return {
+                "success": True,
+                "user_id": user_data.get("id"),
+                "email": user_data.get("email", ""),
+                "access_token": session_data.get("access_token") if session_data else None,
+                "refresh_token": session_data.get("refresh_token") if session_data else None,
+                "expires_in": session_data.get("expires_in") if session_data else None,
+                "expires_at": session_data.get("expires_at") if session_data else None,
+                "raw_user_data": user_data,
+                "raw_session_data": session_data,
+                "raw_user_metadata": user_data.get("user_metadata", {}),
+                "raw_app_metadata": user_data.get("app_metadata", {}),
+                "raw_provider_data": result.get("provider_data", {})
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Registration error: {str(e)}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e),
+                "error_type": "registration_error"
+            }
+    
+    async def logout_user(self, token: str) -> bool:
+        """
+        Logout user using Supabase adapter.
         
         Args:
             token: Authentication token
         
         Returns:
-            SecurityContext: User context
+            bool: True if logout successful
         """
         try:
-            self.logger.info("Getting user context (Supabase API)...")
-            
-            # Infrastructure logic: Supabase API call
-            result = await self.supabase.get_user(token)
-            
-            if not result.get("success"):
-                error_msg = result.get("error", "Unknown error")
-                self.logger.error(f"User context failed: {error_msg}")
-                raise AuthenticationError(f"User context failed: {error_msg}")
-            
-            self.logger.info("User context retrieved (Supabase API)")
-            
-            # Infrastructure logic: Extract user info
-            user_data = result.get("user", {})
-            user_id = user_data.get("id")
-            email = user_data.get("email") or ""
-            user_metadata = user_data.get("user_metadata", {})
-            
-            # Infrastructure logic: Extract tenant info
-            tenant_id = (
-                user_data.get("tenant_id") or
-                user_metadata.get("tenant_id") or
-                None
-            )
-            
-            # Infrastructure logic: Extract roles/permissions
-            roles = user_data.get("roles", [])
-            permissions = user_data.get("permissions", [])
-            
-            # Fallback to user_metadata if database query didn't return tenant info
-            if not tenant_id:
-                tenant_id = user_metadata.get("tenant_id")
-            if not roles:
-                roles = user_metadata.get("roles", [])
-            if not permissions:
-                permissions = user_metadata.get("permissions", [])
-            
-            # Return clean SecurityContext
-            context = SecurityContext(
-                user_id=user_id,
-                tenant_id=tenant_id,
-                email=email,
-                roles=roles if isinstance(roles, list) else [roles] if roles else [],
-                permissions=permissions if isinstance(permissions, list) else [permissions] if permissions else [],
-                origin="supabase_user_context"
-            )
-            
-            self.logger.info(f"User context retrieved: user={user_id}, tenant={tenant_id}")
-            return context
-            
-        except AuthenticationError:
-            raise
-        except Exception as e:
-            self.logger.error(f"User context error: {e}", exc_info=True)
-            raise AuthenticationError(f"Failed to get user context: {str(e)}")
-    
-    async def logout_user(self, token: str) -> bool:
-        """Logout user using Supabase adapter."""
-        try:
             result = await self.supabase.sign_out(token)
-            
-            if not result.get("success"):
-                self.logger.warning(f"Logout failed: {result.get('error')}")
-            
-            self.logger.info("User logged out successfully")
-            return True
-            
+            return result.get("success", False)
         except Exception as e:
             self.logger.error(f"Logout error: {str(e)}", exc_info=True)
-            raise AuthenticationError(f"Logout failed: {str(e)}")
+            return False
     
-    async def get_user_info(self, user_id: str) -> Dict[str, Any]:
-        """Get user information using Supabase adapter."""
+    async def get_user_info(self, user_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Get user information using Supabase adapter.
+        
+        Returns raw data only - no business logic.
+        
+        Args:
+            user_id: User ID
+        
+        Returns:
+            Optional[Dict[str, Any]]: Raw user data or None if not found
+        """
         try:
             result = await self.supabase.admin_get_user(user_id)
             
             if not result.get("success"):
-                raise AuthenticationError(f"Failed to get user info: {result.get('error')}")
+                self.logger.warning(f"Failed to get user info: {result.get('error')}")
+                return None
             
             user_data = result.get("user", {})
             
+            # Return raw data only
             return {
                 "user_id": user_data.get("id"),
                 "email": user_data.get("email"),
-                "tenant_id": user_data.get("user_metadata", {}).get("tenant_id"),
-                "roles": user_data.get("user_metadata", {}).get("roles", []),
-                "permissions": user_data.get("user_metadata", {}).get("permissions", []),
+                "raw_user_data": user_data,
+                "raw_user_metadata": user_data.get("user_metadata", {}),
+                "raw_app_metadata": user_data.get("app_metadata", {}),
                 "created_at": user_data.get("created_at"),
                 "last_sign_in": user_data.get("last_sign_in_at")
             }
             
         except Exception as e:
             self.logger.error(f"Get user info error: {str(e)}", exc_info=True)
-            raise AuthenticationError(f"Failed to get user info: {str(e)}")
-    
-    async def update_user_metadata(self, user_id: str, metadata: Dict[str, Any]) -> bool:
-        """Update user metadata using Supabase adapter."""
-        try:
-            result = await self.supabase.admin_update_user(user_id, {"user_metadata": metadata})
-            
-            if not result.get("success"):
-                self.logger.warning(f"Failed to update user metadata: {result.get('error')}")
-            
-            self.logger.info(f"User metadata updated for user: {user_id}")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Update user metadata error: {str(e)}", exc_info=True)
-            raise AuthenticationError(f"Failed to update user metadata: {str(e)}")
-    
-    async def register_user(self, credentials: Dict[str, Any]) -> SecurityContext:
-        """
-        Register new user and create/assign tenant (server-side).
-        
-        Creates tenant server-side during registration instead of
-        relying on client-side tenant ID generation.
-        """
-        try:
-            email = credentials.get("email")
-            password = credentials.get("password")
-            tenant_type = credentials.get("tenant_type", "individual")
-            tenant_name = credentials.get("tenant_name", f"Tenant for {email}")
-            user_metadata = credentials.get("user_metadata", {})
-            
-            if not email or not password:
-                raise AuthenticationError("Email and password are required")
-            
-            # Step 1: Create user in Supabase Auth
-            result = await self.supabase.sign_up_with_password(
-                email=email,
-                password=password,
-                user_metadata={
-                    **user_metadata,
-                    "full_name": credentials.get("name", ""),
-                    "tenant_type": tenant_type
-                }
-            )
-            
-            if not result.get("success"):
-                raise AuthenticationError(f"Registration failed: {result.get('error')}")
-            
-            user_data = result.get("user", {})
-            user_id = user_data.get("id")
-            
-            if not user_id:
-                raise AuthenticationError("User created but no user ID returned")
-            
-            # Step 2: Create tenant (server-side, using service key)
-            tenant_result = await self._create_tenant_for_user(
-                user_id=user_id,
-                tenant_type=tenant_type,
-                tenant_name=tenant_name,
-                email=email
-            )
-            
-            if not tenant_result.get("success"):
-                self.logger.error(f"Failed to create tenant for user {user_id}")
-                raise AuthenticationError("Registration succeeded but tenant creation failed")
-            
-            tenant_id = tenant_result.get("tenant_id")
-            
-            # Step 3: Link user to tenant
-            link_result = await self.supabase.link_user_to_tenant(
-                user_id=user_id,
-                tenant_id=tenant_id,
-                role="owner",
-                is_primary=True
-            )
-            
-            if not link_result.get("success"):
-                self.logger.warning(f"Failed to link user {user_id} to tenant {tenant_id}")
-            
-            # Step 4: Update user metadata with tenant_id
-            update_result = await self.supabase.admin_update_user(user_id, {
-                "user_metadata": {
-                    **user_metadata,
-                    "tenant_id": tenant_id,
-                    "primary_tenant_id": tenant_id,
-                    "tenant_type": tenant_type,
-                    "full_name": credentials.get("name", "")
-                }
-            })
-            
-            if not update_result.get("success"):
-                self.logger.warning(f"Failed to update user metadata for {user_id}")
-            
-            # Step 5: Create security context
-            context = SecurityContext(
-                user_id=user_id,
-                tenant_id=tenant_id,
-                email=email,
-                roles=["owner"],
-                permissions=["read", "write", "admin", "delete"],
-                origin="supabase_registration"
-            )
-            
-            self.logger.info(f"User registered with tenant: {user_id} -> {tenant_id}")
-            
-            return context
-            
-        except AuthenticationError:
-            raise
-        except Exception as e:
-            self.logger.error(f"Registration error: {str(e)}", exc_info=True)
-            raise AuthenticationError(f"Registration failed: {str(e)}")
-    
-    async def _create_tenant_for_user(self, user_id: str, tenant_type: str, tenant_name: str, email: str) -> Dict[str, Any]:
-        """Create tenant for a new user (server-side only)."""
-        try:
-            # Generate unique slug using session ID generator
-            slug = f"tenant-{user_id[:8]}-{generate_session_id()[:8]}"
-            
-            tenant_data = {
-                "name": tenant_name,
-                "slug": slug,
-                "type": tenant_type,
-                "owner_id": user_id,
-                "status": "active",
-                "metadata": {
-                    "created_by": user_id,
-                    "created_for": email
-                }
-            }
-            
-            result = await self.supabase.create_tenant(tenant_data)
-            
-            if not result.get("success"):
-                self.logger.error(f"Tenant creation failed: {result.get('error')}")
-                return result
-            
-            self.logger.info(f"Tenant created: {result.get('tenant_id')}")
-            return result
-            
-        except Exception as e:
-            self.logger.error(f"Error creating tenant: {str(e)}", exc_info=True)
-            return {
-                "success": False,
-                "error": str(e),
-                "error_type": "tenant_creation_error"
-            }
+            return None

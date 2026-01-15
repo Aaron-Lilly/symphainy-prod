@@ -71,16 +71,31 @@ class PublicWorksFoundationService:
         # Layer 0: Infrastructure Adapters
         self.redis_adapter: Optional[RedisAdapter] = None
         self.consul_adapter: Optional[ConsulAdapter] = None
-        # ArangoDB adapter will be added when needed
+        self.arango_adapter: Optional[Any] = None  # ArangoAdapter
+        self.arango_graph_adapter: Optional[Any] = None  # ArangoGraphAdapter
+        self.meilisearch_adapter: Optional[MeilisearchAdapter] = None
+        self.supabase_adapter: Optional[SupabaseAdapter] = None
+        self.gcs_adapter: Optional[GCSAdapter] = None
+        self.supabase_file_adapter: Optional[SupabaseFileAdapter] = None
         
         # Layer 0: Parsing Adapters
         self.kreuzberg_adapter: Optional[KreuzbergAdapter] = None
         self.mainframe_adapter: Optional[MainframeProcessingAdapter] = None
         # Other parsing adapters (PDF, Word, Excel, etc.) will be added when available
         
+        # Layer 0: Ingestion Adapters
+        self.upload_adapter: Optional[Any] = None
+        self.edi_adapter: Optional[Any] = None
+        self.api_adapter: Optional[Any] = None
+        
         # Layer 1: Infrastructure Abstractions
         self.state_abstraction: Optional[StateManagementAbstraction] = None
         self.service_discovery_abstraction: Optional[ServiceDiscoveryAbstraction] = None
+        self.semantic_search_abstraction: Optional[SemanticSearchAbstraction] = None
+        self.knowledge_discovery_abstraction: Optional[Any] = None  # KnowledgeDiscoveryAbstraction
+        self.auth_abstraction: Optional[AuthAbstraction] = None
+        self.tenant_abstraction: Optional[TenantAbstraction] = None
+        self.file_storage_abstraction: Optional[FileStorageAbstraction] = None
         
         # Layer 1: Parsing Abstractions
         self.pdf_processing_abstraction: Optional[PdfProcessingAbstraction] = None
@@ -93,6 +108,9 @@ class PublicWorksFoundationService:
         self.html_processing_abstraction: Optional[HtmlProcessingAbstraction] = None
         self.kreuzberg_processing_abstraction: Optional[KreuzbergProcessingAbstraction] = None
         self.mainframe_processing_abstraction: Optional[MainframeProcessingAbstraction] = None
+        
+        # Layer 1: Ingestion Abstractions
+        self.ingestion_abstraction: Optional[Any] = None  # Will import IngestionAbstraction when needed
         
         # Initialization flag
         self._initialized = False
@@ -126,6 +144,9 @@ class PublicWorksFoundationService:
             return False
     
     async def _create_adapters(self):
+        from config.env_contract import get_env_contract
+        env = get_env_contract()
+
         """Create all infrastructure adapters (Layer 0)."""
         self.logger.info("Creating infrastructure adapters...")
         
@@ -169,9 +190,157 @@ class PublicWorksFoundationService:
         else:
             self.logger.info("Kreuzberg configuration not provided, Kreuzberg adapter not created")
         
+
+        # Meilisearch adapter
+        meilisearch_host = self.config.get("meilisearch_host") or "meilisearch"
+        meilisearch_port = self.config.get("meilisearch_port") or 7700
+        meilisearch_key = self.config.get("meilisearch_key") or (getattr(env, "MEILI_MASTER_KEY", None) if hasattr(env, "MEILI_MASTER_KEY") else None)
+        self.meilisearch_adapter = MeilisearchAdapter(
+            host=meilisearch_host,
+            port=meilisearch_port,
+            api_key=meilisearch_key
+        )
+        if self.meilisearch_adapter.connect():
+            self.logger.info("Meilisearch adapter created")
+        else:
+            self.logger.warning("Meilisearch adapter connection failed")
+        
+        # Supabase adapter (with fallback pattern matching original ConfigAdapter)
+        from config.config_helper import (
+            get_supabase_url,
+            get_supabase_anon_key,
+            get_supabase_service_key
+        )
+        from config.env_contract import get_env_contract
+        env = get_env_contract()
+        
+        # Use helper functions that support fallback patterns and .env.secrets
+        supabase_url = (
+            self.config.get("supabase_url") or
+            get_supabase_url() or
+            (getattr(env, "SUPABASE_URL", None) if hasattr(env, "SUPABASE_URL") else None)
+        )
+        supabase_anon_key = (
+            self.config.get("supabase_anon_key") or
+            get_supabase_anon_key() or
+            (getattr(env, "SUPABASE_ANON_KEY", None) if hasattr(env, "SUPABASE_ANON_KEY") else None)
+        )
+        supabase_service_key = (
+            self.config.get("supabase_service_key") or
+            get_supabase_service_key() or
+            (getattr(env, "SUPABASE_SERVICE_KEY", None) if hasattr(env, "SUPABASE_SERVICE_KEY") else None)
+        )
+        supabase_jwks_url = self.config.get("supabase_jwks_url") or (getattr(env, "SUPABASE_JWKS_URL", None) if hasattr(env, "SUPABASE_JWKS_URL") else None)
+        supabase_jwt_issuer = self.config.get("supabase_jwt_issuer") or (getattr(env, "SUPABASE_JWT_ISSUER", None) if hasattr(env, "SUPABASE_JWT_ISSUER") else None)
+        if supabase_url and supabase_anon_key:
+            self.supabase_adapter = SupabaseAdapter(
+                url=supabase_url,
+                anon_key=supabase_anon_key,
+                service_key=supabase_service_key,
+                jwks_url=supabase_jwks_url,
+                jwt_issuer=supabase_jwt_issuer
+            )
+            self.logger.info("Supabase adapter created")
+        else:
+            self.logger.warning("Supabase configuration not provided, Supabase adapter not created")
+        
+        # GCS adapter (with fallback pattern matching original ConfigAdapter)
+        from config.config_helper import (
+            get_gcs_project_id,
+            get_gcs_bucket_name,
+            get_gcs_credentials_json
+        )
+        
+        gcs_project_id = (
+            self.config.get("gcs_project_id") or
+            get_gcs_project_id() or
+            (getattr(env, "GCS_PROJECT_ID", None) if hasattr(env, "GCS_PROJECT_ID") else None)
+        )
+        gcs_bucket_name = (
+            self.config.get("gcs_bucket_name") or
+            get_gcs_bucket_name() or
+            (getattr(env, "GCS_BUCKET_NAME", None) if hasattr(env, "GCS_BUCKET_NAME") else None)
+        )
+        gcs_credentials_json = (
+            self.config.get("gcs_credentials_json") or
+            get_gcs_credentials_json() or
+            (getattr(env, "GCS_CREDENTIALS_JSON", None) if hasattr(env, "GCS_CREDENTIALS_JSON") else None)
+        )
+        if gcs_project_id and gcs_bucket_name:
+            try:
+                self.gcs_adapter = GCSAdapter(
+                    project_id=gcs_project_id,
+                    bucket_name=gcs_bucket_name,
+                    credentials_json=gcs_credentials_json
+                )
+                self.logger.info("GCS adapter created")
+            except ImportError as e:
+                self.logger.warning(f"GCS adapter not created (missing dependencies): {e}")
+                self.gcs_adapter = None
+            except Exception as e:
+                self.logger.warning(f"GCS adapter creation failed: {e}")
+                self.gcs_adapter = None
+        else:
+            self.logger.warning("GCS configuration not provided, GCS adapter not created")
+        
+        # Supabase File adapter
+        if supabase_url and supabase_service_key:
+            self.supabase_file_adapter = SupabaseFileAdapter(
+                url=supabase_url,
+                service_key=supabase_service_key
+            )
+            await self.supabase_file_adapter.connect()
+            self.logger.info("Supabase File adapter created")
+        else:
+            self.logger.warning("Supabase File adapter not created (missing URL or service key)")
+        
         # Mainframe adapter (will be created in _create_abstractions after State Surface is available)
         
-        # ArangoDB adapter will be added when needed
+        # ArangoDB adapter
+        from config.env_contract import get_env_contract
+        env = get_env_contract()
+        
+        arango_url = (
+            self.config.get("arango_url") or
+            (getattr(env, "ARANGO_URL", None) if hasattr(env, "ARANGO_URL") else None) or
+            "http://localhost:8529"
+        )
+        arango_username = (
+            self.config.get("arango_username") or
+            (getattr(env, "ARANGO_USERNAME", None) if hasattr(env, "ARANGO_USERNAME") else None) or
+            "root"
+        )
+        arango_password = (
+            self.config.get("arango_password") or
+            (getattr(env, "ARANGO_ROOT_PASSWORD", None) if hasattr(env, "ARANGO_ROOT_PASSWORD") else None) or
+            ""
+        )
+        arango_database = (
+            self.config.get("arango_database") or
+            (getattr(env, "ARANGO_DATABASE", None) if hasattr(env, "ARANGO_DATABASE") else None) or
+            "symphainy_platform"
+        )
+        
+        if arango_url:
+            from .adapters.arango_adapter import ArangoAdapter
+            from .adapters.arango_graph_adapter import ArangoGraphAdapter
+            
+            self.arango_adapter = ArangoAdapter(
+                url=arango_url,
+                username=arango_username,
+                password=arango_password,
+                database=arango_database
+            )
+            if await self.arango_adapter.connect():
+                self.logger.info("ArangoDB adapter created")
+                
+                # Create ArangoDB Graph adapter
+                self.arango_graph_adapter = ArangoGraphAdapter(self.arango_adapter)
+                self.logger.info("ArangoDB Graph adapter created")
+            else:
+                self.logger.warning("ArangoDB adapter connection failed")
+        else:
+            self.logger.warning("ArangoDB configuration not provided, ArangoDB adapter not created")
     
     async def _create_abstractions(self):
         """Create all infrastructure abstractions (Layer 1)."""
@@ -200,6 +369,18 @@ class PublicWorksFoundationService:
         else:
             self.logger.warning("Semantic search abstraction not created (Meilisearch adapter missing)")
         
+        # Knowledge discovery abstraction
+        if self.meilisearch_adapter:
+            from .abstractions.knowledge_discovery_abstraction import KnowledgeDiscoveryAbstraction
+            self.knowledge_discovery_abstraction = KnowledgeDiscoveryAbstraction(
+                meilisearch_adapter=self.meilisearch_adapter,
+                arango_graph_adapter=self.arango_graph_adapter,
+                arango_adapter=self.arango_adapter
+            )
+            self.logger.info("Knowledge discovery abstraction created")
+        else:
+            self.logger.warning("Knowledge discovery abstraction not created (Meilisearch adapter missing)")
+        
         # Auth abstraction
         if self.supabase_adapter:
             self.auth_abstraction = AuthAbstraction(
@@ -220,7 +401,15 @@ class PublicWorksFoundationService:
             self.logger.warning("Tenant abstraction not created (Supabase adapter missing)")
         
         # File storage abstraction
-        gcs_bucket_name = self.config.get("gcs_bucket_name") or (self.env.GCS_BUCKET_NAME if hasattr(self, "env") else None)
+        from config.config_helper import get_gcs_bucket_name
+        from config.env_contract import get_env_contract
+        env = get_env_contract()
+        
+        gcs_bucket_name = (
+            self.config.get("gcs_bucket_name") or
+            get_gcs_bucket_name() or
+            (getattr(env, "GCS_BUCKET_NAME", None) if hasattr(env, "GCS_BUCKET_NAME") else None)
+        )
         if self.gcs_adapter and self.supabase_file_adapter and gcs_bucket_name:
             self.file_storage_abstraction = FileStorageAbstraction(
                 gcs_adapter=self.gcs_adapter,
@@ -231,9 +420,47 @@ class PublicWorksFoundationService:
         else:
             self.logger.warning("File storage abstraction not created (missing adapters or bucket name)")
         
+        # Ingestion adapters (created after file_storage_abstraction is available)
+        from .adapters.upload_adapter import UploadAdapter
+        from .adapters.edi_adapter import EDIAdapter
+        from .adapters.api_adapter import APIAdapter
+        
+        if self.file_storage_abstraction:
+            # Upload adapter
+            self.upload_adapter = UploadAdapter(
+                file_storage_abstraction=self.file_storage_abstraction
+            )
+            self.logger.info("Upload adapter created")
+            
+            # EDI adapter (Phase 2)
+            edi_config = self.config.get("edi", {})
+            self.edi_adapter = EDIAdapter(
+                file_storage_abstraction=self.file_storage_abstraction,
+                edi_config=edi_config if edi_config else None
+            )
+            self.logger.info("EDI adapter created")
+            
+            # API adapter (Phase 3)
+            self.api_adapter = APIAdapter(
+                file_storage_abstraction=self.file_storage_abstraction
+            )
+            self.logger.info("API adapter created")
+        else:
+            self.logger.warning("Ingestion adapters not created (file storage abstraction missing)")
+        
+        # Ingestion abstraction (created after adapters are available)
+        from .abstractions.ingestion_abstraction import IngestionAbstraction
+        self.ingestion_abstraction = IngestionAbstraction(
+            upload_adapter=self.upload_adapter,
+            edi_adapter=self.edi_adapter,
+            api_adapter=self.api_adapter
+        )
+        self.logger.info("Ingestion abstraction created")
+        
         
         # Create State Surface for parsing abstractions (they need it for file retrieval)
         # Note: This creates a temporary State Surface - the actual one is created in Runtime
+        # For tests: if no state_abstraction, use in-memory mode
         from symphainy_platform.runtime.state_surface import StateSurface
         temp_state_surface = StateSurface(
             state_abstraction=self.state_abstraction,
@@ -349,6 +576,44 @@ class PublicWorksFoundationService:
         """Check if foundation is initialized."""
         return self._initialized
     
+    def set_state_surface(self, state_surface: Any):
+        """
+        Set State Surface for all parsing abstractions.
+        
+        This is called after Runtime creates State Surface to ensure all abstractions
+        use the same State Surface instance (the one from Runtime).
+        
+        Args:
+            state_surface: State Surface instance from Runtime
+        """
+        # Update all abstractions with State Surface
+        if self.kreuzberg_processing_abstraction:
+            self.kreuzberg_processing_abstraction.state_surface = state_surface
+        
+        if self.mainframe_adapter:
+            self.mainframe_adapter.state_surface = state_surface
+        if self.mainframe_processing_abstraction:
+            self.mainframe_processing_abstraction.state_surface = state_surface
+        
+        if self.pdf_processing_abstraction:
+            self.pdf_processing_abstraction.state_surface = state_surface
+        if self.word_processing_abstraction:
+            self.word_processing_abstraction.state_surface = state_surface
+        if self.excel_processing_abstraction:
+            self.excel_processing_abstraction.state_surface = state_surface
+        if self.csv_processing_abstraction:
+            self.csv_processing_abstraction.state_surface = state_surface
+        if self.json_processing_abstraction:
+            self.json_processing_abstraction.state_surface = state_surface
+        if self.text_processing_abstraction:
+            self.text_processing_abstraction.state_surface = state_surface
+        if self.image_processing_abstraction:
+            self.image_processing_abstraction.state_surface = state_surface
+        if self.html_processing_abstraction:
+            self.html_processing_abstraction.state_surface = state_surface
+        
+        self.logger.info("✅ State Surface set for all parsing abstractions")
+    
     # ============================================================================
     # Parsing Abstraction Access Methods
     # ============================================================================
@@ -431,4 +696,19 @@ class PublicWorksFoundationService:
             Optional[FileStorageProtocol]: File storage abstraction or None
         """
         return self.file_storage_abstraction
+    
+    def get_ingestion_abstraction(self) -> Optional[Any]:
+        """
+        Get ingestion abstraction (for Content Realm Ingestion Service).
+        
+        Returns:
+            Optional[IngestionAbstraction]: Ingestion abstraction or None
+        """
+        return self.ingestion_abstraction
 
+
+    def get_supabase_file_adapter(self) -> Optional[SupabaseFileAdapter]:
+        """
+        Get Supabase file adapter (for File Metadata Service).
+        """
+        return self.supabase_file_adapter
