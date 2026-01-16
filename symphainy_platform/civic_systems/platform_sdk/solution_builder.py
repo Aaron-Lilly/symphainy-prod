@@ -14,6 +14,7 @@ from typing import Dict, Any, List, Optional
 
 from utilities import get_logger, generate_event_id
 from .solution_model import Solution, SolutionContext, DomainServiceBinding, SyncStrategy
+from .solution_registry import SolutionRegistry
 
 
 class SolutionBuilder:
@@ -180,4 +181,73 @@ class SolutionBuilder:
             raise ValueError(f"Invalid solution: {error}")
         
         self.logger.info(f"Solution built: {self.solution_id}")
+        return solution
+    
+    @classmethod
+    def from_config(cls, config: Dict[str, Any]) -> "SolutionBuilder":
+        """
+        Create solution builder from configuration dictionary.
+        
+        Args:
+            config: Configuration dictionary with solution definition
+        
+        Returns:
+            SolutionBuilder instance
+        """
+        builder = cls(solution_id=config.get("solution_id"))
+        
+        # Set context
+        context_config = config.get("context", {})
+        builder.with_context(
+            goals=context_config.get("goals", []),
+            constraints=context_config.get("constraints", []),
+            risk=context_config.get("risk", "Low"),
+            metadata=context_config.get("metadata", {})
+        )
+        
+        # Add domain bindings
+        for binding_config in config.get("domain_service_bindings", []):
+            builder.add_domain_binding(
+                domain=binding_config["domain"],
+                system_name=binding_config["system_name"],
+                adapter_type=binding_config["adapter_type"],
+                adapter_config=binding_config.get("adapter_config", {}),
+                metadata=binding_config.get("metadata", {})
+            )
+        
+        # Add sync strategies
+        for strategy_config in config.get("sync_strategies", []):
+            builder.add_sync_strategy(
+                strategy_type=strategy_config["strategy_type"],
+                conflict_resolution=strategy_config["conflict_resolution"],
+                sync_interval=strategy_config.get("sync_interval"),
+                metadata=strategy_config.get("metadata", {})
+            )
+        
+        # Register intents
+        builder.register_intents(config.get("supported_intents", []))
+        
+        # Add metadata
+        builder.with_metadata(config.get("metadata", {}))
+        
+        return builder
+    
+    def build_and_register(self, registry: SolutionRegistry) -> Solution:
+        """
+        Build solution and register it in the registry.
+        
+        Args:
+            registry: Solution registry
+        
+        Returns:
+            Created and registered Solution
+        
+        Raises:
+            ValueError: If solution is invalid or registration fails
+        """
+        solution = self.build()
+        
+        if not registry.register_solution(solution):
+            raise ValueError(f"Failed to register solution: {self.solution_id}")
+        
         return solution

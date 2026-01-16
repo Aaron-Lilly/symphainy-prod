@@ -108,10 +108,24 @@ class AgentBase(ABC):
         Returns:
             Tool result
         """
-        # TODO: Implement MCP tool integration
-        # For MVP: Return placeholder
-        self.logger.warning(f"Tool usage not yet implemented: {tool_name}")
-        return {"tool": tool_name, "result": "not_implemented"}
+        # MVP: Basic tool integration placeholder
+        # Full: Would integrate with MCP (Model Context Protocol) for tool discovery and execution
+        # For MVP, we return a structured response indicating tool usage
+        self.logger.info(f"Tool usage requested: {tool_name} with params: {params}")
+        
+        # In full implementation, this would:
+        # 1. Discover tool via MCP adapter
+        # 2. Validate tool access via Smart City primitives
+        # 3. Execute tool via MCP
+        # 4. Return tool result
+        
+        return {
+            "tool": tool_name,
+            "params": params,
+            "result": "tool_execution_placeholder",
+            "status": "not_implemented",
+            "note": "MCP tool integration will be implemented in full version"
+        }
     
     async def get_session_state(
         self,
@@ -177,9 +191,16 @@ class AgentBase(ABC):
         # Route via collaboration router (validated by Smart City)
         # Note: In full implementation, this would go through Runtime
         # For MVP: Direct routing
+        # Get agent registry from context if available
+        agent_registry = None
+        if hasattr(context, "agent_registry"):
+            agent_registry = context.agent_registry
+        elif hasattr(context, "state_surface") and hasattr(context.state_surface, "agent_registry"):
+            agent_registry = context.state_surface.agent_registry
+        
         response = await self.collaboration_router.route_contribution_request(
             contribution_request,
-            agent_registry=None  # TODO: Get from context or DI
+            agent_registry=agent_registry
         )
         
         if response:

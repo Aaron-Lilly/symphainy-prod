@@ -104,3 +104,17 @@ def mock_intent():
         "tenant_id": "test_tenant",
         "payload": {"file_path": "/tmp/test.txt"},
     }
+
+
+# Import infrastructure test fixtures if available
+try:
+    from tests.infrastructure.test_fixtures import (
+        test_infrastructure,
+        test_redis,
+        test_arango,
+        test_consul,
+        clean_test_db
+    )
+except ImportError:
+    # Infrastructure fixtures not available (e.g., in unit tests)
+    pass

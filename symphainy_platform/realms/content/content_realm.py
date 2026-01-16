@@ -15,7 +15,7 @@ project_root = Path(__file__).resolve().parents[4]
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 
 from utilities import get_logger
 from symphainy_platform.civic_systems.platform_sdk.realm_sdk import RealmBase
@@ -35,17 +35,24 @@ class ContentRealm(RealmBase):
     - Semantic interpretation
     """
     
-    def __init__(self, realm_name: str = "content"):
+    def __init__(
+        self,
+        realm_name: str = "content",
+        public_works: Optional[Any] = None
+    ):
         """
         Initialize Content Realm.
         
         Args:
             realm_name: Realm name (default: "content")
+            public_works: Public Works Foundation Service (for accessing abstractions)
         """
         super().__init__(realm_name)
         
-        # Initialize orchestrator (will be injected with dependencies in production)
-        self.orchestrator = ContentOrchestrator()
+        self.public_works = public_works
+        
+        # Initialize orchestrator with Public Works
+        self.orchestrator = ContentOrchestrator(public_works=public_works)
         
         self.logger.info(f"Content Realm initialized: {realm_name}")
     

@@ -30,14 +30,18 @@ class IntentType(str, Enum):
     INTERPRET_DATA = "interpret_data"
     MAP_RELATIONSHIPS = "map_relationships"
     
-    # Operations domain intents
+    # Journey domain intents (renamed from Operations)
     OPTIMIZE_PROCESS = "optimize_process"
     GENERATE_SOP = "generate_sop"
+    CREATE_WORKFLOW = "create_workflow"
+    ANALYZE_COEXISTENCE = "analyze_coexistence"
+    CREATE_BLUEPRINT = "create_blueprint"
     
     # Outcomes domain intents
     SYNTHESIZE_OUTCOME = "synthesize_outcome"
     GENERATE_ROADMAP = "generate_roadmap"
     CREATE_POC = "create_poc"
+    CREATE_SOLUTION = "create_solution"
     
     # Generic intents
     EXECUTE_WORKFLOW = "execute_workflow"

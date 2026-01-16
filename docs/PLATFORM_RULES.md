@@ -1,4 +1,4 @@
-# Platform Rules of the Road
+can # Platform Rules of the Road
 
 **Status:** Canonical (Locked — January 2026)  
 **Applies to:** All platform code, tests, and documentation

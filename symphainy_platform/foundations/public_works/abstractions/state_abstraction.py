@@ -78,9 +78,46 @@ class StateManagementAbstraction(StateManagementProtocol):
             
             # Store in appropriate backend
             if backend == "arango_db" and self.arango_adapter:
-                # ArangoDB storage (durable) - will be implemented when ArangoDB adapter is ready
-                self.logger.warning("ArangoDB adapter not yet available, falling back to Redis")
-                backend = "redis"
+                # ArangoDB storage (durable)
+                try:
+                    # Store in ArangoDB collection
+                    collection_name = "state_data"
+                    
+                    # Ensure collection exists
+                    if not await self.arango_adapter.collection_exists(collection_name):
+                        await self.arango_adapter.create_collection(collection_name)
+                    
+                    # Prepare document
+                    document = {
+                        "_key": state_id,
+                        "state_data": state_data,
+                        "metadata": metadata or {},
+                        "created_at": self.clock.now_iso(),
+                        "strategy": strategy,
+                        "ttl": ttl
+                    }
+                    
+                    # Insert or update document
+                    existing = await self.arango_adapter.get_document(collection_name, state_id)
+                    if existing:
+                        result = await self.arango_adapter.update_document(
+                            collection_name,
+                            state_id,
+                            document
+                        )
+                    else:
+                        result = await self.arango_adapter.insert_document(collection_name, document)
+                    
+                    if result:
+                        self.logger.debug(f"State stored in ArangoDB: {state_id}")
+                        return True
+                    else:
+                        self.logger.error(f"Failed to store state in ArangoDB: {state_id}")
+                        return False
+                except Exception as e:
+                    self.logger.error(f"ArangoDB storage failed for {state_id}: {e}", exc_info=True)
+                    # Fall back to Redis if ArangoDB fails
+                    backend = "redis"
             
             if backend == "redis" and self.redis_adapter:
                 # Redis storage (hot state)
@@ -129,10 +166,19 @@ class StateManagementAbstraction(StateManagementProtocol):
                 if redis_result:
                     return redis_result.get("state_data")
             
-            # Try ArangoDB second (durable state) - will be implemented when ArangoDB adapter is ready
+            # Try ArangoDB second (durable state)
             if self.arango_adapter:
-                # ArangoDB retrieval - will be implemented when ArangoDB adapter is ready
-                pass
+                try:
+                    collection_name = "state_data"
+                    document = await self.arango_adapter.get_document(collection_name, state_id)
+                    if document:
+                        # Remove ArangoDB internal fields
+                        document.pop("_key", None)
+                        document.pop("_id", None)
+                        document.pop("_rev", None)
+                        return document.get("state_data")
+                except Exception as e:
+                    self.logger.debug(f"ArangoDB retrieval failed for {state_id}: {e}")
             
             self.logger.debug(f"State not found: {state_id}")
             return None
@@ -198,10 +244,16 @@ class StateManagementAbstraction(StateManagementProtocol):
                     self.logger.debug(f"State deleted from Redis: {state_id}")
                     return True
             
-            # Try ArangoDB second - will be implemented when ArangoDB adapter is ready
+            # Try ArangoDB second
             if self.arango_adapter:
-                # ArangoDB deletion - will be implemented when ArangoDB adapter is ready
-                pass
+                try:
+                    collection_name = "state_data"
+                    success = await self.arango_adapter.delete_document(collection_name, state_id)
+                    if success:
+                        self.logger.debug(f"State deleted from ArangoDB: {state_id}")
+                        return True
+                except Exception as e:
+                    self.logger.debug(f"ArangoDB deletion failed for {state_id}: {e}")
             
             return False
             
@@ -227,6 +279,44 @@ class StateManagementAbstraction(StateManagementProtocol):
             List[Dict[str, Any]]: List of matching states
         """
         try:
+            # Try ArangoDB first (if available) for more efficient querying
+            if self.arango_adapter:
+                try:
+                    collection_name = "state_data"
+                    limit = limit or 100
+                    offset = offset or 0
+                    
+                    # Build AQL query with filters
+                    query = f"""
+                    FOR doc IN {collection_name}
+                    """
+                    
+                    bind_vars = {}
+                    
+                    # Add filters if provided
+                    if filters:
+                        filter_conditions = []
+                        for key, value in filters.items():
+                            filter_key = f"filter_{key}"
+                            filter_conditions.append(f"doc.state_data.{key} == @{filter_key}")
+                            bind_vars[filter_key] = value
+                        
+                        if filter_conditions:
+                            query += f"\n    FILTER {' AND '.join(filter_conditions)}"
+                    
+                    # Add limit and offset
+                    query += f"\n    LIMIT @offset, @limit"
+                    bind_vars["offset"] = offset
+                    bind_vars["limit"] = limit
+                    
+                    query += "\n    RETURN doc.state_data"
+                    
+                    results = await self.arango_adapter.execute_aql(query, bind_vars=bind_vars)
+                    return results
+                except Exception as e:
+                    self.logger.debug(f"ArangoDB list_states failed: {e}, falling back to Redis")
+            
+            # Fall back to Redis
             if not self.redis_adapter:
                 return []
             

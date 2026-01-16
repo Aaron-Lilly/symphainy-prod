@@ -1,0 +1,127 @@
+# Docker Compose Configuration for Testing
+# 
+# This file provides test-specific docker-compose configuration.
+# Uses same services as production but with test-specific settings:
+# - Different ports to avoid conflicts
+# - Test databases/collections
+# - Fast health checks for CI/CD
+# - Isolated test data
+
+version: '3.8'
+
+services:
+  # ============================================================================
+  # INFRASTRUCTURE SERVICES (Test Configuration)
+  # ============================================================================
+  
+  redis:
+    image: redis:7-alpine
+    container_name: symphainy-redis-test
+    ports:
+      - "${TEST_REDIS_PORT:-6380}:6379"  # Different port to avoid conflicts
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: "no"  # Don't restart in tests
+    networks:
+      - symphainy_test_net
+
+  arango:
+    image: arangodb:3.11
+    container_name: symphainy-arango-test
+    ports:
+      - "${TEST_ARANGO_PORT:-8530}:8529"  # Different port
+    environment:
+      ARANGO_ROOT_PASSWORD: ${TEST_ARANGO_ROOT_PASSWORD:-test_password}
+    volumes:
+      - arango_test_data:/var/lib/arangodb3
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8529 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+      start_period: 30s
+    restart: "no"  # Don't restart in tests
+    networks:
+      - symphainy_test_net
+
+  consul:
+    image: hashicorp/consul:latest
+    container_name: symphainy-consul-test
+    ports:
+      - "${TEST_CONSUL_PORT:-8501}:8500"  # Different port
+    environment:
+      - CONSUL_BIND_INTERFACE=eth0
+      - CONSUL_CLIENT_INTERFACE=eth0
+      - CONSUL_DATACENTER=${CONSUL_DATACENTER:-dc1}
+      - CONSUL_BOOTSTRAP_EXPECT=1
+      - CONSUL_ACL_ENABLED=false
+      - CONSUL_ENABLE_UI=false  # Disable UI for tests
+    volumes:
+      - consul_test_data:/consul/data
+    command: agent -server -bootstrap-expect=1 -client=0.0.0.0
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "-O", "/dev/null", "http://localhost:8500/v1/status/leader"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 15s
+    restart: "no"
+    networks:
+      - symphainy_test_net
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.5
+    container_name: symphainy-meilisearch-test
+    ports:
+      - "${TEST_MEILISEARCH_PORT:-7701}:7700"  # Different port
+    environment:
+      - MEILI_MASTER_KEY=${TEST_MEILISEARCH_MASTER_KEY:-test_master_key}
+      - MEILI_ENV=development
+      - MEILI_NO_ANALYTICS=true
+    volumes:
+      - meilisearch_test_data:/meili_data
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "-O", "/dev/null", "http://localhost:7700/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    restart: "no"
+    networks:
+      - symphainy_test_net
+
+  # GCS Emulator (fake-gcs-server)
+  gcs-emulator:
+    image: fsouza/fake-gcs-server:latest
+    container_name: symphainy-gcs-emulator-test
+    ports:
+      - "${TEST_GCS_EMULATOR_PORT:-9023}:9023"  # GCS emulator port
+      - "${TEST_GCS_EMULATOR_HTTP_PORT:-9024}:9024"  # HTTP port
+    command: -scheme http -port 9023 -public-host 0.0.0.0:9023 -backend memory
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "-O", "/dev/null", "http://localhost:9023/storage/v1/b"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    restart: "no"
+    networks:
+      - symphainy_test_net
+
+  # Note: Supabase uses hosted test project (not local stack)
+  # See test_fixtures.py for configuration
+
+volumes:
+  redis_test_data:
+  arango_test_data:
+  consul_test_data:
+  meilisearch_test_data:
+
+networks:
+  symphainy_test_net:
+    driver: bridge

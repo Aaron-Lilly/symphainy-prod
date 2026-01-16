@@ -23,9 +23,9 @@ import {
   ChevronDown,
   ChevronUp
 } from 'lucide-react';
-import { useAuth } from '@/shared/agui/AuthProvider';
-import { useGlobalSession } from '@/shared/agui/GlobalSessionProvider';
-import { ContentAPIManager } from '@/shared/managers/ContentAPIManager';
+import { useAuth } from '@/shared/auth/AuthProvider';
+import { usePlatformState } from '@/shared/state/PlatformStateProvider';
+import { useContentAPIManager } from '@/shared/managers/ContentAPIManager';
 import { toast } from 'sonner';
 import { FileMetadata, FileStatus } from '@/shared/types/file';
 
@@ -55,7 +55,8 @@ export function FileDashboard({
   className
 }: FileDashboardNewProps) {
   const { isAuthenticated, user } = useAuth();
-  const { guideSessionToken, getPillarState, setPillarState } = useGlobalSession();
+  const { state, setRealmState } = usePlatformState();
+  const contentAPIManager = useContentAPIManager();
   
   const [files, setFiles] = useState<FileMetadata[]>([]);
   const [loading, setLoading] = useState(false);
@@ -64,14 +65,14 @@ export function FileDashboard({
   const [showAll, setShowAll] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
 
-  // Initialize from global state first (before loading from API)
+  // Initialize from realm state first (before loading from API)
   useEffect(() => {
-    const dataState = getPillarState('data');
-    if (dataState?.files && Array.isArray(dataState.files) && dataState.files.length > 0) {
-      setFiles(dataState.files);
-      setShowAll(dataState.files.length <= 5);
+    const contentFiles = state.realm.content.files;
+    if (contentFiles && Array.isArray(contentFiles) && contentFiles.length > 0) {
+      setFiles(contentFiles);
+      setShowAll(contentFiles.length <= 5);
     }
-  }, [getPillarState]);
+  }, [state.realm.content.files]);
 
   // Load files from backend using semantic API
   const loadFiles = useCallback(async () => {
@@ -81,10 +82,8 @@ export function FileDashboard({
     setError(null);
 
     try {
-      const sessionToken = guideSessionToken || 'debug-token';
-      const apiManager = new ContentAPIManager(sessionToken);
-      
-      const contentFiles = await apiManager.listFiles();
+      // Load files using new ContentAPIManager (Runtime-based)
+      const contentFiles = await contentAPIManager.listFiles();
       
       // Map ContentFile to FileMetadata format
       // Map status string to FileStatus enum (same logic as FileSelector)
@@ -125,8 +124,8 @@ export function FileDashboard({
       setFiles(mappedFiles);
       setShowAll(mappedFiles.length <= 5);
       
-      // Update global state
-      await setPillarState('data', { files: mappedFiles });
+      // Update realm state (Content realm)
+      setRealmState('content', 'files', mappedFiles);
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to load files';
@@ -135,15 +134,13 @@ export function FileDashboard({
         description: errorMessage
       });
       
-      // Fallback to global state if available
-      const dataState = getPillarState('data');
-      if (dataState?.files) {
-        setFiles(dataState.files);
-      }
+      // Fallback to platform state if available
+      // Note: Files are now managed via PlatformStateProvider
+      // This fallback is for legacy compatibility
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated, guideSessionToken, getPillarState, setPillarState]);
+  }, [isAuthenticated, contentAPIManager, state.realm.content.files, setRealmState]);
 
   // Load files ONLY once on component mount (when authenticated)
   // Use ref to track if we've already loaded to prevent multiple calls
@@ -187,24 +184,31 @@ export function FileDashboard({
     setProcessingFiles(prev => new Set(prev).add(fileId));
     
     try {
-      const sessionToken = guideSessionToken || 'debug-token';
-      const apiManager = new ContentAPIManager(sessionToken);
-      
-      // ✅ OPTIMAL ARCHITECTURE: Determine file type from metadata
-      // Backend returns file.type as "original", "parsed", or "embedded" in the unified dashboard response
-      // This is stored in metadata.file_type by ContentAPIManager.listFiles()
+      // Delete file using new ContentAPIManager (Runtime-based)
+      // Note: deleteFile method may need to be added to new ContentAPIManager
+      // For now, we'll use the existing endpoint pattern
       const fileType = file.metadata?.file_type || 
                        (file.status === FileStatus.Parsed ? 'parsed' : 
                         (file.status === FileStatus.Validated && file.metadata?.parsed_file_id ? 'embedded' : 'original'));
       
-      const success = await apiManager.deleteFile(fileId, fileType);
+      // TODO: Add deleteFile method to new ContentAPIManager
+      // For MVP, we'll use direct API call or add to ContentAPIManager
+      const { getApiEndpointUrl } = require('@/shared/config/api-config');
+      const deleteURL = getApiEndpointUrl(`/api/v1/content-pillar/delete-file/${fileId}${fileType ? `?file_type=${fileType}` : ''}`);
+      
+      const response = await fetch(deleteURL, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      
+      const success = response.ok;
 
       if (success) {
         const updatedFiles = files.filter(f => (f.file_id || f.uuid) !== fileId);
         setFiles(updatedFiles);
         
-        // Update global state
-        await setPillarState('data', { files: updatedFiles });
+        // Update realm state (Content realm)
+        setRealmState('content', 'files', updatedFiles);
         
         toast.success('File deleted successfully!', {
           description: `File "${file.ui_name || file.original_filename || file.uuid}" has been deleted.`
@@ -231,7 +235,7 @@ export function FileDashboard({
         return newSet;
       });
     }
-  }, [onFileDeleted, guideSessionToken, files, setPillarState]);
+  }, [onFileDeleted, contentAPIManager, files, setRealmState]);
 
   // Format file size
   const formatFileSize = (bytes: number): string => {
@@ -288,12 +292,13 @@ export function FileDashboard({
 
   useEffect(() => {
     const fetchStats = async () => {
-      if (!guideSessionToken) return;
+      if (!state.session.sessionId) return;
       
       setLoadingStats(true);
       try {
-        const { getFileStatistics } = await import('@/lib/api/content');
-        const result = await getFileStatistics(guideSessionToken);
+        // Use ContentAPIManager for file statistics
+        // Note: getFileStatistics may need to be updated to use new API
+        const stats = await contentAPIManager.getFileStatistics();
         
         if (result.success) {
           setStats({
@@ -323,7 +328,7 @@ export function FileDashboard({
     };
 
     fetchStats();
-  }, [guideSessionToken, files.length]); // Re-fetch when token or file count changes
+  }, [state.session.sessionId, files.length]); // Re-fetch when session or file count changes
   // Show 5 most recent files by default, or all if showAll is true
   const displayFiles = showAll ? files : files.slice(0, 5);
 

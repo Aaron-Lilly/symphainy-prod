@@ -20,6 +20,14 @@ from .intent_registry import IntentRegistry, IntentHandler
 from .wal import WriteAheadLog, WALEventType
 from .state_surface import StateSurface
 
+# OpenTelemetry tracing
+try:
+    from opentelemetry import trace
+    OTEL_AVAILABLE = True
+except ImportError:
+    OTEL_AVAILABLE = False
+    trace = None
+
 
 @dataclass
 class ExecutionResult:
@@ -88,9 +96,34 @@ class ExecutionLifecycleManager:
         """
         execution_id = None
         
+        # Create trace span for execution
+        # OpenTelemetry's start_as_current_span returns a context manager
+        # We'll use it as a context manager in the try block
+        tracer = None
+        if OTEL_AVAILABLE and trace:
+            tracer = trace.get_tracer(__name__)
+        
+        # Use span as context manager
+        span_context = None
+        if OTEL_AVAILABLE and trace and tracer:
+            span_context = tracer.start_as_current_span("runtime.execute_intent")
+        
         try:
+            # Get current span if available
+            current_span = None
+            if OTEL_AVAILABLE and trace:
+                current_span = trace.get_current_span()
+                if current_span and hasattr(current_span, 'set_attribute'):
+                    current_span.set_attribute("intent.id", intent.intent_id)
+                    current_span.set_attribute("intent.type", intent.intent_type)
+                    current_span.set_attribute("intent.tenant_id", intent.tenant_id)
+                    current_span.set_attribute("intent.session_id", intent.session_id)
+                    current_span.set_attribute("intent.solution_id", intent.solution_id)
             # Stage 1: Accept Intent
             self.logger.info(f"Accepting intent: {intent.intent_id} ({intent.intent_type})")
+            
+            if OTEL_AVAILABLE and trace and current_span and hasattr(current_span, 'add_event'):
+                current_span.add_event("intent.accepted")
             is_valid, error = intent.validate()
             if not is_valid:
                 raise ValueError(f"Invalid intent: {error}")
@@ -109,12 +142,19 @@ class ExecutionLifecycleManager:
             
             # Stage 2: Create Execution Context
             self.logger.info(f"Creating execution context for intent: {intent.intent_id}")
+            
+            if OTEL_AVAILABLE and trace and current_span and hasattr(current_span, 'add_event'):
+                current_span.add_event("execution.context_created")
+            
             context = ExecutionContextFactory.create_context(
                 intent=intent,
                 state_surface=self.state_surface,
                 wal=self.wal
             )
             execution_id = context.execution_id
+            
+            if OTEL_AVAILABLE and trace and current_span and hasattr(current_span, 'set_attribute'):
+                current_span.set_attribute("execution.id", execution_id)
             
             # Store execution state
             await self.state_surface.set_execution_state(
@@ -151,6 +191,13 @@ class ExecutionLifecycleManager:
             # Handler is a realm's handle_intent method
             self.logger.info(f"Executing intent via handler: {handler.handler_name}")
             
+            if OTEL_AVAILABLE and trace and current_span and hasattr(current_span, 'set_attribute'):
+                current_span.set_attribute("handler.name", handler.handler_name)
+                if hasattr(handler, 'realm_name'):
+                    current_span.set_attribute("handler.realm", handler.realm_name)
+                if hasattr(current_span, 'add_event'):
+                    current_span.add_event("handler.execution_started")
+            
             if not handler.handler_function:
                 raise ValueError(f"Handler function not available for: {handler.handler_name}")
             
@@ -165,9 +212,25 @@ class ExecutionLifecycleManager:
                 }
             )
             
-            # Call realm's handle_intent method
+            # Call realm's handle_intent method with tracing
             try:
+                # Create child span for handler execution
+                handler_span_context = None
+                if OTEL_AVAILABLE and trace and tracer:
+                    handler_span_context = tracer.start_as_current_span(f"realm.{getattr(handler, 'realm_name', 'unknown')}.handle_intent")
+                    handler_span = trace.get_current_span()
+                    if handler_span and hasattr(handler_span, 'set_attribute'):
+                        handler_span.set_attribute("intent.type", intent.intent_type)
+                        if hasattr(handler, 'realm_name'):
+                            handler_span.set_attribute("realm.name", handler.realm_name)
+                
                 handler_result = await handler.handler_function(intent, context)
+                
+                handler_span = trace.get_current_span() if OTEL_AVAILABLE and trace else None
+                if handler_span and hasattr(handler_span, 'add_event'):
+                    handler_span.add_event("handler.execution_completed")
+                if handler_span and hasattr(handler_span, 'set_status'):
+                    handler_span.set_status(trace.Status(trace.StatusCode.OK))
                 
                 # Extract artifacts and events from realm result
                 if isinstance(handler_result, dict):
@@ -178,11 +241,25 @@ class ExecutionLifecycleManager:
                     artifacts = handler_result if isinstance(handler_result, dict) else {}
                     events = []
             except Exception as e:
+                handler_span = trace.get_current_span() if OTEL_AVAILABLE and trace else None
+                if handler_span and hasattr(handler_span, 'record_exception'):
+                    handler_span.record_exception(e)
+                if handler_span and hasattr(handler_span, 'set_status'):
+                    handler_span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
                 self.logger.error(f"Handler execution failed: {e}", exc_info=True)
                 raise
+            finally:
+                # Context manager will handle span end automatically
+                pass
             
             # Stage 5: Handle Artifacts
             self.logger.info(f"Handling artifacts from execution: {execution_id}")
+            
+            if OTEL_AVAILABLE and trace and current_span and hasattr(current_span, 'set_attribute'):
+                current_span.set_attribute("artifacts.count", len(artifacts))
+            if OTEL_AVAILABLE and trace and current_span and hasattr(current_span, 'add_event'):
+                current_span.add_event("artifacts.handled")
+            
             # Artifacts are stored in execution state (domain services return them)
             await self.state_surface.set_execution_state(
                 execution_id,
@@ -197,6 +274,12 @@ class ExecutionLifecycleManager:
             # Stage 6: Publish Events (via Transactional Outbox)
             if events and self.transactional_outbox:
                 self.logger.info(f"Publishing {len(events)} events via transactional outbox")
+                
+                if OTEL_AVAILABLE and trace and current_span and hasattr(current_span, 'set_attribute'):
+                    current_span.set_attribute("events.count", len(events))
+                if OTEL_AVAILABLE and trace and current_span and hasattr(current_span, 'add_event'):
+                    current_span.add_event("events.publishing_started")
+                
                 for event in events:
                     await self.transactional_outbox.add_event(
                         execution_id,
@@ -205,11 +288,20 @@ class ExecutionLifecycleManager:
                     )
                 # Publish events
                 await self.transactional_outbox.publish_events(execution_id)
+                
+                if OTEL_AVAILABLE and trace and current_span and hasattr(current_span, 'add_event'):
+                    current_span.add_event("events.published")
             elif events:
                 self.logger.warning("Events generated but no transactional outbox available")
             
             # Stage 7: Complete Execution
             self.logger.info(f"Completing execution: {execution_id}")
+            
+            if OTEL_AVAILABLE and trace and current_span and hasattr(current_span, 'add_event'):
+                current_span.add_event("execution.completed")
+            if OTEL_AVAILABLE and trace and current_span and hasattr(current_span, 'set_status'):
+                current_span.set_status(trace.Status(trace.StatusCode.OK))
+            
             await self.state_surface.set_execution_state(
                 execution_id,
                 intent.tenant_id,
@@ -242,6 +334,14 @@ class ExecutionLifecycleManager:
             
         except Exception as e:
             self.logger.error(f"Execution failed: {e}", exc_info=True)
+            
+            # Record error in trace
+            if OTEL_AVAILABLE and trace:
+                current_span = trace.get_current_span()
+                if current_span:
+                    current_span.record_exception(e)
+                    current_span.set_status(trace.Status(trace.StatusCode.ERROR, str(e)))
+                    current_span.set_attribute("execution.error", str(e))
             
             # Log execution failed
             if execution_id:

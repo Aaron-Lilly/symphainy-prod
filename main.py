@@ -20,7 +20,7 @@ from fastapi import FastAPI
 import uvicorn
 
 from utilities import get_logger, get_clock
-from config import get_env_contract
+from symphainy_platform.config import get_env_contract
 
 # Initialize
 env = get_env_contract()

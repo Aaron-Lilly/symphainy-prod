@@ -64,13 +64,6 @@ class CsvProcessingAbstraction:
                     timestamp=datetime.utcnow().isoformat()
                 )
             
-            if not self.csv_adapter:
-                return FileParsingResult(
-                    success=False,
-                    error="CSV adapter not available",
-                    timestamp=datetime.utcnow().isoformat()
-                )
-            
             # Retrieve file from State Surface
             file_data = await state_surface.get_file(request.file_reference)
             
@@ -78,6 +71,14 @@ class CsvProcessingAbstraction:
                 return FileParsingResult(
                     success=False,
                     error=f"File not found: {request.file_reference}",
+                    timestamp=datetime.utcnow().isoformat()
+                )
+            
+            # CSV adapter is REQUIRED - fail fast if missing
+            if not self.csv_adapter:
+                return FileParsingResult(
+                    success=False,
+                    error="CSV adapter is required for CSV parsing. Please ensure CsvProcessingAdapter is initialized in Public Works Foundation.",
                     timestamp=datetime.utcnow().isoformat()
                 )
             

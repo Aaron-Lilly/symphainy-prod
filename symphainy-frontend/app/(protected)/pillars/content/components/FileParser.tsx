@@ -17,9 +17,9 @@ import {
   CheckCircle,
   Clock
 } from 'lucide-react';
-import { useAuth } from '@/shared/agui/AuthProvider';
-import { useGlobalSession } from '@/shared/agui/GlobalSessionProvider';
-import { ContentAPIManager } from '@/shared/managers/ContentAPIManager';
+import { useAuth } from '@/shared/auth/AuthProvider';
+import { usePlatformState } from '@/shared/state/PlatformStateProvider';
+import { useContentAPIManager } from '@/shared/managers/ContentAPIManager';
 import { FileMetadata, FileStatus, FileType } from '@/shared/types/file';
 import { toast } from 'sonner';
 import { FileSelector } from './FileSelector';
@@ -69,7 +69,8 @@ export function FileParser({
   className
 }: FileParserProps) {
   const { isAuthenticated } = useAuth();
-  const { guideSessionToken } = useGlobalSession();
+  const { state } = usePlatformState();
+  const contentAPIManager = useContentAPIManager();
   
   const [selectedFileUuid, setSelectedFileUuid] = useState<string | null>(null);
   const [selectedFileFromSelector, setSelectedFileFromSelector] = useState<FileMetadata | null>(null);
@@ -166,13 +167,15 @@ export function FileParser({
     setError(null);
 
     try {
-      const sessionToken = guideSessionToken || 'debug-token';
-      const apiManager = new ContentAPIManager(sessionToken);
-      
       const fileId = selectedFile.file_id || selectedFile.uuid;
-      const result = await apiManager.processFile(
+      const fileReference = selectedFile.metadata?.file_reference || `file:${state.session.tenantId}:${state.session.sessionId}:${fileId}`;
+      const copybookReference = selectedCopybookFileId ? `copybook:${state.session.tenantId}:${state.session.sessionId}:${selectedCopybookFileId}` : undefined;
+      
+      // Parse file using new ContentAPIManager (Runtime-based intent submission)
+      const result = await contentAPIManager.parseFile(
         fileId,
-        selectedCopybookFileId || undefined
+        fileReference,
+        copybookReference
       );
 
       if (result.success && result.result) {
@@ -234,7 +237,7 @@ export function FileParser({
         onParseError(errorMessage);
       }
     }
-  }, [selectedFile, selectedCopybookFileId, isBinaryFile, guideSessionToken, onParseComplete, onParseError]);
+  }, [selectedFile, selectedCopybookFileId, isBinaryFile, state.session, contentAPIManager, onParseComplete, onParseError]);
 
   if (!isAuthenticated) {
     return (

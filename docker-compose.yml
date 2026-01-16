@@ -213,14 +213,88 @@ services:
         condition: service_healthy
       otel-collector:
         condition: service_started
+      traefik:
+        condition: service_started
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
       retries: 3
     restart: unless-stopped
     networks:
       - symphainy_net
+    labels:
+      - "traefik.enable=true"
+      # Runtime API routes
+      - "traefik.http.routers.runtime.rule=PathPrefix(`/api/runtime`) || PathPrefix(`/api/intent`) || PathPrefix(`/api/session`) || PathPrefix(`/api/execution`) || PathPrefix(`/api/realms`)"
+      - "traefik.http.routers.runtime.entrypoints=web"
+      - "traefik.http.routers.runtime.service=runtime"
+      - "traefik.http.services.runtime.loadbalancer.server.port=8000"
+      - "traefik.http.routers.runtime.priority=10"
+      # Health endpoint (no auth)
+      - "traefik.http.routers.runtime-health.rule=Path(`/health`) || Path(`/api/health`)"
+      - "traefik.http.routers.runtime-health.entrypoints=web"
+      - "traefik.http.routers.runtime-health.service=runtime"
+      - "traefik.http.routers.runtime-health.priority=99"
+
+  experience:
+    build:
+      context: .
+      dockerfile: Dockerfile.experience
+    container_name: symphainy-experience
+    ports:
+      - "${EXPERIENCE_PORT:-8001}:8001"
+    environment:
+      - REDIS_URL=redis://redis:6379
+      - ARANGO_URL=http://arango:8529
+      - ARANGO_ROOT_PASSWORD=${ARANGO_ROOT_PASSWORD:-changeme}
+      - CONSUL_HOST=consul
+      - CONSUL_PORT=8500
+      - RUNTIME_URL=http://runtime:8000
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4317
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_ANON_KEY=${SUPABASE_ANON_KEY}
+      - SUPABASE_SERVICE_KEY=${SUPABASE_SERVICE_KEY}
+      - SUPABASE_JWKS_URL=${SUPABASE_JWKS_URL}
+      - SUPABASE_JWT_ISSUER=${SUPABASE_JWT_ISSUER}
+      - GCS_PROJECT_ID=${GCS_PROJECT_ID}
+      - GCS_BUCKET_NAME=${GCS_BUCKET_NAME}
+      - GCS_CREDENTIALS_JSON=${GCS_CREDENTIALS_JSON}
+    depends_on:
+      runtime:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      arango:
+        condition: service_started
+      consul:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+      traefik:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped
+    networks:
+      - symphainy_net
+    labels:
+      - "traefik.enable=true"
+      # Experience API routes (sessions, intents, admin dashboard)
+      - "traefik.http.routers.experience.rule=PathPrefix(`/api/sessions`) || PathPrefix(`/api/intent`) || PathPrefix(`/api/ws`) || PathPrefix(`/api/admin`)"
+      - "traefik.http.routers.experience.entrypoints=web"
+      - "traefik.http.routers.experience.service=experience"
+      - "traefik.http.services.experience.loadbalancer.server.port=8001"
+      - "traefik.http.routers.experience.priority=10"
+      # Health endpoint (no auth)
+      - "traefik.http.routers.experience-health.rule=Path(`/health`)"
+      - "traefik.http.routers.experience-health.entrypoints=web"
+      - "traefik.http.routers.experience-health.service=experience"
+      - "traefik.http.routers.experience-health.priority=99"
 
   smart-city:
     build:
@@ -296,6 +370,48 @@ services:
     restart: unless-stopped
     networks:
       - symphainy_net
+
+  frontend:
+    build:
+      context: ./symphainy-frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=http://35.215.64.103
+        - NEXT_PUBLIC_BACKEND_URL=http://35.215.64.103
+        - NEXT_PUBLIC_API_BASE_URL=http://35.215.64.103
+    container_name: symphainy-frontend
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_API_URL=http://35.215.64.103
+      - NEXT_PUBLIC_BACKEND_URL=http://35.215.64.103
+      - NEXT_PUBLIC_API_BASE_URL=http://35.215.64.103
+      - NEXT_PUBLIC_FRONTEND_URL=http://35.215.64.103
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+    depends_on:
+      runtime:
+        condition: service_healthy
+      experience:
+        condition: service_healthy
+      traefik:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+    networks:
+      - symphainy_net
+    labels:
+      - "traefik.enable=true"
+      # Frontend routes - catch-all for non-API paths (lowest priority)
+      - "traefik.http.routers.frontend.rule=!PathPrefix(`/api`)"
+      - "traefik.http.routers.frontend.entrypoints=web"
+      - "traefik.http.routers.frontend.service=frontend"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+      - "traefik.http.routers.frontend.priority=1"
 
 volumes:
   redis_data:

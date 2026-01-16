@@ -49,6 +49,7 @@ from .abstractions.semantic_search_abstraction import SemanticSearchAbstraction
 from .abstractions.auth_abstraction import AuthAbstraction
 from .abstractions.tenant_abstraction import TenantAbstraction
 from .abstractions.file_storage_abstraction import FileStorageAbstraction
+from .abstractions.visual_generation_abstraction import VisualGenerationAbstraction
 
 class PublicWorksFoundationService:
     """
@@ -81,21 +82,32 @@ class PublicWorksFoundationService:
         # Layer 0: Parsing Adapters
         self.kreuzberg_adapter: Optional[KreuzbergAdapter] = None
         self.mainframe_adapter: Optional[MainframeProcessingAdapter] = None
-        # Other parsing adapters (PDF, Word, Excel, etc.) will be added when available
+        self.csv_adapter: Optional[Any] = None  # CsvProcessingAdapter
+        self.excel_adapter: Optional[Any] = None  # ExcelProcessingAdapter
+        self.pdf_adapter: Optional[Any] = None  # PdfProcessingAdapter
+        self.word_adapter: Optional[Any] = None  # WordProcessingAdapter
+        self.html_adapter: Optional[Any] = None  # HtmlProcessingAdapter
+        self.image_adapter: Optional[Any] = None  # ImageProcessingAdapter
+        self.json_adapter: Optional[Any] = None  # JsonProcessingAdapter
         
         # Layer 0: Ingestion Adapters
         self.upload_adapter: Optional[Any] = None
         self.edi_adapter: Optional[Any] = None
         self.api_adapter: Optional[Any] = None
         
+        # Layer 0: Visual Generation Adapter
+        self.visual_generation_adapter: Optional[Any] = None  # VisualGenerationAdapter
+        
         # Layer 1: Infrastructure Abstractions
         self.state_abstraction: Optional[StateManagementAbstraction] = None
         self.service_discovery_abstraction: Optional[ServiceDiscoveryAbstraction] = None
         self.semantic_search_abstraction: Optional[SemanticSearchAbstraction] = None
         self.knowledge_discovery_abstraction: Optional[Any] = None  # KnowledgeDiscoveryAbstraction
+        self.semantic_data_abstraction: Optional[Any] = None  # SemanticDataAbstraction
         self.auth_abstraction: Optional[AuthAbstraction] = None
         self.tenant_abstraction: Optional[TenantAbstraction] = None
         self.file_storage_abstraction: Optional[FileStorageAbstraction] = None
+        self.event_publisher_abstraction: Optional[Any] = None  # EventPublisherAbstraction
         
         # Layer 1: Parsing Abstractions
         self.pdf_processing_abstraction: Optional[PdfProcessingAbstraction] = None
@@ -144,7 +156,7 @@ class PublicWorksFoundationService:
             return False
     
     async def _create_adapters(self):
-        from config.env_contract import get_env_contract
+        from symphainy_platform.config.env_contract import get_env_contract
         env = get_env_contract()
 
         """Create all infrastructure adapters (Layer 0)."""
@@ -190,6 +202,36 @@ class PublicWorksFoundationService:
         else:
             self.logger.info("Kreuzberg configuration not provided, Kreuzberg adapter not created")
         
+        # Create parsing adapters (CSV, Excel, PDF, Word, HTML, Image, JSON)
+        from .adapters.csv_adapter import CsvProcessingAdapter
+        from .adapters.excel_adapter import ExcelProcessingAdapter
+        from .adapters.pdf_adapter import PdfProcessingAdapter
+        from .adapters.word_adapter import WordProcessingAdapter
+        from .adapters.html_adapter import HtmlProcessingAdapter
+        from .adapters.image_adapter import ImageProcessingAdapter
+        from .adapters.json_adapter import JsonProcessingAdapter
+        
+        self.csv_adapter = CsvProcessingAdapter()
+        self.logger.info("CSV adapter created")
+        
+        self.excel_adapter = ExcelProcessingAdapter()
+        self.logger.info("Excel adapter created")
+        
+        self.pdf_adapter = PdfProcessingAdapter()
+        self.logger.info("PDF adapter created")
+        
+        self.word_adapter = WordProcessingAdapter()
+        self.logger.info("Word adapter created")
+        
+        self.html_adapter = HtmlProcessingAdapter()
+        self.logger.info("HTML adapter created")
+        
+        self.image_adapter = ImageProcessingAdapter()
+        self.logger.info("Image/OCR adapter created")
+        
+        self.json_adapter = JsonProcessingAdapter()
+        self.logger.info("JSON adapter created")
+        
 
         # Meilisearch adapter
         meilisearch_host = self.config.get("meilisearch_host") or "meilisearch"
@@ -206,12 +248,12 @@ class PublicWorksFoundationService:
             self.logger.warning("Meilisearch adapter connection failed")
         
         # Supabase adapter (with fallback pattern matching original ConfigAdapter)
-        from config.config_helper import (
+        from symphainy_platform.config.config_helper import (
             get_supabase_url,
             get_supabase_anon_key,
             get_supabase_service_key
         )
-        from config.env_contract import get_env_contract
+        from symphainy_platform.config.env_contract import get_env_contract
         env = get_env_contract()
         
         # Use helper functions that support fallback patterns and .env.secrets
@@ -245,7 +287,7 @@ class PublicWorksFoundationService:
             self.logger.warning("Supabase configuration not provided, Supabase adapter not created")
         
         # GCS adapter (with fallback pattern matching original ConfigAdapter)
-        from config.config_helper import (
+        from symphainy_platform.config.config_helper import (
             get_gcs_project_id,
             get_gcs_bucket_name,
             get_gcs_credentials_json
@@ -266,22 +308,30 @@ class PublicWorksFoundationService:
             get_gcs_credentials_json() or
             (getattr(env, "GCS_CREDENTIALS_JSON", None) if hasattr(env, "GCS_CREDENTIALS_JSON") else None)
         )
-        if gcs_project_id and gcs_bucket_name:
-            try:
-                self.gcs_adapter = GCSAdapter(
-                    project_id=gcs_project_id,
-                    bucket_name=gcs_bucket_name,
-                    credentials_json=gcs_credentials_json
-                )
-                self.logger.info("GCS adapter created")
-            except ImportError as e:
-                self.logger.warning(f"GCS adapter not created (missing dependencies): {e}")
-                self.gcs_adapter = None
-            except Exception as e:
-                self.logger.warning(f"GCS adapter creation failed: {e}")
-                self.gcs_adapter = None
-        else:
-            self.logger.warning("GCS configuration not provided, GCS adapter not created")
+        # GCS adapter is REQUIRED for platform operation
+        if not gcs_project_id or not gcs_bucket_name:
+            raise RuntimeError(
+                "GCS configuration is required for platform operation. "
+                "Please provide GCS_PROJECT_ID and GCS_BUCKET_NAME environment variables."
+            )
+        
+        try:
+            self.gcs_adapter = GCSAdapter(
+                project_id=gcs_project_id,
+                bucket_name=gcs_bucket_name,
+                credentials_json=gcs_credentials_json
+            )
+            self.logger.info("GCS adapter created")
+        except ImportError as e:
+            raise RuntimeError(
+                f"GCS adapter dependencies not available: {e}. "
+                "Please install: pip install google-cloud-storage google-auth"
+            )
+        except Exception as e:
+            raise RuntimeError(
+                f"GCS adapter creation failed: {e}. "
+                "Please verify GCS credentials and configuration."
+            )
         
         # Supabase File adapter
         if supabase_url and supabase_service_key:
@@ -294,10 +344,15 @@ class PublicWorksFoundationService:
         else:
             self.logger.warning("Supabase File adapter not created (missing URL or service key)")
         
+        # Visual Generation adapter
+        from .adapters.visual_generation_adapter import VisualGenerationAdapter
+        self.visual_generation_adapter = VisualGenerationAdapter()
+        self.logger.info("Visual Generation adapter created")
+        
         # Mainframe adapter (will be created in _create_abstractions after State Surface is available)
         
         # ArangoDB adapter
-        from config.env_contract import get_env_contract
+        from symphainy_platform.config.env_contract import get_env_contract
         env = get_env_contract()
         
         arango_url = (
@@ -349,7 +404,7 @@ class PublicWorksFoundationService:
         # State management abstraction
         self.state_abstraction = StateManagementAbstraction(
             redis_adapter=self.redis_adapter,
-            arango_adapter=None  # Will be added when ArangoDB adapter is ready
+            arango_adapter=self.arango_adapter  # ArangoDB adapter for durable state
         )
         self.logger.info("State management abstraction created")
         
@@ -369,17 +424,30 @@ class PublicWorksFoundationService:
         else:
             self.logger.warning("Semantic search abstraction not created (Meilisearch adapter missing)")
         
-        # Knowledge discovery abstraction
-        if self.meilisearch_adapter:
+        # Knowledge discovery abstraction (REQUIRED for platform operation)
+        # Make it optional for testing scenarios
+        if not self.arango_adapter:
+            self.logger.warning("ArangoDB adapter missing - knowledge discovery abstraction not created")
+        elif not self.arango_graph_adapter:
+            self.logger.warning("ArangoDB Graph adapter missing - knowledge discovery abstraction not created")
+        else:
             from .abstractions.knowledge_discovery_abstraction import KnowledgeDiscoveryAbstraction
             self.knowledge_discovery_abstraction = KnowledgeDiscoveryAbstraction(
-                meilisearch_adapter=self.meilisearch_adapter,
+                meilisearch_adapter=self.meilisearch_adapter,  # Optional - can be None
                 arango_graph_adapter=self.arango_graph_adapter,
                 arango_adapter=self.arango_adapter
             )
             self.logger.info("Knowledge discovery abstraction created")
-        else:
-            self.logger.warning("Knowledge discovery abstraction not created (Meilisearch adapter missing)")
+        
+        # Semantic data abstraction (REQUIRED for platform operation)
+        if not self.arango_adapter:
+            raise RuntimeError("ArangoDB adapter is required for semantic data abstraction")
+        
+        from .abstractions.semantic_data_abstraction import SemanticDataAbstraction
+        self.semantic_data_abstraction = SemanticDataAbstraction(
+            arango_adapter=self.arango_adapter
+        )
+        self.logger.info("Semantic data abstraction created")
         
         # Auth abstraction
         if self.supabase_adapter:
@@ -401,8 +469,8 @@ class PublicWorksFoundationService:
             self.logger.warning("Tenant abstraction not created (Supabase adapter missing)")
         
         # File storage abstraction
-        from config.config_helper import get_gcs_bucket_name
-        from config.env_contract import get_env_contract
+        from symphainy_platform.config.config_helper import get_gcs_bucket_name
+        from symphainy_platform.config.env_contract import get_env_contract
         env = get_env_contract()
         
         gcs_bucket_name = (
@@ -410,43 +478,77 @@ class PublicWorksFoundationService:
             get_gcs_bucket_name() or
             (getattr(env, "GCS_BUCKET_NAME", None) if hasattr(env, "GCS_BUCKET_NAME") else None)
         )
-        if self.gcs_adapter and self.supabase_file_adapter and gcs_bucket_name:
-            self.file_storage_abstraction = FileStorageAbstraction(
-                gcs_adapter=self.gcs_adapter,
-                supabase_file_adapter=self.supabase_file_adapter,
-                bucket_name=gcs_bucket_name
+        
+        # File storage abstraction is REQUIRED for platform operation
+        if not self.gcs_adapter:
+            raise RuntimeError("GCS adapter is required for file storage abstraction")
+        if not self.supabase_file_adapter:
+            raise RuntimeError("Supabase file adapter is required for file storage abstraction")
+        if not gcs_bucket_name:
+            raise RuntimeError("GCS bucket name is required for file storage abstraction")
+        
+        self.file_storage_abstraction = FileStorageAbstraction(
+            gcs_adapter=self.gcs_adapter,
+            supabase_file_adapter=self.supabase_file_adapter,
+            bucket_name=gcs_bucket_name
+        )
+        self.logger.info("File storage abstraction created")
+        
+        # Visual Generation abstraction
+        from .abstractions.visual_generation_abstraction import VisualGenerationAbstraction
+        self.visual_generation_abstraction = VisualGenerationAbstraction(
+            visual_generation_adapter=self.visual_generation_adapter,
+            file_storage_abstraction=self.file_storage_abstraction
+        )
+        self.logger.info("Visual Generation abstraction created")
+        
+        # Event publisher abstraction
+        if self.redis_adapter:
+            from .adapters.redis_streams_publisher import RedisStreamsPublisher
+            from .abstractions.event_publisher_abstraction import EventPublisherAbstraction
+            
+            redis_streams_publisher = RedisStreamsPublisher(self.redis_adapter)
+            self.event_publisher_abstraction = EventPublisherAbstraction(
+                primary_publisher=redis_streams_publisher
             )
-            self.logger.info("File storage abstraction created")
+            if await self.event_publisher_abstraction.initialize():
+                self.logger.info("Event publisher abstraction created")
+            else:
+                self.logger.warning("Event publisher abstraction initialization failed")
         else:
-            self.logger.warning("File storage abstraction not created (missing adapters or bucket name)")
+            self.logger.warning("Event publisher abstraction not created (Redis adapter missing)")
         
         # Ingestion adapters (created after file_storage_abstraction is available)
         from .adapters.upload_adapter import UploadAdapter
         from .adapters.edi_adapter import EDIAdapter
         from .adapters.api_adapter import APIAdapter
         
-        if self.file_storage_abstraction:
-            # Upload adapter
-            self.upload_adapter = UploadAdapter(
-                file_storage_abstraction=self.file_storage_abstraction
-            )
-            self.logger.info("Upload adapter created")
-            
-            # EDI adapter (Phase 2)
-            edi_config = self.config.get("edi", {})
+        # Ingestion adapters require file storage abstraction
+        if not self.file_storage_abstraction:
+            raise RuntimeError("File storage abstraction is required for ingestion adapters")
+        
+        # Upload adapter (REQUIRED)
+        self.upload_adapter = UploadAdapter(
+            file_storage_abstraction=self.file_storage_abstraction
+        )
+        self.logger.info("Upload adapter created")
+        
+        # EDI adapter (optional - only if EDI config provided)
+        edi_config = self.config.get("edi", {})
+        if edi_config:
             self.edi_adapter = EDIAdapter(
                 file_storage_abstraction=self.file_storage_abstraction,
-                edi_config=edi_config if edi_config else None
+                edi_config=edi_config
             )
             self.logger.info("EDI adapter created")
-            
-            # API adapter (Phase 3)
-            self.api_adapter = APIAdapter(
-                file_storage_abstraction=self.file_storage_abstraction
-            )
-            self.logger.info("API adapter created")
         else:
-            self.logger.warning("Ingestion adapters not created (file storage abstraction missing)")
+            self.logger.info("EDI adapter not created (no EDI configuration provided)")
+        
+        # API adapter (REQUIRED)
+        self.api_adapter = APIAdapter(
+            file_storage_abstraction=self.file_storage_abstraction
+        )
+        self.logger.info("API adapter created")
         
         # Ingestion abstraction (created after adapters are available)
         from .abstractions.ingestion_abstraction import IngestionAbstraction
@@ -494,48 +596,48 @@ class PublicWorksFoundationService:
         )
         self.logger.info("Mainframe processing abstraction created")
         
-        # Other parsing abstractions (ready for adapters when available)
+        # Other parsing abstractions (with adapters connected)
         self.pdf_processing_abstraction = PdfProcessingAbstraction(
-            pdf_adapter=None,  # Will be set when adapter is available
+            pdf_adapter=self.pdf_adapter,
             state_surface=temp_state_surface
         )
         
         self.word_processing_abstraction = WordProcessingAbstraction(
-            word_adapter=None,  # Will be set when adapter is available
+            word_adapter=self.word_adapter,
             state_surface=temp_state_surface
         )
         
         self.excel_processing_abstraction = ExcelProcessingAbstraction(
-            excel_adapter=None,  # Will be set when adapter is available
+            excel_adapter=self.excel_adapter,
             state_surface=temp_state_surface
         )
         
         self.csv_processing_abstraction = CsvProcessingAbstraction(
-            csv_adapter=None,  # Will be set when adapter is available
+            csv_adapter=self.csv_adapter,
             state_surface=temp_state_surface
         )
         
         self.json_processing_abstraction = JsonProcessingAbstraction(
-            json_adapter=None,  # Will be set when adapter is available
+            json_adapter=self.json_adapter,
             state_surface=temp_state_surface
         )
         
         self.text_processing_abstraction = TextProcessingAbstraction(
-            text_adapter=None,  # Can work without adapter
+            text_adapter=None,  # Text adapter uses built-in text processing (no adapter needed)
             state_surface=temp_state_surface
         )
         
         self.image_processing_abstraction = ImageProcessingAbstraction(
-            ocr_adapter=None,  # Will be set when adapter is available
+            ocr_adapter=self.image_adapter,
             state_surface=temp_state_surface
         )
         
         self.html_processing_abstraction = HtmlProcessingAbstraction(
-            html_adapter=None,  # Will be set when adapter is available
+            html_adapter=self.html_adapter,
             state_surface=temp_state_surface
         )
         
-        self.logger.info("Parsing abstractions created (adapters to be connected when available)")
+        self.logger.info("Parsing abstractions created with adapters connected")
     
     async def shutdown(self):
         """Shutdown all infrastructure components."""
@@ -592,6 +694,11 @@ class PublicWorksFoundationService:
         
         if self.mainframe_adapter:
             self.mainframe_adapter.state_surface = state_surface
+            # Also update strategies' state_surface
+            if hasattr(self.mainframe_adapter, 'custom_strategy') and self.mainframe_adapter.custom_strategy:
+                self.mainframe_adapter.custom_strategy.state_surface = state_surface
+            if hasattr(self.mainframe_adapter, 'cobrix_strategy') and self.mainframe_adapter.cobrix_strategy:
+                self.mainframe_adapter.cobrix_strategy.state_surface = state_surface
         if self.mainframe_processing_abstraction:
             self.mainframe_processing_abstraction.state_surface = state_surface
         
@@ -657,6 +764,10 @@ class PublicWorksFoundationService:
     def get_mainframe_processing_abstraction(self) -> Optional[MainframeProcessingAbstraction]:
         """Get Mainframe processing abstraction."""
         return self.mainframe_processing_abstraction
+    
+    def get_visual_generation_abstraction(self) -> Optional[VisualGenerationAbstraction]:
+        """Get Visual Generation abstraction."""
+        return self.visual_generation_abstraction
     # ============================================================================
     # Smart City Abstraction Access Methods
     # ============================================================================
@@ -705,6 +816,15 @@ class PublicWorksFoundationService:
             Optional[IngestionAbstraction]: Ingestion abstraction or None
         """
         return self.ingestion_abstraction
+    
+    def get_semantic_data_abstraction(self) -> Optional[Any]:
+        """
+        Get semantic data abstraction (for Content Realm and Insights Realm).
+        
+        Returns:
+            Optional[SemanticDataAbstraction]: Semantic data abstraction or None
+        """
+        return self.semantic_data_abstraction
 
 
     def get_supabase_file_adapter(self) -> Optional[SupabaseFileAdapter]:
@@ -712,3 +832,41 @@ class PublicWorksFoundationService:
         Get Supabase file adapter (for File Metadata Service).
         """
         return self.supabase_file_adapter
+    
+    def get_event_publisher_abstraction(self) -> Optional[Any]:
+        """
+        Get event publisher abstraction (for Transactional Outbox).
+        
+        Returns:
+            Optional[EventPublisherAbstraction]: Event publisher abstraction or None
+        """
+        return self.event_publisher_abstraction
+    
+    def get_arango_adapter(self) -> Optional[Any]:
+        """
+        Get ArangoDB adapter (for lineage tracking and embeddings).
+        
+        Returns:
+            Optional[ArangoAdapter]: ArangoDB adapter or None
+        """
+        return self.arango_adapter
+    
+    def get_supabase_adapter(self) -> Optional[SupabaseAdapter]:
+        """
+        Get Supabase adapter (for lineage tracking).
+        
+        Returns:
+            Optional[SupabaseAdapter]: Supabase adapter or None
+        """
+        return self.supabase_adapter
+    
+    def get_state_surface(self) -> Optional[Any]:
+        """
+        Get State Surface (for file retrieval).
+        
+        Returns:
+            Optional[StateSurface]: State Surface or None
+        """
+        # State Surface is part of Runtime, not Foundation
+        # This method is a placeholder - State Surface should be passed via context
+        return None

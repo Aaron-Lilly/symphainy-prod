@@ -64,13 +64,6 @@ class PdfProcessingAbstraction:
                     timestamp=datetime.utcnow().isoformat()
                 )
             
-            if not self.pdf_adapter:
-                return FileParsingResult(
-                    success=False,
-                    error="PDF adapter not available",
-                    timestamp=datetime.utcnow().isoformat()
-                )
-            
             # Retrieve file from State Surface
             file_data = await state_surface.get_file(request.file_reference)
             
@@ -81,8 +74,15 @@ class PdfProcessingAbstraction:
                     timestamp=datetime.utcnow().isoformat()
                 )
             
+            # PDF adapter is REQUIRED - fail fast if missing
+            if not self.pdf_adapter:
+                return FileParsingResult(
+                    success=False,
+                    error="PDF adapter is required for PDF parsing. Please ensure PdfProcessingAdapter is initialized in Public Works Foundation.",
+                    timestamp=datetime.utcnow().isoformat()
+                )
+            
             # Parse using PDF adapter
-            # Adapter should have parse_file(file_data: bytes, filename: str) method
             result = await self.pdf_adapter.parse_file(file_data, request.filename)
             
             if not result.get("success"):

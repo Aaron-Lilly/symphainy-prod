@@ -4,8 +4,8 @@ import React, { useState, useEffect } from "react";
 // Force dynamic rendering to avoid SSR issues
 export const dynamic = 'force-dynamic';
 import { useAuth } from "@/shared/agui/AuthProvider";
-import { useOperationsOrchestrator } from "@/shared/hooks/usePillarOrchestrator";
-import { useGlobalSession } from "@/shared/agui/GlobalSessionProvider";
+import { usePlatformState } from "@/shared/state/PlatformStateProvider";
+import { useJourneyAPIManager } from "@/shared/hooks/useJourneyAPIManager";
 import { chatbotAgentInfoAtom, mainChatbotOpenAtom } from "@/shared/atoms/chatbot-atoms";
 import { useSetAtom } from "jotai";
 import { usePathname } from "next/navigation";
@@ -15,7 +15,7 @@ import { FileType, FileMetadata } from "@/shared/types/file";
 import { LoadingState, OperationsError } from "@/shared/types/operations";
 
 // Import micro-modular components
-import JourneyChoice from "@/components/operations/JourneyChoice";
+import JourneyChoice from "@/components/operations/JourneyChoice"; // TODO: Update path if component is moved
 import FileSelector from "./components/FileSelector";
 import WizardActive from "./components/WizardActive";
 import ProcessBlueprint from "./components/ProcessBlueprint";
@@ -29,22 +29,15 @@ import {
 } from "@/components/ui/card";
 import { PillarCompletionMessage } from "../shared/components/PillarCompletionMessage";
 
-// File types that are relevant for operations
-const OPERATION_FILE_TYPES = [FileType.Document, FileType.Pdf, FileType.Text, FileType.SopWorkflow];
+// File types that are relevant for journey
+const JOURNEY_FILE_TYPES = [FileType.Document, FileType.Pdf, FileType.Text, FileType.SopWorkflow];
 
-export default function OperationsPillar() {
+export default function JourneyPillar() {
   const setAgentInfo = useSetAtom(chatbotAgentInfoAtom);
   const setMainChatbotOpen = useSetAtom(mainChatbotOpenAtom);
   const { isAuthenticated, user } = useAuth();
-  const { guideSessionToken } = useGlobalSession();
-  const { 
-    orchestrator, 
-    isInitialized: orchestratorInitialized, 
-    isLoading: orchestratorLoading, 
-    error: orchestratorError,
-    executeOperation,
-    getPillarData
-  } = useOperationsOrchestrator(guideSessionToken || "");
+  const { state } = usePlatformState();
+  const journeyAPIManager = useJourneyAPIManager();
 
   const pathname = usePathname();
 
@@ -61,14 +54,14 @@ export default function OperationsPillar() {
   const [error, setError] = useState<OperationsError | null>(null);
   const [success, setSuccess] = useState<string | undefined>(undefined);
   const [journey, setJourney] = useState<"select" | "wizard" | null>(null);
-  const [operationFiles, setOperationFiles] = useState<FileMetadata[]>([]);
+  const [journeyFiles, setJourneyFiles] = useState<FileMetadata[]>([]);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
 
-  // Operations orchestrator handles all service layer initialization
+  // Journey state initialization
   const [initialized, setInitialized] = useState(false);
 
   // State for ProcessBlueprint and CoexistenceBlueprint
-  const [operationsState, setOperationsState] = useState<{
+  const [journeyState, setJourneyState] = useState<{
     workflowData?: any;
     sopText?: string;
     optimizedWorkflow?: any;
@@ -112,47 +105,46 @@ export default function OperationsPillar() {
   const clearError = () => setError(null);
   const clearSuccess = () => setSuccess(undefined);
 
-  // Get files from Experience Layer Client
+  // Get files from Content Realm state
   useEffect(() => {
-  const getAllFiles = async () => {
-    if (!isAuthenticated || !orchestratorInitialized) return;
-    
-    setIsLoadingFiles(true);
-    try {
-      const pillarData = await getPillarData();
+    const getAllFiles = async () => {
+      if (!isAuthenticated || !state.session.sessionId) return;
       
-      if (pillarData.elements) {
-        // Filter for operation-relevant files from elements
-        const operationFiles = Object.values(pillarData.elements).filter((file: any) => 
-          file && OPERATION_FILE_TYPES.includes(file.file_type)
+      setIsLoadingFiles(true);
+      try {
+        // Get files from Content realm state
+        const contentFiles = state.realm.content.files || [];
+        
+        // Filter for journey-relevant files
+        const journeyFiles = contentFiles.filter((file: any) => 
+          file && JOURNEY_FILE_TYPES.includes(file.file_type || file.type)
         );
         
-        setOperationFiles(operationFiles as FileMetadata[]);
+        setJourneyFiles(journeyFiles as FileMetadata[]);
+      } catch (error) {
+        console.error("[JourneyPillar] Error getting files:", error);
+        toast.error("Failed to load files", {
+          description: "Unable to retrieve files for journey"
+        });
+      } finally {
+        setIsLoadingFiles(false);
       }
-    } catch (error) {
-      console.error("Error getting files:", error);
-      toast.error("Failed to load files", {
-        description: "Unable to retrieve files for operations"
-      });
-    } finally {
-      setIsLoadingFiles(false);
-    }
-  };
+    };
 
-    if (!initialized && isAuthenticated) {
+    if (!initialized && isAuthenticated && state.session.sessionId) {
       getAllFiles();
       setInitialized(true);
     }
-  }, [isAuthenticated, initialized, guideSessionToken, orchestratorInitialized]);
+  }, [isAuthenticated, initialized, state.session.sessionId, state.realm.content.files]);
 
 
-  // Set up operations liaison agent
+  // Set up journey liaison agent
   useEffect(() => {
     setAgentInfo({
-      title: "Operations Liaison",
-      agent: "operations",
+      title: "Journey Liaison",
+      agent: "journey",
       file_url: "",
-      additional_info: "Your AI assistant for operations and workflow management",
+      additional_info: "Your AI assistant for journey and workflow management",
     });
     // Keep main chatbot open by default - GuideAgent will be shown
     setMainChatbotOpen(true);
@@ -168,36 +160,36 @@ export default function OperationsPillar() {
     setLoadingState(true, 'coexistence_analysis', 'Analyzing coexistence...');
 
     try {
-      const response = await executeOperation('analyzeCoexistence', {
-        sopFileUuid: selected.SOP.uuid,
-        workflowFileUuid: selected.workflow.uuid
-      });
+      const result = await journeyAPIManager.analyzeCoexistence(
+        selected.SOP.uuid,
+        selected.workflow.uuid
+      );
 
-      if (response.status === 'success') {
+      if (result.success && result.coexistence_analysis) {
         setSuccess("Coexistence analysis completed successfully!");
         
         // Update coexistence state with blueprint
-        const blueprint = response.data?.blueprint || response.blueprint || {};
-        const optimizedSop = response.data?.optimized_sop || response.optimized_sop;
-        const optimizedWorkflow = response.data?.optimized_workflow || response.optimized_workflow;
+        const blueprint = result.coexistence_analysis.blueprint || {};
+        const optimizedSop = result.coexistence_analysis.opportunities?.find((o: any) => o.type === 'sop_optimization');
+        const optimizedWorkflow = result.coexistence_analysis.opportunities?.find((o: any) => o.type === 'workflow_optimization');
         
         setCoexistenceState(prev => ({
           ...prev,
           blueprint,
-          sopText: optimizedSop || prev.sopText,
-          workflowData: optimizedWorkflow || prev.workflowData,
+          sopText: optimizedSop?.description || prev.sopText,
+          workflowData: optimizedWorkflow?.description || prev.workflowData,
           isEnabled: true
         }));
         
-        // Update operations state with optimized results
+        // Update journey state with optimized results
         if (optimizedSop || optimizedWorkflow) {
-          setOperationsState(prev => ({
+          setJourneyState(prev => ({
             ...prev,
-            optimizedSop,
-            optimizedWorkflow,
+            optimizedSop: optimizedSop?.description,
+            optimizedWorkflow: optimizedWorkflow?.description,
             analysisResults: {
               analysisType: 'coexistence',
-              errors: response.data?.errors || []
+              errors: []
             }
           }));
         }
@@ -206,7 +198,7 @@ export default function OperationsPillar() {
           description: "Analysis results are ready for review"
         });
       } else {
-        setErrorState(response.message || "Analysis failed", 'coexistence_analysis');
+        setErrorState(result.error || "Analysis failed", 'coexistence_analysis');
       }
     } catch (error: any) {
       setErrorState(error.message || "Failed to analyze coexistence", 'coexistence_analysis');
@@ -230,34 +222,31 @@ export default function OperationsPillar() {
     setLoadingState(true, 'sop_to_workflow', 'Generating workflow from SOP...');
 
     try {
-      const response = await executeOperation('generateWorkflow', {
-        sopFileUuid: selected.SOP.uuid
-      });
+      const result = await journeyAPIManager.createWorkflow(selected.SOP.uuid);
 
-      if (response.status === 'success') {
+      if (result.success && result.workflow) {
         setSuccess("Workflow generated successfully!");
         
-        // Update operations state with generated workflow
-        const workflowData = response.data?.workflow || response.workflow || {};
-        setOperationsState(prev => ({
+        // Update journey state with generated workflow
+        setJourneyState(prev => ({
           ...prev,
-          workflowData,
+          workflowData: result.workflow,
           sopText: selected.SOP?.ui_name || prev.sopText
         }));
         
         // Update coexistence state
         setCoexistenceState(prev => ({
           ...prev,
-          workflowData,
-          generatedWorkflowUuid: response.data?.workflow_uuid || response.workflow_uuid,
-          isEnabled: !!(prev.sopText || selected.SOP) && !!workflowData
+          workflowData: result.workflow,
+          generatedWorkflowUuid: result.workflow?.workflow_id,
+          isEnabled: !!(prev.sopText || selected.SOP) && !!result.workflow
         }));
         
         toast.success("Workflow generated successfully!", {
           description: "Your workflow is ready for review and optimization"
         });
       } else {
-        setErrorState(response.message || "Workflow generation failed", 'sop_to_workflow');
+        setErrorState(result.error || "Workflow generation failed", 'sop_to_workflow');
       }
     } catch (error: any) {
       setErrorState(error.message || "Failed to generate workflow", 'sop_to_workflow');
@@ -276,16 +265,14 @@ export default function OperationsPillar() {
     setLoadingState(true, 'workflow_to_sop', 'Generating SOP from workflow...');
 
     try {
-      const response = await executeOperation('generateSOP', {
-        workflowFileUuid: selected.workflow.uuid
-      });
+      const result = await journeyAPIManager.generateSOP(selected.workflow.uuid);
 
-      if (response.status === 'success') {
+      if (result.success && result.sop) {
         setSuccess("SOP generated successfully!");
         
-        // Update operations state with generated SOP
-        const sopText = response.data?.sop || response.sop || "";
-        setOperationsState(prev => ({
+        // Update journey state with generated SOP
+        const sopText = result.sop.content || "";
+        setJourneyState(prev => ({
           ...prev,
           sopText: sopText,
           workflowData: selected.workflow || prev.workflowData
@@ -295,7 +282,7 @@ export default function OperationsPillar() {
         setCoexistenceState(prev => ({
           ...prev,
           sopText,
-          generatedSopUuid: response.data?.sop_uuid || response.sop_uuid,
+          generatedSopUuid: result.sop?.sop_id,
           isEnabled: !!sopText && !!(prev.workflowData || selected.workflow)
         }));
         
@@ -303,7 +290,7 @@ export default function OperationsPillar() {
           description: "Your SOP is ready for review and implementation"
         });
       } else {
-        setErrorState(response.message || "SOP generation failed", 'workflow_to_sop');
+        setErrorState(result.error || "SOP generation failed", 'workflow_to_sop');
       }
     } catch (error: any) {
       setErrorState(error.message || "Failed to generate SOP", 'workflow_to_sop');
@@ -342,7 +329,7 @@ export default function OperationsPillar() {
             <div>
               <h2 className="text-2xl font-bold text-gray-800">Select Files</h2>
               <p className="text-gray-600 mt-1">
-                Choose SOP and workflow files for operations
+                Choose SOP and workflow files for journey
               </p>
             </div>
             <button
@@ -354,10 +341,10 @@ export default function OperationsPillar() {
           </div>
 
           <FileSelector
-            files={operationFiles}
+            files={journeyFiles}
             selected={selected}
             onSelectionChange={handleSelectionChange}
-            fileTypes={OPERATION_FILE_TYPES}
+            fileTypes={JOURNEY_FILE_TYPES}
             isLoading={isLoadingFiles}
           />
 
@@ -400,7 +387,7 @@ export default function OperationsPillar() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-3xl font-bold text-gray-800">Operations</h1>
+          <h1 className="text-3xl font-bold text-gray-800">Journey</h1>
           <p className="text-gray-600 mt-2">
             Manage workflows, SOPs, and process optimization
           </p>
@@ -441,7 +428,7 @@ export default function OperationsPillar() {
       {/* ProcessBlueprint Panel - Always Visible */}
       <div className="mt-8">
         <ProcessBlueprint
-          operationsState={operationsState}
+          operationsState={journeyState}
           onGenerateWorkflowFromSop={handleGenerateWorkflowFromSop}
           onGenerateSopFromWorkflow={handleGenerateSopFromWorkflow}
           isLoading={loading.isLoading}
@@ -457,7 +444,7 @@ export default function OperationsPillar() {
           generatedWorkflowUuid={coexistenceState.generatedWorkflowUuid}
           selectedSopFileUuid={selected.SOP?.uuid || null}
           selectedWorkflowFileUuid={selected.workflow?.uuid || null}
-          sessionToken={guideSessionToken}
+          sessionToken={state.session.sessionId || ""}
           sessionState={coexistenceState}
           isEnabled={coexistenceState.isEnabled || !!(selected.SOP && selected.workflow)}
         />
@@ -466,8 +453,8 @@ export default function OperationsPillar() {
       {/* Completion Message */}
       <PillarCompletionMessage
         show={
-          !!operationsState.workflowData || 
-          !!operationsState.sopText || 
+          !!journeyState.workflowData || 
+          !!journeyState.sopText || 
           !!coexistenceState.blueprint ||
           (coexistenceState.isEnabled && !!(selected.SOP && selected.workflow))
         }

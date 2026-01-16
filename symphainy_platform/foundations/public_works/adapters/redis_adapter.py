@@ -101,6 +101,17 @@ class RedisAdapter:
             self.logger.error(f"Redis DELETE error: {e}")
             return False
     
+    async def flushdb(self) -> bool:
+        """Raw Redis FLUSHDB operation - clears current database."""
+        if not self._client:
+            return False
+        try:
+            await self._client.flushdb()
+            return True
+        except RedisError as e:
+            self.logger.error(f"Redis FLUSHDB error: {e}")
+            return False
+    
     async def exists(self, key: str) -> bool:
         """Raw Redis EXISTS operation - no business logic."""
         if not self._client:

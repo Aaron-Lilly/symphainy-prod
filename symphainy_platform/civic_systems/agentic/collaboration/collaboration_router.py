@@ -66,9 +66,30 @@ class CollaborationRouter:
             
             # 2. Validate via Smart City primitives (if available)
             if self.smart_city_primitives:
-                # TODO: Call Smart City primitives to validate collaboration
-                # For MVP: Skip (will be implemented in full version)
-                pass
+                # Validate collaboration request via Smart City primitives
+                # In full implementation, this would check:
+                # - Agent collaboration policies
+                # - Tenant permissions
+                # - Resource access rules
+                # For MVP: Basic validation (allow if primitives are available)
+                try:
+                    # MVP: Basic validation - check if primitives are available
+                    # Full: Would call specific Smart City primitive methods
+                    # Example: await self.smart_city_primitives.validate_agent_collaboration(...)
+                    if hasattr(self.smart_city_primitives, "validate_agent_collaboration"):
+                        validation_result = await self.smart_city_primitives.validate_agent_collaboration(
+                            caller_agent_id=request.caller_agent_id,
+                            target_agent_type=request.target_agent_type,
+                            purpose=request.purpose
+                        )
+                        if not validation_result:
+                            self.logger.warning(f"Smart City validation denied collaboration: {request.request_id}")
+                            return None
+                    # MVP: If validation method doesn't exist, allow (for MVP showcase)
+                except Exception as e:
+                    self.logger.warning(f"Smart City validation failed (non-fatal for MVP): {e}")
+                    # MVP: Allow on validation error (for MVP showcase)
+                    # Full: Would deny on validation error (fail secure)
             
             # 3. Find target agent
             target_agent = agent_registry.get_agent_by_type(request.target_agent_type)

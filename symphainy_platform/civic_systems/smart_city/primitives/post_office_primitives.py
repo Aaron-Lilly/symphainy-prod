@@ -216,8 +216,13 @@ class PostOfficePrimitives:
             # Evaluate subscription policies
             for policy in subscription_policies:
                 # MVP: Simple allow-all (for MVP showcase)
-                # Full: Evaluate policy rules
-                pass
+                # Full: Evaluate policy rules (e.g., check subscription limits, event type filters, etc.)
+                # For MVP, we allow all policies - in full implementation, this would evaluate
+                # policy rules against subscription limits and filters
+                if not policy:
+                    continue  # Skip empty policies
+                # MVP: Allow all policies (no validation)
+                # Full: Would validate policy rules here (e.g., max_subscriptions, event_type_filters, etc.)
             
             # 3. Validate stream access (tenant isolation)
             if not stream_name.startswith(f"events:{tenant_id}:"):

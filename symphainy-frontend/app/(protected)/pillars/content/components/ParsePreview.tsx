@@ -25,9 +25,9 @@ import {
   Code,
   RefreshCw
 } from 'lucide-react';
-import { useAuth } from '@/shared/agui/AuthProvider';
-import { useGlobalSession } from '@/shared/agui/GlobalSessionProvider';
-import { ContentAPIManager } from '@/shared/managers/ContentAPIManager';
+import { useAuth } from '@/shared/auth/AuthProvider';
+import { usePlatformState } from '@/shared/state/PlatformStateProvider';
+import { useContentAPIManager } from '@/shared/managers/ContentAPIManager';
 import { FileMetadata, FileStatus } from '@/shared/types/file';
 import { FileSelector } from './FileSelector';
 import { StructuredDataTab } from '@/components/content/tabs/StructuredDataTab';
@@ -42,7 +42,8 @@ export function ParsePreview({
   className
 }: ParsePreviewProps) {
   const { isAuthenticated } = useAuth();
-  const { guideSessionToken } = useGlobalSession();
+  const { state } = usePlatformState();
+  const contentAPIManager = useContentAPIManager();
   
   const [parsedFiles, setParsedFiles] = useState<any[]>([]);
   const [selectedParsedFileId, setSelectedParsedFileId] = useState<string | null>(null);
@@ -54,7 +55,7 @@ export function ParsePreview({
   // Load ALL parsed files from parsed_data_files table
   // With the backend fix, parsed_file_id now matches the actual GCS UUID, so lookups work correctly
   const loadParsedFiles = useCallback(async () => {
-    if (!guideSessionToken) {
+    if (!state.session.sessionId) {
       setParsedFiles([]);
       setSelectedParsedFileId(null);
       setParsedFilePreview(null);
@@ -64,11 +65,23 @@ export function ParsePreview({
     setLoadingParsedFiles(true);
     setError(null);
     try {
-      const apiManager = new ContentAPIManager(guideSessionToken);
+      // Load parsed files using new ContentAPIManager
+      // Note: listParsedFiles may need to be added to new ContentAPIManager
+      // For MVP, we'll use the existing endpoint pattern
+      const { getApiEndpointUrl } = require('@/shared/config/api-config');
+      const url = getApiEndpointUrl('/api/v1/content-pillar/list-parsed-files');
       
-      // Get parsed files from parsed_data_files table
-      // The backend now correctly stores parsed_file_id as the actual GCS UUID
-      const parsedFiles = await apiManager.listParsedFiles();
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to load parsed files: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      const parsedFiles = data.parsed_files || [];
       setParsedFiles(parsedFiles);
       
       // Auto-select first parsed file if available and none selected
@@ -83,12 +96,12 @@ export function ParsePreview({
     } finally {
       setLoadingParsedFiles(false);
     }
-  }, [guideSessionToken]);
+  }, [state.session.sessionId]);
 
-  // Load parsed files on mount and when session token changes
+  // Load parsed files on mount and when session changes
   useEffect(() => {
     loadParsedFiles();
-  }, [guideSessionToken, loadParsedFiles]);
+  }, [state.session.sessionId, loadParsedFiles]);
 
   // Listen for parse completion events from FileParser
   useEffect(() => {
@@ -111,12 +124,12 @@ export function ParsePreview({
       window.removeEventListener('fileParsed', handleParseComplete);
       window.removeEventListener('storage', handleParseComplete);
     };
-  }, [guideSessionToken]);
+  }, [state.session.sessionId]);
 
   // Handle preview generation (manual trigger via button)
   const handleGeneratePreview = async () => {
-    if (!selectedParsedFileId || !guideSessionToken) {
-      setError('Missing parsed file ID or session token');
+    if (!selectedParsedFileId || !state.session.sessionId) {
+      setError('Missing parsed file ID or session');
       return;
     }
 
@@ -125,12 +138,14 @@ export function ParsePreview({
     setError(null);
     
     try {
-      const apiManager = new ContentAPIManager(guideSessionToken);
-      const preview = await apiManager.previewParsedFile(selectedParsedFileId, 20, 20);
+      // Get parsed file preview using new ContentAPIManager
+      // Note: getParsedFile method returns parsed content and preview
+      const fileReference = `parsed:${state.session.tenantId}:${state.session.sessionId}:${selectedParsedFileId}`;
+      const result = await contentAPIManager.getParsedFile(selectedParsedFileId, fileReference);
       
-      if (preview.success && preview.preview) {
-        // Convert preview to ParseResult format for display
-        const previewData = preview.preview;
+      if (result.success && result.parsed_content) {
+        // Use parsed_content and preview from result
+        const previewData = result.preview || result.parsed_content;
         setParsedFilePreview({
           format: 'jsonl',
           preview_grid: previewData.rows || [],
@@ -143,7 +158,7 @@ export function ParsePreview({
           }
         });
       } else {
-        setError(preview.error || 'Failed to generate preview');
+        setError(result.error || 'Failed to generate preview');
       }
     } catch (error) {
       console.error('[ParsePreview] Error generating preview:', error);

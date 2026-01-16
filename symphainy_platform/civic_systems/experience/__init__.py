@@ -18,6 +18,8 @@ Experience only:
 - Streams execution updates back
 """
 
-from .experience_service import ExperienceService
+# ExperienceService is not a class, it's a module with create_app() function
+# Export create_app function instead
+from .experience_service import create_app
 
-__all__ = ["ExperienceService"]
+__all__ = ["create_app"]

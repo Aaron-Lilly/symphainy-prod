@@ -6,11 +6,17 @@ import sys
 from pathlib import Path
 
 # Add project root to path
-project_root = Path(__file__).resolve().parents[6]
+# Find project root by looking for common markers (pyproject.toml, requirements.txt, etc.)
+current = Path(__file__).resolve()
+project_root = current
+for _ in range(10):  # Max 10 levels up
+    if (project_root / "pyproject.toml").exists() or (project_root / "requirements.txt").exists():
+        break
+    project_root = project_root.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from typing import Dict, Any
 
 from utilities import get_logger
@@ -30,18 +36,46 @@ def get_runtime_client() -> RuntimeClient:
     return RuntimeClient(runtime_url="http://runtime:8000")
 
 
-def get_security_guard_sdk() -> SecurityGuardSDK:
+def get_security_guard_sdk(request: Request) -> SecurityGuardSDK:
     """Dependency to get Security Guard SDK."""
-    # In production, this would come from DI container with Public Works
-    # For now, this is a placeholder - will be injected properly
-    raise NotImplementedError("Security Guard SDK must be injected via DI")
+    if not hasattr(request.app.state, "security_guard_sdk"):
+        raise RuntimeError("Security Guard SDK not initialized. Check Experience service startup.")
+    return request.app.state.security_guard_sdk
 
 
-def get_traffic_cop_sdk() -> TrafficCopSDK:
+def get_traffic_cop_sdk(request: Request) -> TrafficCopSDK:
     """Dependency to get Traffic Cop SDK."""
-    # In production, this would come from DI container with Public Works
-    # For now, this is a placeholder - will be injected properly
-    raise NotImplementedError("Traffic Cop SDK must be injected via DI")
+    if not hasattr(request.app.state, "traffic_cop_sdk"):
+        raise RuntimeError("Traffic Cop SDK not initialized. Check Experience service startup.")
+    return request.app.state.traffic_cop_sdk
+
+
+@router.get("/{session_id}")
+async def get_session(
+    session_id: str,
+    runtime_client: RuntimeClient = Depends(get_runtime_client)
+):
+    """
+    Get session details.
+    
+    Flow:
+    1. Query Runtime for session details
+    2. Return session information
+    """
+    try:
+        # Query Runtime for session
+        session_data = await runtime_client.get_session(session_id)
+        
+        if not session_data:
+            raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+        
+        return session_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to get session {session_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @router.post("/create", response_model=SessionCreateResponse)

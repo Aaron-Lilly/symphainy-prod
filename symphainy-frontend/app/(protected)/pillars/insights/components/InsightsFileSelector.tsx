@@ -17,8 +17,8 @@ import {
 } from '@/components/ui/select';
 import { FileText, Database, Loader2, Lock } from 'lucide-react';
 import { getAvailableContentMetadata } from '@/lib/api/insights';
-import { ContentAPIManager, ContentFile } from '@/shared/managers/ContentAPIManager';
-import { useGlobalSession } from '@/shared/agui/GlobalSessionProvider';
+import { useContentAPIManager, ContentFile } from '@/shared/managers/ContentAPIManager';
+import { usePlatformState } from '@/shared/state/PlatformStateProvider';
 
 interface InsightsFileSelectorProps {
   onSourceSelected: (sourceId: string, sourceType: 'file' | 'content_metadata', contentType: 'structured' | 'unstructured') => void;
@@ -33,7 +33,8 @@ export function InsightsFileSelector({
   selectedSourceId,
   selectedSourceType = 'file'
 }: InsightsFileSelectorProps) {
-  const { guideSessionToken } = useGlobalSession();
+  const { state } = usePlatformState();
+  const contentAPIManager = useContentAPIManager();
   const [sourceMode, setSourceMode] = useState<'file' | 'content_metadata'>(selectedSourceType);
   const [files, setFiles] = useState<ContentFile[]>([]);
   const [metadata, setMetadata] = useState<any[]>([]);
@@ -59,10 +60,22 @@ export function InsightsFileSelector({
     try {
       setLoading(true);
       setError(null);
-      const sessionToken = guideSessionToken || 'debug-token';
-      const apiManager = new ContentAPIManager(sessionToken);
-      const contentFiles = await apiManager.listFiles();
-      setFiles(contentFiles);
+      
+      // Get files from PlatformStateProvider (Content realm state)
+      const contentFiles = state.realm.content.files || [];
+      
+      // Convert to ContentFile format
+      const formattedFiles: ContentFile[] = contentFiles.map((file: any) => ({
+        id: file.id || file.uuid || file.file_id,
+        name: file.name || file.filename || file.ui_name || 'Unknown',
+        type: file.type || file.file_type || 'unknown',
+        size: file.size || 0,
+        uploadDate: file.uploadDate || file.created_at || new Date().toISOString(),
+        status: file.status,
+        metadata: file.metadata || file
+      }));
+      
+      setFiles(formattedFiles);
     } catch (err) {
       console.error('Error loading files:', err);
       setError('Failed to load files from Content Pillar');

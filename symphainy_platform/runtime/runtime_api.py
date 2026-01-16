@@ -104,7 +104,12 @@ class RuntimeAPI:
         request: SessionCreateRequest
     ) -> SessionCreateResponse:
         """
-        Create session via Runtime.
+        Create session via Runtime (internal operation, not an intent).
+        
+        Session creation is a Runtime-internal operation that:
+        1. Creates session state in State Surface
+        2. Registers session with tenant context
+        3. Returns session_id
         
         Args:
             request: Session creation request
@@ -113,33 +118,36 @@ class RuntimeAPI:
             Session creation response
         """
         try:
-            # Create session intent
-            intent = IntentFactory.create_intent(
-                intent_type=request.intent_type,
+            from datetime import datetime
+            
+            # Generate session_id if not provided
+            session_id = request.session_id or f"session_{request.tenant_id}_{request.user_id}_{datetime.now().isoformat()}"
+            
+            # Create session state in State Surface
+            session_state = {
+                "session_id": session_id,
+                "tenant_id": request.tenant_id,
+                "user_id": request.user_id,
+                "execution_contract": request.execution_contract or {},
+                "metadata": request.metadata or {},
+                "created_at": datetime.now().isoformat(),
+                "status": "active"
+            }
+            
+            # Store session in State Surface
+            await self.state_surface.set_session_state(
+                session_id=session_id,
                 tenant_id=request.tenant_id,
-                session_id=request.session_id or f"session_{request.tenant_id}_{request.user_id}",
-                solution_id="default",
-                parameters={
-                    "user_id": request.user_id,
-                    "execution_contract": request.execution_contract or {}
-                },
-                metadata=request.metadata or {}
+                state=session_state
             )
             
-            # Execute session creation intent
-            result = await self.execution_lifecycle_manager.execute(intent)
-            
-            if not result.success:
-                raise HTTPException(status_code=500, detail=result.error)
-            
-            # Extract session_id from artifacts
-            session_id = result.artifacts.get("session_id") or intent.session_id
+            self.logger.info(f"Session created: {session_id} for tenant {request.tenant_id}")
             
             return SessionCreateResponse(
                 session_id=session_id,
                 tenant_id=request.tenant_id,
                 user_id=request.user_id,
-                created_at=result.metadata.get("created_at", "")
+                created_at=session_state["created_at"]
             )
             
         except HTTPException:
@@ -265,6 +273,17 @@ def create_runtime_app(
         """Submit intent for execution."""
         return await runtime_api.submit_intent(request)
     
+    @app.get("/api/session/{session_id}")
+    async def get_session(
+        session_id: str,
+        tenant_id: str
+    ):
+        """Get session details."""
+        session_state = await runtime_api.state_surface.get_session_state(session_id, tenant_id)
+        if not session_state:
+            raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+        return session_state
+    
     @app.get("/api/execution/{execution_id}/status", response_model=ExecutionStatusResponse)
     async def get_execution_status(
         execution_id: str,
@@ -272,6 +291,7 @@ def create_runtime_app(
     ):
         """Get execution status."""
         return await runtime_api.get_execution_status(execution_id, tenant_id)
+    
     
     @app.get("/health")
     async def health():

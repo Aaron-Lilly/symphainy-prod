@@ -6,7 +6,13 @@ import sys
 from pathlib import Path
 
 # Add project root to path
-project_root = Path(__file__).resolve().parents[6]
+# Find project root by looking for common markers (pyproject.toml, requirements.txt, etc.)
+current = Path(__file__).resolve()
+project_root = current
+for _ in range(10):  # Max 10 levels up
+    if (project_root / "pyproject.toml").exists() or (project_root / "requirements.txt").exists():
+        break
+    project_root = project_root.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
@@ -55,5 +61,6 @@ async def stream_execution(
         logger.error(f"WebSocket error for execution {execution_id}: {e}", exc_info=True)
         try:
             await websocket.close(code=1011, reason="Internal server error")
-        except:
-            pass
+        except Exception:
+            # WebSocket may already be closed, ignore error
+            logger.debug("WebSocket already closed, ignoring close error")

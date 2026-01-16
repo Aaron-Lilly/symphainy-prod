@@ -12,21 +12,31 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { AlertCircle, CheckCircle, XCircle, AlertTriangle, TrendingUp, FileText, Sparkles } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { InsightsFileSelector } from './InsightsFileSelector';
-import { evaluateDataQuality, DataQualityRequest, DataQualityResponse } from '@/lib/api/insights';
+import { useInsightsAPIManager, QualityAssessmentResponse } from '@/shared/managers/InsightsAPIManager';
+import { usePlatformState } from '@/shared/state/PlatformStateProvider';
+import { useContentAPIManager } from '@/shared/managers/ContentAPIManager';
 
 interface DataQualitySectionProps {
-  onQualityEvaluationComplete?: (qualityReport: DataQualityResponse) => void;
+  onQualityEvaluationComplete?: (qualityReport: QualityAssessmentResponse) => void;
 }
 
 export function DataQualitySection({ 
   onQualityEvaluationComplete 
 }: DataQualitySectionProps) {
+  const { state } = usePlatformState();
+  const insightsAPIManager = useInsightsAPIManager();
+  const contentAPIManager = useContentAPIManager();
+
   const [selectedFileId, setSelectedFileId] = useState<string>('');
+  const [selectedParsedFileId, setSelectedParsedFileId] = useState<string>('');
   const [selectedSourceType, setSelectedSourceType] = useState<'file' | 'content_metadata'>('file');
-  const [qualityReport, setQualityReport] = useState<DataQualityResponse | null>(null);
+  const [qualityReport, setQualityReport] = useState<QualityAssessmentResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [availableEmbeddings, setAvailableEmbeddings] = useState<Array<{id: string; name: string}>>([]);
+  const [selectedEmbeddingId, setSelectedEmbeddingId] = useState<string>('');
 
   const handleFileSelected = (
     fileId: string, 
@@ -46,19 +56,28 @@ export function DataQualitySection({
       return;
     }
 
+    if (!selectedParsedFileId) {
+      setError('Please select a parsed file (or ensure file has been parsed)');
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
 
-      const request: DataQualityRequest = {
-        file_id: selectedFileId,
-        quality_options: {
-          include_recommendations: true,
-          include_metrics: true
-        }
-      };
+      // Determine parser type from parsed file metadata
+      const parsedFiles = state.realm.content.parsedFiles || [];
+      const parsedFile = parsedFiles.find((pf: any) => 
+        (pf.parsed_file_id || pf.id) === selectedParsedFileId
+      );
+      const parserType = parsedFile?.parser_type || 'unknown';
 
-      const result = await evaluateDataQuality(request);
+      // Use InsightsAPIManager to assess data quality
+      const result = await insightsAPIManager.assessDataQuality(
+        selectedParsedFileId,
+        selectedFileId,
+        parserType
+      );
 
       if (result.success) {
         setQualityReport(result);
@@ -69,7 +88,7 @@ export function DataQualitySection({
         setError(result.error || 'Quality evaluation failed');
       }
     } catch (err) {
-      console.error('Quality evaluation error:', err);
+      console.error('[DataQualitySection] Quality evaluation error:', err);
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');
     } finally {
       setLoading(false);
@@ -77,11 +96,10 @@ export function DataQualitySection({
   };
 
   const renderQualityReport = () => {
-    if (!qualityReport || !qualityReport.quality_report) return null;
+    if (!qualityReport || !qualityReport.quality_assessment) return null;
 
-    const report = qualityReport.quality_report;
-    const summary = report.summary;
-    const overallScore = report.overall_quality_score;
+    const assessment = qualityReport.quality_assessment;
+    const overallScore = assessment.quality_score;
     const scorePercentage = Math.round(overallScore * 100);
 
     // Determine score color
@@ -118,16 +136,16 @@ export function DataQualitySection({
               <Progress value={scorePercentage} className="h-3" />
               <div className="grid grid-cols-3 gap-4 text-sm">
                 <div>
-                  <p className="text-muted-foreground">Total Records</p>
-                  <p className="text-lg font-semibold">{summary.total_records}</p>
+                  <p className="text-muted-foreground">Completeness</p>
+                  <p className="text-lg font-semibold">{Math.round(assessment.completeness * 100)}%</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Valid Records</p>
-                  <p className="text-lg font-semibold text-green-600">{summary.valid_records}</p>
+                  <p className="text-muted-foreground">Accuracy</p>
+                  <p className="text-lg font-semibold text-green-600">{Math.round(assessment.accuracy * 100)}%</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Invalid Records</p>
-                  <p className="text-lg font-semibold text-red-600">{summary.invalid_records}</p>
+                  <p className="text-muted-foreground">Consistency</p>
+                  <p className="text-lg font-semibold">{Math.round(assessment.consistency * 100)}%</p>
                 </div>
               </div>
             </div>
@@ -135,7 +153,7 @@ export function DataQualitySection({
         </Card>
 
         {/* Issues Summary */}
-        {summary.total_issues > 0 && (
+        {assessment.issues && assessment.issues.length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
@@ -144,117 +162,25 @@ export function DataQualitySection({
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                <div className="flex flex-wrap gap-2">
-                  {summary.issues_by_severity.error > 0 && (
-                    <Badge variant="destructive" className="flex items-center space-x-1">
-                      <XCircle className="h-3 w-3" />
-                      <span>{summary.issues_by_severity.error} Errors</span>
-                    </Badge>
-                  )}
-                  {summary.issues_by_severity.warning > 0 && (
-                    <Badge variant="secondary" className="flex items-center space-x-1 bg-yellow-100 text-yellow-800">
-                      <AlertTriangle className="h-3 w-3" />
-                      <span>{summary.issues_by_severity.warning} Warnings</span>
-                    </Badge>
-                  )}
-                  {summary.issues_by_severity.info > 0 && (
-                    <Badge variant="secondary" className="flex items-center space-x-1">
-                      <AlertCircle className="h-3 w-3" />
-                      <span>{summary.issues_by_severity.info} Info</span>
-                    </Badge>
-                  )}
-                </div>
-
-                {/* Issues by Type */}
-                {Object.keys(summary.issues_by_type).length > 0 && (
-                  <div>
-                    <p className="text-sm font-medium mb-2">Issues by Type:</p>
-                    <div className="space-y-1">
-                      {Object.entries(summary.issues_by_type).map(([type, count]) => (
-                        <div key={type} className="flex justify-between text-sm">
-                          <span className="text-muted-foreground">{type.replace(/_/g, ' ')}</span>
-                          <span className="font-medium">{count as number}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Quality Metrics */}
-        {report.quality_metrics && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <FileText className="h-5 w-5" />
-                <span>Quality Metrics</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-muted-foreground">Completeness</p>
-                    <p className="text-xl font-semibold">
-                      {Math.round(report.quality_metrics.completeness.overall * 100)}%
-                    </p>
-                    <Progress value={report.quality_metrics.completeness.overall * 100} className="h-2 mt-2" />
-                  </div>
-                  <div>
-                    <p className="text-sm text-muted-foreground">Total Missing Values</p>
-                    <p className="text-xl font-semibold">{report.quality_metrics.missing_values.total_missing}</p>
-                  </div>
-                </div>
-
-                {/* Completeness by Field */}
-                {Object.keys(report.quality_metrics.completeness.by_field).length > 0 && (
-                  <div>
-                    <p className="text-sm font-medium mb-2">Completeness by Field:</p>
-                    <div className="space-y-2">
-                      {Object.entries(report.quality_metrics.completeness.by_field)
-                        .sort(([, a], [, b]) => (b as number) - (a as number))
-                        .slice(0, 10)
-                        .map(([field, completeness]) => (
-                          <div key={field} className="space-y-1">
-                            <div className="flex justify-between text-sm">
-                              <span className="text-muted-foreground">{field}</span>
-                              <span className="font-medium">{Math.round((completeness as number) * 100)}%</span>
-                            </div>
-                            <Progress value={(completeness as number) * 100} className="h-1" />
-                          </div>
-                        ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Recommendations */}
-        {report.recommendations && report.recommendations.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center space-x-2">
-                <Sparkles className="h-5 w-5" />
-                <span>Recommendations</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
               <div className="space-y-3">
-                {report.recommendations.map((rec, idx) => (
+                {assessment.issues.map((issue, idx) => (
                   <div key={idx} className="p-3 border rounded-lg">
                     <div className="flex items-start space-x-2">
-                      <Badge variant={rec.priority === 'high' ? 'destructive' : rec.priority === 'medium' ? 'secondary' : 'default'}>
-                        {rec.priority}
+                      <Badge 
+                        variant={issue.severity === 'high' ? 'destructive' : issue.severity === 'medium' ? 'secondary' : 'default'}
+                        className="flex items-center space-x-1"
+                      >
+                        {issue.severity === 'high' && <XCircle className="h-3 w-3" />}
+                        {issue.severity === 'medium' && <AlertTriangle className="h-3 w-3" />}
+                        {issue.severity === 'low' && <AlertCircle className="h-3 w-3" />}
+                        <span>{issue.severity}</span>
                       </Badge>
                       <div className="flex-1">
-                        <p className="font-medium">{rec.action}</p>
-                        <p className="text-sm text-muted-foreground mt-1">{rec.description}</p>
+                        <p className="font-medium">{issue.type}</p>
+                        <p className="text-sm text-muted-foreground mt-1">{issue.message}</p>
+                        {issue.recommendation && (
+                          <p className="text-sm text-blue-600 mt-1">💡 {issue.recommendation}</p>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -264,47 +190,6 @@ export function DataQualitySection({
           </Card>
         )}
 
-        {/* Validation Results Sample */}
-        {report.validation_results && report.validation_results.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Validation Results</CardTitle>
-              <CardDescription>
-                Showing first 10 records with issues (out of {report.validation_results.length} total)
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {report.validation_results
-                  .filter(r => !r.is_valid)
-                  .slice(0, 10)
-                  .map((result, idx) => (
-                    <div key={idx} className="p-3 border rounded-lg">
-                      <div className="flex items-center space-x-2 mb-2">
-                        <XCircle className="h-4 w-4 text-red-600" />
-                        <span className="font-medium">Record {result.record_index}</span>
-                        <Badge variant="destructive">Invalid</Badge>
-                      </div>
-                      {result.issues.length > 0 && (
-                        <div className="space-y-1 mt-2">
-                          {result.issues.slice(0, 3).map((issue, issueIdx) => (
-                            <div key={issueIdx} className="text-sm text-muted-foreground">
-                              <span className="font-medium">{issue.field}:</span> {issue.message}
-                            </div>
-                          ))}
-                          {result.issues.length > 3 && (
-                            <div className="text-sm text-muted-foreground">
-                              +{result.issues.length - 3} more issues
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
       </div>
     );
   };
@@ -319,11 +204,64 @@ export function DataQualitySection({
         selectedSourceType={selectedSourceType}
       />
 
+      {/* Parsed File & Embeddings Selection */}
+      {selectedFileId && availableEmbeddings.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm">Select Parsed File & Semantic Embeddings</CardTitle>
+            <CardDescription>
+              Choose which parsed file and semantic embeddings to use for quality assessment
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">Parsed File</label>
+              <Select
+                value={selectedParsedFileId}
+                onValueChange={setSelectedParsedFileId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select parsed file" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableEmbeddings.map((emb) => (
+                    <SelectItem key={emb.id} value={emb.id}>
+                      {emb.name.replace('_embeddings', '')}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="text-sm font-medium mb-2 block">Semantic Embeddings</label>
+              <Select
+                value={selectedEmbeddingId || availableEmbeddings[0]?.id || ''}
+                onValueChange={setSelectedEmbeddingId}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select semantic embeddings" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableEmbeddings.map((emb) => (
+                    <SelectItem key={emb.id} value={emb.id}>
+                      {emb.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-gray-500 mt-2">
+                Semantic embeddings pattern: <code className="bg-gray-100 px-1 rounded">userfriendlyfilename_embeddings</code>
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Evaluation Trigger */}
       <div className="flex items-center gap-4">
         <Button
           onClick={handleEvaluateQuality}
-          disabled={!selectedFileId || loading}
+          disabled={!selectedFileId || !selectedParsedFileId || loading}
           size="lg"
           className="bg-gradient-to-r from-green-600 to-teal-600 hover:from-green-700 hover:to-teal-700"
         >

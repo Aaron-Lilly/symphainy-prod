@@ -8,6 +8,7 @@ WHAT (Infrastructure Role): I provide raw ArangoDB client operations
 HOW (Infrastructure Implementation): I use real ArangoDB client with no business logic
 """
 
+import sys
 from typing import Dict, Any, Optional, List
 from urllib.parse import urlparse
 

@@ -25,3 +25,7 @@ python-multipart>=0.0.6
 
 # Cryptography (used for JWT, AS2 fallback, etc.)
 cryptography>=41.0.0
+
+# Google Cloud Storage (REQUIRED for file storage - foundational capability)
+google-cloud-storage>=2.10.0
+google-auth>=2.23.0

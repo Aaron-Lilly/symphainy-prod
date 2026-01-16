@@ -9,6 +9,7 @@ HOW (Abstraction): I provide lightweight coordination for JSON adapter
 """
 
 import logging
+import json
 from typing import Dict, Any, Optional
 from datetime import datetime
 
@@ -64,13 +65,6 @@ class JsonProcessingAbstraction:
                     timestamp=datetime.utcnow().isoformat()
                 )
             
-            if not self.json_adapter:
-                return FileParsingResult(
-                    success=False,
-                    error="JSON adapter not available",
-                    timestamp=datetime.utcnow().isoformat()
-                )
-            
             # Retrieve file from State Surface
             file_data = await state_surface.get_file(request.file_reference)
             
@@ -78,6 +72,14 @@ class JsonProcessingAbstraction:
                 return FileParsingResult(
                     success=False,
                     error=f"File not found: {request.file_reference}",
+                    timestamp=datetime.utcnow().isoformat()
+                )
+            
+            # JSON adapter is REQUIRED - fail fast if missing
+            if not self.json_adapter:
+                return FileParsingResult(
+                    success=False,
+                    error="JSON adapter is required for JSON parsing. Please ensure JsonProcessingAdapter is initialized in Public Works Foundation.",
                     timestamp=datetime.utcnow().isoformat()
                 )
             
@@ -92,10 +94,15 @@ class JsonProcessingAbstraction:
                 )
             
             # Convert to FileParsingResult
+            json_data = result.get("data")
             return FileParsingResult(
                 success=True,
+                text_content=json.dumps(json_data) if json_data else "",
                 structured_data={
-                    "json": result.get("data", {}),
+                    "type": "json",
+                    "data": json_data,
+                    "is_array": isinstance(json_data, list),
+                    "is_object": isinstance(json_data, dict),
                     "metadata": result.get("metadata", {})
                 },
                 metadata=result.get("metadata", {}),

@@ -26,7 +26,8 @@ import ReactMarkdown from "react-markdown";
 import dynamicImport from "next/dynamic";
 import RoadmapTimeline from "@/components/experience/RoadmapTimeline";
 import { Button } from "@/components/ui/button";
-import { useGlobalSession } from "@/shared/agui/GlobalSessionProvider";
+import { usePlatformState } from "@/shared/state/PlatformStateProvider";
+import { useOutcomesAPIManager } from "@/shared/hooks/useOutcomesAPIManager";
 import { Loader, AlertTriangle, FileText, Play, Download, Upload, MessageCircle } from "lucide-react";
 import { FileMetadata, FileType, FileStatus } from "@/shared/types/file";
 import { useSetAtom } from "jotai";
@@ -58,7 +59,8 @@ export default function BusinessOutcomesPillarPage() {
   const setAgentInfo = useSetAtom(chatbotAgentInfoAtom);
   const setMainChatbotOpen = useSetAtom(mainChatbotOpenAtom);
 
-  const { getPillarState, setPillarState } = useGlobalSession();
+  const { state } = usePlatformState();
+  const outcomesAPIManager = useOutcomesAPIManager();
   const [showProposal, setShowProposal] = useState(false);
   const [selectedFile, setSelectedFile] = useState<FileMetadata | null>(null);
   const [businessOutcomesFiles, setBusinessOutcomesFiles] = useState<FileMetadata[]>([]);
@@ -82,93 +84,54 @@ export default function BusinessOutcomesPillarPage() {
   const [isGeneratingOutputs, setIsGeneratingOutputs] = useState(false);
   const [businessOutcomesOutputs, setBusinessOutcomesOutputs] = useState<any>(null);
 
-  // Get files from global session state - check all pillar states for files
+  // Get files from Content realm state
   useEffect(() => {
     const getAllFiles = () => {
       try {
-        const contentState = getPillarState('content');
-        const files: FileMetadata[] = [];
-        
-        if (contentState?.files) {
-          files.push(...contentState.files);
-        }
-        
-        if (contentState?.uploadedFiles) {
-          files.push(...contentState.uploadedFiles);
-        }
-        
-        setBusinessOutcomesFiles(files);
+        // Get files from Content realm state
+        const contentFiles = state.realm.content.files || [];
+        setBusinessOutcomesFiles(contentFiles as FileMetadata[]);
       } catch (error) {
-        console.error("Error getting files:", error);
+        console.error("[BusinessOutcomes] Error getting files:", error);
       }
     };
 
-    if (!initialized) {
+    if (!initialized && state.session.sessionId) {
       getAllFiles();
       setInitialized(true);
     }
-  }, [getPillarState, initialized]);
+  }, [state.realm.content.files, state.session.sessionId, initialized]);
 
-  // Initialize experience session
-  const initializeSession = async () => {
-    try {
-      const token = `business-outcomes-session-${Math.random().toString(36).slice(2)}`;
-      setSessionToken(token);
-      
-      // Create business outcomes session
-      const { ExperienceService } = await import("@/shared/services/experience");
-      await ExperienceService.createExperienceSession(token);
-      
-      // Get cross-pillar data
-      await loadCrossPillarData(token);
-      
-    } catch (error: any) {
-      console.error("Error initializing session:", error);
-      setError(error.message || "Failed to initialize business outcomes session");
-    }
-  };
-
-  // Load cross-pillar data
-  const loadCrossPillarData = async (token: string) => {
-    setIsLoadingData(true);
-    try {
-      // Get insights data
-      const { ExperienceService } = await import("@/shared/services/experience");
-      const insightsResponse = await ExperienceService.getCrossPillarData({
-        sessionToken: token,
-        pillar: 'insights',
-        dataType: 'summary',
-      });
-      
-      if (insightsResponse.success) {
-        setInsightsData(insightsResponse.data);
-      }
-      
-      // Get operations data
-      const operationsResponse = await ExperienceService.getCrossPillarData({
-        sessionToken: token,
-        pillar: 'operations',
-        dataType: 'blueprint',
-      });
-      
-      if (operationsResponse.success) {
-        setOperationsData(operationsResponse.data);
-      }
-      
-    } catch (error: any) {
-      console.error("Error loading cross-pillar data:", error);
-      setError(error.message || "Failed to load cross-pillar data");
-    } finally {
-      setIsLoadingData(false);
-    }
-  };
-
-  // Initialize session on component mount
+  // Load cross-pillar data from realm states
   useEffect(() => {
-    if (!sessionToken) {
-      initializeSession();
+    const loadCrossPillarData = () => {
+      setIsLoadingData(true);
+      try {
+        // Get insights data from Insights realm state
+        const insightsState = state.realm.insights;
+        if (insightsState && Object.keys(insightsState).length > 0) {
+          setInsightsData(insightsState);
+        }
+        
+        // Get journey data from Journey realm state
+        const journeyState = state.realm.journey;
+        if (journeyState && Object.keys(journeyState).length > 0) {
+          setOperationsData(journeyState); // Keep variable name for compatibility
+        }
+        
+      } catch (error: any) {
+        console.error("[BusinessOutcomes] Error loading cross-pillar data:", error);
+        setError(error.message || "Failed to load cross-pillar data");
+      } finally {
+        setIsLoadingData(false);
+      }
+    };
+
+    if (state.session.sessionId) {
+      loadCrossPillarData();
+      setSessionToken(state.session.sessionId);
     }
-  }, [sessionToken]);
+  }, [state.realm.insights, state.realm.journey, state.session.sessionId]);
 
   // Set up Business Outcomes Liaison Agent as secondary option (not default)
   useEffect(() => {
@@ -198,91 +161,104 @@ export default function BusinessOutcomesPillarPage() {
 
   const handleAdditionalFileUpload = async (file: FileMetadata) => {
     try {
-      if (!sessionToken) return;
+      if (!state.session.sessionId) return;
       
-      const { ExperienceService } = await import("@/shared/services/experience");
-      await ExperienceService.storeAdditionalContext({
-        session_token: sessionToken,
-        context_type: 'additional_file',
-        context_data: file,
-        priority: 'medium',
-      });
+      // Store additional file in realm state
+      const currentFiles = state.realm.outcomes.additionalFiles || [];
+      const updatedFiles = [...currentFiles, file];
       
+      // Note: This would ideally be done via State Surface, but for now we'll store in local state
       setAdditionalFiles(prev => [...prev, file]);
     } catch (error: any) {
-      console.error("Error uploading additional file:", error);
+      console.error("[BusinessOutcomes] Error uploading additional file:", error);
       setError(error.message || "Failed to upload additional file");
     }
   };
 
   const handleGenerateExperienceOutputs = async () => {
     setIsGeneratingOutputs(true);
+    setError(null);
+    
     try {
-      if (!sessionToken) return;
+      if (!state.session.sessionId) {
+        setError("Session required to generate outcomes");
+        return;
+      }
+
+      // First, synthesize outcome from all pillars
+      const synthesisResult = await outcomesAPIManager.synthesizeOutcome();
       
-      // Prepare pillar outputs
-      const pillarOutputs = {
-        content_pillar: {
-          files: businessOutcomesFiles,
-          additional_files: additionalFiles
-        },
-        insights_pillar: insightsData,
-        operations_pillar: operationsData
-      };
+      if (!synthesisResult.success) {
+        setError(synthesisResult.error || "Failed to synthesize outcome");
+        return;
+      }
 
-      // Generate Strategic Roadmap using new BusinessOutcomesSolutionService
+      // Extract goals from synthesis for roadmap generation
+      const goals: string[] = [];
+      if (synthesisResult.synthesis?.content_summary) {
+        goals.push("Content analysis and processing");
+      }
+      if (synthesisResult.synthesis?.insights_summary) {
+        goals.push("Data insights and interpretation");
+      }
+      if (synthesisResult.synthesis?.journey_summary) {
+        goals.push("Process optimization and workflow");
+      }
+      
+      // If no specific goals, use default
+      if (goals.length === 0) {
+        goals.push("Complete platform implementation");
+      }
+
+      // Generate Strategic Roadmap using OutcomesAPIManager
       try {
-        const { BusinessOutcomesSolutionService } = await import("@/shared/services/business-outcomes");
-        const businessOutcomesService = new BusinessOutcomesSolutionService();
-        
-        const roadmapData = await businessOutcomesService.generateRoadmap({
-          sessionId: sessionToken,
-          roadmapOptions: {},
-          userId: "anonymous",
-          sessionToken: sessionToken
-        });
+        const roadmapResult = await outcomesAPIManager.generateRoadmap(goals);
 
-        if (roadmapData.success && roadmapData.roadmap) {
-          setRoadmapResult(roadmapData);
+        if (roadmapResult.success && roadmapResult.roadmap) {
+          setRoadmapResult({
+            success: true,
+            roadmap: roadmapResult.roadmap,
+            roadmap_id: roadmapResult.roadmap.roadmap_id
+          });
+        } else {
+          console.error("[BusinessOutcomes] Roadmap generation failed:", roadmapResult.error);
         }
       } catch (error: any) {
-        console.error("Error generating roadmap:", error);
+        console.error("[BusinessOutcomes] Error generating roadmap:", error);
         setError(error.message || "Failed to generate roadmap");
       }
 
-      // Generate POC Proposal using new BusinessOutcomesSolutionService
+      // Generate POC Proposal using OutcomesAPIManager
       try {
-        const { BusinessOutcomesSolutionService } = await import("@/shared/services/business-outcomes");
-        const businessOutcomesService = new BusinessOutcomesSolutionService();
+        const pocDescription = synthesisResult.synthesis?.overall_synthesis || 
+          "Proof of concept for platform implementation based on analysis across all pillars";
         
-        const pocData = await businessOutcomesService.generatePOCProposal({
-          sessionId: sessionToken,
-          pocOptions: {},
-          userId: "anonymous",
-          sessionToken: sessionToken
-        });
+        const pocResult = await outcomesAPIManager.createPOC(pocDescription);
 
-        if (pocData.success && pocData.poc_proposal) {
-          setPocProposal(pocData);
+        if (pocResult.success && pocResult.poc_proposal) {
+          setPocProposal({
+            success: true,
+            proposal: pocResult.poc_proposal,
+            proposal_id: pocResult.poc_proposal.poc_id
+          });
+        } else {
+          console.error("[BusinessOutcomes] POC generation failed:", pocResult.error);
         }
       } catch (error: any) {
-        console.error("Error generating POC proposal:", error);
+        console.error("[BusinessOutcomes] Error generating POC proposal:", error);
         setError(error.message || "Failed to generate POC proposal");
       }
 
-      // Also call ExperienceService for any additional outputs
-      const { ExperienceService } = await import("@/shared/services/experience");
-      const response = await ExperienceService.generateExperienceOutputs({
-        sessionToken,
-        outputType: 'all',
-        includeVisualizations: true,
-      });
-      
-      if (response.status === 'success') {
-        setBusinessOutcomesOutputs(response.outputs);
+      // Store synthesis in realm state
+      if (synthesisResult.synthesis) {
+        setBusinessOutcomesOutputs({
+          synthesis: synthesisResult.synthesis,
+          roadmap: roadmapResult?.roadmap,
+          poc: pocProposal?.poc_proposal
+        });
       }
     } catch (error: any) {
-      console.error("Error generating outputs:", error);
+      console.error("[BusinessOutcomes] Error generating outputs:", error);
       setError(error.message || "Failed to generate business outcomes outputs");
     } finally {
       setIsGeneratingOutputs(false);
@@ -319,7 +295,7 @@ export default function BusinessOutcomesPillarPage() {
           <TabsTrigger value="journey">Journey Recap</TabsTrigger>
           <TabsTrigger value="data">Data</TabsTrigger>
           <TabsTrigger value="insights">Insights</TabsTrigger>
-          <TabsTrigger value="operations">Operations</TabsTrigger>
+          <TabsTrigger value="operations">Journey</TabsTrigger>
         </TabsList>
 
         <TabsContent value="journey" className="pt-4">
@@ -504,7 +480,7 @@ export default function BusinessOutcomesPillarPage() {
           ) : (
             <div className="text-center py-12">
               <p className="text-muted-foreground">
-                No operations data available. Complete the Operations pillar analysis first.
+                No journey data available. Complete the Journey pillar analysis first.
               </p>
             </div>
           )}

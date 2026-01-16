@@ -19,10 +19,11 @@ import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 from utilities import get_logger
-from config import get_env_contract
+from symphainy_platform.config import get_env_contract
 
 # Runtime Components
 from symphainy_platform.runtime.intent_registry import IntentRegistry
@@ -37,6 +38,9 @@ from symphainy_platform.foundations.public_works.foundation_service import Publi
 
 # Realms
 from symphainy_platform.realms.content import ContentRealm
+from symphainy_platform.realms.insights import InsightsRealm
+from symphainy_platform.realms.journey import JourneyRealm
+from symphainy_platform.realms.outcomes import OutcomesRealm
 
 # Initialize
 env = get_env_contract()
@@ -106,9 +110,10 @@ async def initialize_runtime():
         realm_registry = RealmRegistry(intent_registry)
         logger.info("✅ Realm Registry initialized")
         
-        # State Surface
+        # State Surface (with FileStorageAbstraction for file retrieval)
         state_surface = StateSurface(
-            state_abstraction=public_works.get_state_abstraction()
+            state_abstraction=public_works.get_state_abstraction(),
+            file_storage=public_works.get_file_storage_abstraction()
         )
         logger.info("✅ State Surface initialized")
         
@@ -139,13 +144,37 @@ async def initialize_runtime():
         # Step 3: Register Realms
         logger.info("📋 Step 3: Registering Realms...")
         
-        # Register Content Realm
-        content_realm = ContentRealm("content")
+        # Register Content Realm with Public Works
+        content_realm = ContentRealm("content", public_works=public_works)
         if realm_registry.register_realm(content_realm):
             logger.info("✅ Content Realm registered")
         else:
             logger.error("❌ Failed to register Content Realm")
             raise RuntimeError("Failed to register Content Realm")
+        
+        # Register Insights Realm with Public Works
+        insights_realm = InsightsRealm("insights", public_works=public_works)
+        if realm_registry.register_realm(insights_realm):
+            logger.info("✅ Insights Realm registered")
+        else:
+            logger.error("❌ Failed to register Insights Realm")
+            raise RuntimeError("Failed to register Insights Realm")
+        
+        # Register Journey Realm with Public Works
+        journey_realm = JourneyRealm("journey", public_works=public_works)
+        if realm_registry.register_realm(journey_realm):
+            logger.info("✅ Journey Realm registered")
+        else:
+            logger.error("❌ Failed to register Journey Realm")
+            raise RuntimeError("Failed to register Journey Realm")
+        
+        # Register Outcomes Realm with Public Works
+        outcomes_realm = OutcomesRealm("outcomes", public_works=public_works)
+        if realm_registry.register_realm(outcomes_realm):
+            logger.info("✅ Outcomes Realm registered")
+        else:
+            logger.error("❌ Failed to register Outcomes Realm")
+            raise RuntimeError("Failed to register Outcomes Realm")
         
         logger.info(f"✅ Registered {len(realm_registry.list_realms())} realm(s)")
         
@@ -225,6 +254,15 @@ def create_app() -> FastAPI:
         lifespan=lifespan
     )
     
+    # Add CORS middleware for external access
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # Configure for production - allow specific origins
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    
     # Initialize OpenTelemetry SDK
     try:
         from symphainy_platform.foundations.public_works.adapters.telemetry_adapter import TelemetryAdapter
@@ -282,6 +320,43 @@ def create_app() -> FastAPI:
     ):
         """Get execution status."""
         return await app.state.runtime_api.get_execution_status(execution_id, tenant_id)
+    
+    @app.get("/api/realms")
+    async def get_realms():
+        """Get list of registered realms (for Admin Dashboard)."""
+        try:
+            if not hasattr(app.state, "realm_registry"):
+                return {
+                    "realms": [],
+                    "total": 0,
+                    "message": "Realm registry not available"
+                }
+            
+            realm_registry = app.state.realm_registry
+            realm_names = realm_registry.list_realms()
+            
+            realms = []
+            for realm_name in realm_names:
+                realm = realm_registry.get_realm(realm_name)
+                if realm:
+                    realms.append({
+                        "name": realm_name,
+                        "intents_supported": len(realm.declare_intents()) if hasattr(realm, 'declare_intents') else 0,
+                        "intents": realm.declare_intents() if hasattr(realm, 'declare_intents') else []
+                    })
+            
+            return {
+                "realms": realms,
+                "total": len(realms),
+                "realm_names": realm_names
+            }
+        except Exception as e:
+            logger.error(f"Failed to get realms: {e}", exc_info=True)
+            return {
+                "realms": [],
+                "total": 0,
+                "error": str(e)
+            }
     
     return app
 

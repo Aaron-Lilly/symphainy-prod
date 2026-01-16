@@ -10,8 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from 'sonner';
 import { Brain, Database, Layers, Sparkles, RefreshCw, Wand2, Eye, BookOpen } from 'lucide-react';
 import { listEmbeddings, previewEmbeddings, createEmbeddings, listParsedFilesWithEmbeddings, getMashContext, type EmbeddingFile, type SemanticLayerPreview } from '@/lib/api/content';
-import { useGlobalSession } from '@/shared/agui/GlobalSessionProvider';
-import { ContentAPIManager } from '@/shared/managers/ContentAPIManager';
+import { usePlatformState } from '@/shared/state/PlatformStateProvider';
+import { useContentAPIManager } from '@/shared/managers/ContentAPIManager';
 import MashContextBanner from './MashContextBanner';
 import CorrelationChain from './CorrelationChain';
 import ThreeLayerPatternDiagram from './ThreeLayerPatternDiagram';
@@ -21,7 +21,8 @@ interface DataMashProps {
 }
 
 export default function DataMash({ selectedFile: propSelectedFile }: DataMashProps) {
-  const { getPillarState, guideSessionToken } = useGlobalSession();
+  const { state } = usePlatformState();
+  const contentAPIManager = useContentAPIManager();
   
   const [selectedFileUuid, setSelectedFileUuid] = useState<string | null>(null);
   const [selectedParsedFileId, setSelectedParsedFileId] = useState<string | null>(null);
@@ -42,20 +43,16 @@ export default function DataMash({ selectedFile: propSelectedFile }: DataMashPro
   const [mashContext, setMashContext] = useState<any>(null);
   const [loadingMashContext, setLoadingMashContext] = useState(false);
 
-  // Get files from all pillar states to find uploaded files
-  const parsingState = getPillarState('parsing') || { files: [] };
-  const dataState = getPillarState('data') || { files: [] };
-  const contentState = getPillarState('content') || { files: [] };
-  const insightsState = getPillarState('insights') || { files: [] };
-  const operationsState = getPillarState('operations') || { files: [] };
+  // Get files from realm states to find uploaded files
+  const contentFiles = state.realm.content.files || [];
+  const insightsFiles = state.realm.insights.files || [];
+  const journeyFiles = state.realm.journey.files || [];
   
   // Combine all files and deduplicate by UUID
   const allFiles = [
-    ...(parsingState.files || []),
-    ...(dataState.files || []),
-    ...(contentState.files || []),
-    ...(insightsState.files || []),
-    ...(operationsState.files || [])
+    ...contentFiles,
+    ...insightsFiles,
+    ...journeyFiles
   ];
   
   const uniqueFilesMap = new Map();
@@ -72,15 +69,30 @@ export default function DataMash({ selectedFile: propSelectedFile }: DataMashPro
 
   // Load parsed files on mount
   const loadParsedFiles = useCallback(async () => {
-    if (!guideSessionToken) {
+    if (!state.session.sessionId) {
       setParsedFiles([]);
       return;
     }
 
     setLoadingParsedFiles(true);
     try {
-      const apiManager = new ContentAPIManager(guideSessionToken);
-      const parsedFilesList = await apiManager.listParsedFiles();
+      // Load parsed files using new ContentAPIManager
+      // Note: listParsedFiles may need to be added to new ContentAPIManager
+      // For MVP, we'll use the existing endpoint pattern
+      const { getApiEndpointUrl } = require('@/shared/config/api-config');
+      const url = getApiEndpointUrl('/api/v1/content-pillar/list-parsed-files');
+      
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Failed to load parsed files: ${response.statusText}`);
+      }
+      
+      const data = await response.json();
+      const parsedFilesList = data.parsed_files || [];
       setParsedFiles(parsedFilesList);
       
       // Auto-select first parsed file if available and none selected
@@ -95,7 +107,7 @@ export default function DataMash({ selectedFile: propSelectedFile }: DataMashPro
     } finally {
       setLoadingParsedFiles(false);
     }
-  }, [guideSessionToken, selectedParsedFileId]);
+  }, [state.session.sessionId, selectedParsedFileId]);
 
   useEffect(() => {
     loadParsedFiles();
@@ -155,7 +167,7 @@ export default function DataMash({ selectedFile: propSelectedFile }: DataMashPro
   const loadMashContext = async (options: { content_id?: string; file_id?: string; parsed_file_id?: string }) => {
     setLoadingMashContext(true);
     try {
-      const token = guideSessionToken || "debug-token";
+      const token = state.session.sessionId || "debug-token";
       const result = await getMashContext(options, token);
       if (result.success && result.mash_context) {
         setMashContext(result.mash_context);
@@ -174,7 +186,7 @@ export default function DataMash({ selectedFile: propSelectedFile }: DataMashPro
   const loadEmbeddings = async (fileId: string) => {
     setLoading(true);
     try {
-      const token = guideSessionToken || "debug-token";
+      const token = state.session.sessionId || "debug-token";
       const result = await listEmbeddings(fileId, token);
       if (result.success) {
         setEmbeddingFiles(result.embeddings);
@@ -199,7 +211,7 @@ export default function DataMash({ selectedFile: propSelectedFile }: DataMashPro
   const loadPreview = async (contentId: string) => {
     setPreviewLoading(true);
     try {
-      const token = guideSessionToken || "debug-token";
+      const token = state.session.sessionId || "debug-token";
       const result = await previewEmbeddings(contentId, token);
       if (result.success) {
         setPreview(result);
@@ -225,7 +237,7 @@ export default function DataMash({ selectedFile: propSelectedFile }: DataMashPro
     setCreateEmbeddingsError(null);
     
     try {
-      const token = guideSessionToken || "debug-token";
+      const token = state.session.sessionId || "debug-token";
       console.log('[DataMash] Creating embeddings for parsed_file_id:', selectedParsedFileId);
       const result = await createEmbeddings(selectedParsedFileId, token, selectedFile?.uuid);
       
@@ -284,14 +296,14 @@ export default function DataMash({ selectedFile: propSelectedFile }: DataMashPro
   };
 
   const loadParsedFilesWithEmbeddings = useCallback(async () => {
-    if (!guideSessionToken) {
+    if (!state.session.sessionId) {
       setParsedFilesWithEmbeddings([]);
       return;
     }
 
     setLoadingParsedFilesWithEmbeddings(true);
     try {
-      const token = guideSessionToken || "debug-token";
+      const token = state.session.sessionId || "debug-token";
       const result = await listParsedFilesWithEmbeddings(token);
       if (result.success) {
         setParsedFilesWithEmbeddings(result.parsed_files);
@@ -316,7 +328,7 @@ export default function DataMash({ selectedFile: propSelectedFile }: DataMashPro
     } finally {
       setLoadingParsedFilesWithEmbeddings(false);
     }
-  }, [guideSessionToken, selectedParsedFileWithEmbeddings]);
+  }, [state.session.sessionId, selectedParsedFileWithEmbeddings]);
 
   // Load parsed files with embeddings on mount
   useEffect(() => {

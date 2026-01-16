@@ -15,9 +15,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { useAuth } from '@/shared/agui/AuthProvider';
-import { useGlobalSession } from '@/shared/agui/GlobalSessionProvider';
-import { ContentAPIManager } from '@/shared/managers/ContentAPIManager';
+import { useAuth } from '@/shared/auth/AuthProvider';
+import { usePlatformState } from '@/shared/state/PlatformStateProvider';
+import { useContentAPIManager } from '@/shared/managers/ContentAPIManager';
 import { FileMetadata, FileStatus } from '@/shared/types/file';
 
 interface FileSelectorProps {
@@ -42,7 +42,8 @@ export function FileSelector({
   dataTestId = "file-selector",
 }: FileSelectorProps) {
   const { isAuthenticated } = useAuth();
-  const { guideSessionToken, getPillarState, setPillarState } = useGlobalSession();
+  const { state, setRealmState } = usePlatformState();
+  const contentAPIManager = useContentAPIManager();
   
   const [files, setFiles] = useState<FileMetadata[]>([]);
   const [loading, setLoading] = useState(false);
@@ -56,10 +57,8 @@ export function FileSelector({
     setError(null);
 
     try {
-      const sessionToken = guideSessionToken || 'debug-token';
-      const apiManager = new ContentAPIManager(sessionToken);
-      
-      const contentFiles = await apiManager.listFiles();
+      // Load files using new ContentAPIManager (Runtime-based)
+      const contentFiles = await contentAPIManager.listFiles();
       
       // Map ContentFile to FileMetadata format
       // Map status string to FileStatus enum
@@ -115,7 +114,7 @@ export function FileSelector({
       setFiles(mappedFiles);
       
       // Update global state for other components to use
-      await setPillarState('data', { files: mappedFiles });
+      setRealmState('content', 'files', mappedFiles);
       
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Failed to load files';
@@ -123,9 +122,9 @@ export function FileSelector({
       console.error('FileSelector: Failed to load files', errorMessage);
       
       // Fallback to global state if available
-      const dataState = getPillarState('data');
-      if (dataState?.files) {
-        let fallbackFiles = dataState.files;
+      const contentFiles = state.realm.content.files;
+      if (contentFiles && Array.isArray(contentFiles)) {
+        let fallbackFiles = contentFiles;
         
         // Apply same filters to fallback
         if (filterStatus && filterStatus.length > 0) {
@@ -147,7 +146,7 @@ export function FileSelector({
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated, guideSessionToken, filterStatus, showOnlyParsed, getPillarState, setPillarState]);
+  }, [isAuthenticated, contentAPIManager, filterStatus, showOnlyParsed, state.realm.content.files, setRealmState]);
 
   // Load files ONLY once on component mount (when authenticated)
   // Use ref to track if we've already loaded to prevent multiple calls
@@ -166,9 +165,9 @@ export function FileSelector({
 
   // Initialize from global state
   useEffect(() => {
-    const dataState = getPillarState('data');
-    if (dataState?.files && Array.isArray(dataState.files) && dataState.files.length > 0) {
-      let stateFiles = dataState.files;
+    const contentFiles = state.realm.content.files;
+    if (contentFiles && Array.isArray(contentFiles) && contentFiles.length > 0) {
+      let stateFiles = contentFiles;
       
       // Apply filters
       if (filterStatus && filterStatus.length > 0) {
@@ -187,7 +186,7 @@ export function FileSelector({
       
       setFiles(stateFiles);
     }
-  }, [getPillarState, filterStatus, showOnlyParsed]);
+  }, [state.realm.content.files, filterStatus, showOnlyParsed]);
 
   // Handle file selection
   const handleValueChange = (fileId: string) => {

@@ -213,3 +213,98 @@ class RealmSDK:
             pass
         
         return True, None
+    
+    @staticmethod
+    def create_realm_from_template(
+        realm_name: str,
+        template_type: str = "basic"
+    ) -> Dict[str, Any]:
+        """
+        Create realm template structure.
+        
+        Args:
+            realm_name: Name of the realm
+            template_type: Template type ("basic", "with_orchestrator", "with_agents")
+        
+        Returns:
+            Template structure dictionary
+        """
+        templates = {
+            "basic": {
+                "realm_name": realm_name,
+                "structure": {
+                    "enabling_services": [],
+                    "orchestrators": [],
+                    "agents": []
+                },
+                "intent_handlers": []
+            },
+            "with_orchestrator": {
+                "realm_name": realm_name,
+                "structure": {
+                    "enabling_services": [],
+                    "orchestrators": [f"{realm_name}_orchestrator"],
+                    "agents": []
+                },
+                "intent_handlers": []
+            },
+            "with_agents": {
+                "realm_name": realm_name,
+                "structure": {
+                    "enabling_services": [],
+                    "orchestrators": [f"{realm_name}_orchestrator"],
+                    "agents": [f"{realm_name}_agent"]
+                },
+                "intent_handlers": []
+            }
+        }
+        
+        return templates.get(template_type, templates["basic"])
+    
+    @staticmethod
+    def register_realm_with_runtime(
+        realm: RealmBase,
+        intent_registry: Any  # IntentRegistry instance
+    ) -> bool:
+        """
+        Register realm with Runtime's intent registry.
+        
+        Args:
+            realm: Realm instance
+            intent_registry: Intent registry from Runtime
+        
+        Returns:
+            True if registration successful
+        """
+        try:
+            # Validate realm contract
+            is_valid, error = RealmSDK.validate_realm_contract(realm)
+            if not is_valid:
+                logger = get_logger("RealmSDK")
+                logger.error(f"Realm contract validation failed: {error}")
+                return False
+            
+            # Get supported intents
+            supported_intents = realm.declare_intents()
+            
+            # Register each intent with the registry
+            for intent_type in supported_intents:
+                # Create intent handler wrapper
+                async def intent_handler_wrapper(intent: Any, context: Any) -> Dict[str, Any]:
+                    return await realm.handle_intent(intent, context)
+                
+                # Register with intent registry
+                intent_registry.register_handler(
+                    intent_type=intent_type,
+                    handler=intent_handler_wrapper,
+                    realm_name=realm.realm_name
+                )
+            
+            logger = get_logger("RealmSDK")
+            logger.info(f"Realm registered with Runtime: {realm.realm_name}")
+            return True
+            
+        except Exception as e:
+            logger = get_logger("RealmSDK")
+            logger.error(f"Failed to register realm with Runtime: {e}", exc_info=True)
+            return False

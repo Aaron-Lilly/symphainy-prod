@@ -18,9 +18,9 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { UploadCloud, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
-import { useAuth } from '@/shared/agui/AuthProvider';
-import { useGlobalSession } from '@/shared/agui/GlobalSessionProvider';
-import { ContentAPIManager } from '@/shared/managers/ContentAPIManager';
+import { useAuth } from '@/shared/auth/AuthProvider';
+import { usePlatformState } from '@/shared/state/PlatformStateProvider';
+import { useContentAPIManager } from '@/shared/managers/ContentAPIManager';
 import { ContentType, FileTypeCategory, FILE_TYPE_CONFIGS, FileType } from '@/shared/types/file';
 import { toast } from 'sonner';
 
@@ -73,7 +73,8 @@ export function FileUploader({
   className 
 }: FileUploaderProps = {}) {
   const { isAuthenticated, user } = useAuth();
-  const { guideSessionToken, getPillarState, setPillarState } = useGlobalSession();
+  const { state, setRealmState } = usePlatformState();
+  const contentAPIManager = useContentAPIManager();
   
   
   const [uploadState, setUploadState] = useState<UploadState>({
@@ -219,11 +220,8 @@ export function FileUploader({
     setUploadState(prev => ({ ...prev, uploading: true, error: null, processingStatus: 'Uploading file...' }));
 
     try {
-      const sessionToken = guideSessionToken || 'debug-token';
-      const apiManager = new ContentAPIManager(sessionToken);
-      
-      // Upload file using semantic API
-      const result = await apiManager.uploadFile(
+      // Upload file using new ContentAPIManager (Runtime-based)
+      const result = await contentAPIManager.uploadFile(
         uploadState.selectedFile,
         uploadState.copybookFile || undefined,
         uploadState.contentType || undefined,  // ⭐ Pass content_type
@@ -240,11 +238,12 @@ export function FileUploader({
           workflowId: result.file?.id || null
         }));
         
-        // Update pillar states
+        // Update realm state (Content realm)
         const config = selectedFileTypeConfig();
-        const currentDataState = getPillarState('data') || { files: [] };
         const uploadedFile = {
           uuid: result.file.id,
+          file_id: result.file_id,
+          file_reference: result.file_reference,
           ui_name: result.file.name,
           file_type: config?.category || 'unknown',
           content_type: uploadState.contentType || undefined,
@@ -262,22 +261,17 @@ export function FileUploader({
           updated_at: result.file.uploadDate,
         };
         
-        const updatedFiles = [...(currentDataState.files || []), uploadedFile];
-        await setPillarState('data', { ...currentDataState, files: updatedFiles });
+        // Store in Content realm state
+        const currentContentState = state.realm.content.files || [];
+        setRealmState('content', 'files', [...currentContentState, uploadedFile]);
         
-        // Add to parsing queue
-        const currentParsingState = getPillarState('parsing') || { files: [] };
-        const updatedParsingFiles = [...(currentParsingState.files || []), uploadedFile];
-        await setPillarState('parsing', { ...currentParsingState, files: updatedParsingFiles });
-        
-        // If SOP/Workflow (processing_pillar is operations_pillar), also add to operations pillar
-        if (config?.processingPillar === 'operations_pillar') {
-          const currentOperationsState = getPillarState('operations') || { files: [] };
-          const updatedOperationFiles = [...(currentOperationsState.files || []), uploadedFile];
-          await setPillarState('operations', { ...currentOperationsState, files: updatedOperationFiles });
+        // If SOP/Workflow (processing_pillar is journey_pillar), also add to Journey realm
+        if (config?.processingPillar === 'operations_pillar' || config?.processingPillar === 'journey_pillar') {
+          const currentJourneyState = state.realm.journey.files || [];
+          setRealmState('journey', 'files', [...currentJourneyState, uploadedFile]);
           
           toast.info('File uploaded to Content Pillar', {
-            description: 'This file will be parsed in Operations Pillar'
+            description: 'This file will be parsed in Journey Pillar'
           });
         }
         
@@ -340,7 +334,7 @@ export function FileUploader({
         onUploadError(errorMessage);
       }
     }
-  }, [uploadState, isAuthenticated, guideSessionToken, getPillarState, setPillarState, onFileUploaded, onUploadError, selectedFileTypeConfig]);
+  }, [uploadState, isAuthenticated, contentAPIManager, state.realm, setRealmState, onFileUploaded, onUploadError, selectedFileTypeConfig]);
 
   // Format file size
   const formatFileSize = (bytes: number): string => {

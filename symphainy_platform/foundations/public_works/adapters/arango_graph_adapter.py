@@ -308,25 +308,49 @@ class ArangoGraphAdapter:
         Returns:
             List of paths (each path is a list of node IDs)
         """
-        query = """
-        FOR v, e, p IN @min_depth..@max_depth ANY
-            @start_vertex TO @end_vertex
-            GRAPH @graph_name
-            LIMIT @max_paths
-            RETURN p.vertices[*]._key
-        """
+        # Use ArangoDB graph API directly for path finding (more reliable than AQL)
+        db = self._get_db()
+        if not db:
+            return []
         
-        bind_vars = {
-            "graph_name": graph_name,
-            "start_vertex": f"{start_collection}/{start_node_id}",
-            "end_vertex": f"{end_collection}/{end_node_id}",
-            "min_depth": 1,
-            "max_depth": max_depth,
-            "max_paths": max_paths
-        }
-        
-        results = await self.execute_query(graph_name, query, bind_vars)
-        return [path for path in results if path]
+        try:
+            graph = db.graph(graph_name)
+            start_vertex_id = f"{start_collection}/{start_node_id}"
+            end_vertex_id = f"{end_collection}/{end_node_id}"
+            
+            # Use graph's shortest_path method
+            paths = []
+            try:
+                # Get shortest path
+                path_result = graph.shortest_path(
+                    start_vertex_id,
+                    end_vertex_id,
+                    direction="any",
+                    weight=None,
+                    default_weight=1
+                )
+                if path_result and "vertices" in path_result:
+                    path_vertices = [v.get("_key") for v in path_result["vertices"]]
+                    if path_vertices:
+                        paths.append(path_vertices)
+            except Exception as e:
+                self.logger.debug(f"Shortest path not found: {e}")
+            
+            # If no path found, try traversal query as fallback
+            if not paths:
+                # Use AQL with proper syntax - graph name must be quoted string literal
+                graph_name_escaped = graph_name.replace("'", "\\'")
+                start_vertex_escaped = start_vertex_id.replace("'", "\\'")
+                end_vertex_escaped = end_vertex_id.replace("'", "\\'")
+                
+                query = f"FOR v, e, p IN 1..{max_depth} ANY '{start_vertex_escaped}' TO '{end_vertex_escaped}' GRAPH '{graph_name_escaped}' LIMIT {max_paths} RETURN p.vertices[*]._key"
+                results = await self.arango_adapter.execute_aql(query, bind_vars={})
+                paths = [path for path in results if path]
+            
+            return paths[:max_paths]
+        except Exception as e:
+            self.logger.error(f"Failed to find path: {e}")
+            return []
     
     async def get_neighbors(
         self,
@@ -347,16 +371,17 @@ class ArangoGraphAdapter:
         Returns:
             List of neighbor nodes
         """
-        query = """
-        FOR v, e, p IN 1..@max_depth ANY
-            @start_vertex
-            GRAPH @graph_name
-            RETURN DISTINCT v
-        """
+        # AQL graph traversal - ArangoDB requires vertex IDs and graph name to be string literals
+        start_vertex_id = f"{collection_name}/{node_id}"
+        
+        # Escape single quotes if needed
+        start_vertex_id_escaped = start_vertex_id.replace("'", "\\'")
+        graph_name_escaped = graph_name.replace("'", "\\'")
+        
+        # Use single line query to avoid formatting issues
+        query = f"FOR v, e, p IN 1..@max_depth ANY '{start_vertex_id_escaped}' GRAPH '{graph_name_escaped}' RETURN DISTINCT v"
         
         bind_vars = {
-            "graph_name": graph_name,
-            "start_vertex": f"{collection_name}/{node_id}",
             "max_depth": max_depth
         }
         
