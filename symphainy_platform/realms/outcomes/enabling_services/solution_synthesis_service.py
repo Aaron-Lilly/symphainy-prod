@@ -104,6 +104,24 @@ class SolutionSynthesisService:
             if financials.get("estimated_cost"):
                 constraints.append(f"Budget: ${financials['estimated_cost']}")
         
+        elif solution_source == "blueprint":
+            blueprint = source_data.get("blueprint", {}) or source_data
+            
+            # Extract goals from roadmap phases
+            roadmap = blueprint.get("roadmap", {})
+            if roadmap:
+                phases = roadmap.get("phases", [])
+                for phase in phases:
+                    objectives = phase.get("objectives", [])
+                    goals.extend([f"{phase.get('name', 'Phase')}: {obj}" for obj in objectives])
+            
+            # Extract constraints from integration requirements
+            sections = blueprint.get("sections", [])
+            for section in sections:
+                if section.get("section") == "Integration Requirements":
+                    resource_requirements = section.get("resource_requirements", [])
+                    constraints.extend(resource_requirements)
+        
         # Create solution using Solution Builder
         solution_builder = SolutionBuilder()
         
@@ -159,6 +177,14 @@ class SolutionSynthesisService:
                 "synthesize_outcome",
                 "create_poc",
                 "create_solution"
+            ])
+        elif solution_source == "blueprint":
+            # Blueprint-based solutions need journey and content intents
+            solution_builder.register_intents([
+                "analyze_coexistence",
+                "create_blueprint",
+                "create_workflow",
+                "create_solution_from_blueprint"
             ])
         
         # Build solution

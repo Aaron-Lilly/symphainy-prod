@@ -7,7 +7,14 @@ Reviews workflows and suggests Coexistence optimizations.
 import sys
 from pathlib import Path
 
-project_root = Path(__file__).resolve().parents[6]
+# Add project root to path
+# Find project root by looking for common markers (pyproject.toml, requirements.txt, etc.)
+current = Path(__file__).resolve()
+project_root = current
+for _ in range(10):  # Max 10 levels up
+    if (project_root / "pyproject.toml").exists() or (project_root / "requirements.txt").exists():
+        break
+    project_root = project_root.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
@@ -116,11 +123,5 @@ class WorkflowOptimizationSpecialist(WorkflowOptimizationAgentBase):
                 "effort": "low"
             })
         
-        return suggestions if suggestions else [
-            {
-                "type": "general",
-                "recommendation": "Workflow appears well-optimized",
-                "impact": "low",
-                "effort": "none"
-            }
-        ]
+        return suggestions if suggestions else []
+        

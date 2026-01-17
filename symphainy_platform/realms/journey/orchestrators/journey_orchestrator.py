@@ -27,6 +27,7 @@ from ..enabling_services.workflow_conversion_service import WorkflowConversionSe
 from ..enabling_services.coexistence_analysis_service import CoexistenceAnalysisService
 from ..enabling_services.visual_generation_service import VisualGenerationService
 from ..agents.journey_liaison_agent import JourneyLiaisonAgent
+from symphainy_platform.realms.outcomes.enabling_services.solution_synthesis_service import SolutionSynthesisService
 
 
 class JourneyOrchestrator:
@@ -53,9 +54,15 @@ class JourneyOrchestrator:
         
         # Initialize enabling services with Public Works
         self.workflow_conversion_service = WorkflowConversionService(public_works=public_works)
-        self.coexistence_analysis_service = CoexistenceAnalysisService(public_works=public_works)
         self.visual_generation_service = VisualGenerationService(public_works=public_works)
+        # Pass visual_generation_service to coexistence_analysis_service for blueprint charts
+        self.coexistence_analysis_service = CoexistenceAnalysisService(
+            public_works=public_works,
+            visual_generation_service=self.visual_generation_service
+        )
         self.journey_liaison_agent = JourneyLiaisonAgent(public_works=public_works)
+        # Solution synthesis service for converting blueprints to solutions
+        self.solution_synthesis_service = SolutionSynthesisService(public_works=public_works)
     
     async def handle_intent(
         self,
@@ -84,6 +91,8 @@ class JourneyOrchestrator:
             return await self._handle_analyze_coexistence(intent, context)
         elif intent_type == "create_blueprint":
             return await self._handle_create_blueprint(intent, context)
+        elif intent_type == "create_solution_from_blueprint":
+            return await self._handle_create_solution_from_blueprint(intent, context)
         elif intent_type == "generate_sop_from_chat":
             return await self._handle_generate_sop_from_chat(intent, context)
         elif intent_type == "sop_chat_message":
@@ -181,17 +190,39 @@ class JourneyOrchestrator:
         intent: Intent,
         context: ExecutionContext
     ) -> Dict[str, Any]:
-        """Handle create_workflow intent."""
-        sop_id = intent.parameters.get("sop_id")
-        if not sop_id:
-            raise ValueError("sop_id is required for create_workflow intent")
+        """
+        Handle create_workflow intent.
         
-        # Create workflow via WorkflowConversionService
-        workflow_result = await self.workflow_conversion_service.create_workflow(
-            sop_id=sop_id,
-            tenant_id=context.tenant_id,
-            context=context
-        )
+        Supports two modes:
+        1. From SOP: sop_id is provided
+        2. From BPMN file: workflow_file_path is provided (and optionally workflow_type)
+        """
+        sop_id = intent.parameters.get("sop_id")
+        workflow_file_path = intent.parameters.get("workflow_file_path")
+        workflow_type = intent.parameters.get("workflow_type", "bpmn")
+        
+        if not sop_id and not workflow_file_path:
+            raise ValueError("Either sop_id or workflow_file_path is required for create_workflow intent")
+        
+        # Mode 1: Create workflow from SOP
+        if sop_id:
+            # Create workflow via WorkflowConversionService
+            workflow_result = await self.workflow_conversion_service.create_workflow(
+                sop_id=sop_id,
+                tenant_id=context.tenant_id,
+                context=context
+            )
+        # Mode 2: Create workflow from BPMN file
+        else:
+            # Parse BPMN file and create workflow
+            # For now, return a placeholder - full implementation would parse BPMN
+            workflow_result = {
+                "workflow_id": f"workflow_{workflow_file_path.split('/')[-1]}",
+                "workflow_type": workflow_type,
+                "source_file": workflow_file_path,
+                "status": "created_from_file"
+            }
+            self.logger.info(f"Created workflow from file: {workflow_file_path}")
         
         # Generate workflow visualization
         visual_result = None
@@ -265,11 +296,14 @@ class JourneyOrchestrator:
         if not workflow_id:
             raise ValueError("workflow_id is required for create_blueprint intent")
         
+        current_state_workflow_id = intent.parameters.get("current_state_workflow_id")
+        
         # Create blueprint via CoexistenceAnalysisService
         blueprint_result = await self.coexistence_analysis_service.create_blueprint(
             workflow_id=workflow_id,
             tenant_id=context.tenant_id,
-            context=context
+            context=context,
+            current_state_workflow_id=current_state_workflow_id
         )
         
         return {
@@ -280,7 +314,67 @@ class JourneyOrchestrator:
             "events": [
                 {
                     "type": "blueprint_created",
-                    "workflow_id": workflow_id
+                    "workflow_id": workflow_id,
+                    "blueprint_id": blueprint_result.get("blueprint_id")
+                }
+            ]
+        }
+    
+    async def _handle_create_solution_from_blueprint(
+        self,
+        intent: Intent,
+        context: ExecutionContext
+    ) -> Dict[str, Any]:
+        """Handle create_solution_from_blueprint intent - create platform solution from blueprint."""
+        blueprint_id = intent.parameters.get("blueprint_id")
+        if not blueprint_id:
+            raise ValueError("blueprint_id is required for create_solution_from_blueprint intent")
+        
+        # Read blueprint from State Surface
+        # Try to get from execution state first
+        execution_state = await context.state_surface.get_execution_state(
+            f"blueprint_{blueprint_id}",
+            context.tenant_id
+        )
+        
+        blueprint_data = None
+        if execution_state and execution_state.get("artifacts", {}).get("blueprint"):
+            blueprint_data = execution_state["artifacts"]["blueprint"]
+        else:
+            # Try to get from file reference
+            blueprint_reference = f"blueprint:{context.tenant_id}:{context.session_id}:{blueprint_id}"
+            blueprint_file = await context.state_surface.get_file(blueprint_reference)
+            if blueprint_file:
+                import json
+                if isinstance(blueprint_file, bytes):
+                    blueprint_data = json.loads(blueprint_file.decode('utf-8'))
+                else:
+                    blueprint_data = blueprint_file
+        
+        if not blueprint_data:
+            raise ValueError(f"Blueprint {blueprint_id} not found")
+        
+        # Create solution via SolutionSynthesisService
+        solution_result = await self.solution_synthesis_service.create_solution_from_artifact(
+            solution_source="blueprint",
+            source_id=blueprint_id,
+            source_data=blueprint_data,
+            tenant_id=context.tenant_id,
+            context=context
+        )
+        
+        return {
+            "artifacts": {
+                "solution": solution_result,
+                "solution_id": solution_result.get("solution_id"),
+                "blueprint_id": blueprint_id
+            },
+            "events": [
+                {
+                    "type": "solution_created_from_blueprint",
+                    "solution_id": solution_result.get("solution_id"),
+                    "blueprint_id": blueprint_id,
+                    "session_id": context.session_id
                 }
             ]
         }
