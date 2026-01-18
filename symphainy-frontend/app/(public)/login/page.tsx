@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import { useRouter } from "next/navigation";
 import { LoginForm, RegisterForm } from "@/components/auth";
-import { useAuth } from "@/shared/agui/AuthProvider";
+import { useAuth } from "@/shared/auth/AuthProvider";
 
 export default function AuthPage() {
   const router = useRouter();

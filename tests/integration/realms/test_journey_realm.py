@@ -18,7 +18,8 @@ from symphainy_platform.runtime.state_surface import StateSurface
 from symphainy_platform.runtime.wal import WriteAheadLog
 from symphainy_platform.runtime.intent_registry import IntentRegistry
 from symphainy_platform.runtime.execution_lifecycle_manager import ExecutionLifecycleManager
-from tests.infrastructure.test_fixtures import test_redis, test_arango, clean_test_db
+from tests.infrastructure.test_fixtures import test_redis, test_arango, clean_test_db, test_public_works
+from tests.infrastructure.test_data_fixtures import test_data_seeder
 
 
 @pytest.mark.integration
@@ -31,7 +32,8 @@ class TestJourneyRealm:
     def journey_realm_setup(
         self,
         test_redis: RedisAdapter,
-        test_arango: ArangoAdapter
+        test_arango: ArangoAdapter,
+        test_public_works
     ):
         """Set up Journey Realm with real infrastructure."""
         # Create dependencies
@@ -54,7 +56,8 @@ class TestJourneyRealm:
             "state_surface": state_surface,
             "wal": wal,
             "intent_registry": intent_registry,
-            "execution_manager": execution_manager
+            "execution_manager": execution_manager,
+            "public_works": test_public_works
         }
     
     @pytest.mark.asyncio
@@ -90,17 +93,28 @@ class TestJourneyRealm:
     @pytest.mark.asyncio
     async def test_create_workflow_with_visual(
         self,
-        journey_realm_setup
+        journey_realm_setup,
+        test_data_seeder
     ):
-        """Test create_workflow intent with visual generation."""
+        """Test create_workflow intent with BPMN file and visual generation."""
         intent_registry = journey_realm_setup["intent_registry"]
         state_surface = journey_realm_setup["state_surface"]
         wal = journey_realm_setup["wal"]
+        public_works = journey_realm_setup["public_works"]
         
         try:
             from symphainy_platform.realms.journey.journey_realm import JourneyRealm
             
-            realm = JourneyRealm()
+            # Upload BPMN workflow file
+            blob_path = await test_data_seeder.upload_test_file(
+                "workflow_data_migration.bpmn",
+                test_id="journey_workflow_test"
+            )
+            
+            if not blob_path:
+                pytest.skip("Failed to upload BPMN workflow file")
+            
+            realm = JourneyRealm(public_works=public_works)
             
             # Register realm intents
             for intent_type in realm.declare_intents():
@@ -110,14 +124,15 @@ class TestJourneyRealm:
                     handler_function=realm.handle_intent
                 )
             
-            # Create create_workflow intent
+            # Create create_workflow intent with BPMN file
             intent = IntentFactory.create_intent(
                 intent_type="create_workflow",
-                tenant_id="tenant_journey",
-                session_id="session_journey",
+                tenant_id="journey_workflow_tenant",
+                session_id="journey_workflow_session",
                 solution_id="solution_journey",
                 parameters={
-                    "workflow_data": {"steps": ["step1", "step2"]},
+                    "workflow_file_path": blob_path,
+                    "workflow_type": "bpmn",
                     "generate_visual": True  # Request visual generation
                 }
             )
@@ -139,6 +154,9 @@ class TestJourneyRealm:
                 artifacts = result["artifacts"]
                 # May contain workflow_visual with image_base64
             
+            # Cleanup
+            await test_data_seeder.cleanup_test_files("journey_workflow_test")
+            
         except ImportError as e:
             pytest.skip(f"Journey Realm not available: {e}")
         except Exception as e:
@@ -147,17 +165,28 @@ class TestJourneyRealm:
     @pytest.mark.asyncio
     async def test_generate_sop_with_visual(
         self,
-        journey_realm_setup
+        journey_realm_setup,
+        test_data_seeder
     ):
-        """Test generate_sop intent with visual generation."""
+        """Test generate_sop intent with BPMN workflow and visual generation."""
         intent_registry = journey_realm_setup["intent_registry"]
         state_surface = journey_realm_setup["state_surface"]
         wal = journey_realm_setup["wal"]
+        public_works = journey_realm_setup["public_works"]
         
         try:
             from symphainy_platform.realms.journey.journey_realm import JourneyRealm
             
-            realm = JourneyRealm()
+            # Upload beneficiary change BPMN workflow
+            blob_path = await test_data_seeder.upload_test_file(
+                "workflow_beneficiary_change.bpmn",
+                test_id="journey_sop_test"
+            )
+            
+            if not blob_path:
+                pytest.skip("Failed to upload BPMN workflow file")
+            
+            realm = JourneyRealm(public_works=public_works)
             
             # Register realm intents
             for intent_type in realm.declare_intents():
@@ -167,14 +196,41 @@ class TestJourneyRealm:
                     handler_function=realm.handle_intent
                 )
             
+            # First create workflow from BPMN
+            workflow_intent = IntentFactory.create_intent(
+                intent_type="create_workflow",
+                tenant_id="journey_sop_tenant",
+                session_id="journey_sop_session",
+                solution_id="solution_journey",
+                parameters={
+                    "workflow_file_path": blob_path,
+                    "workflow_type": "bpmn"
+                }
+            )
+            
+            workflow_context = ExecutionContextFactory.create_context(
+                intent=workflow_intent,
+                state_surface=state_surface,
+                wal=wal
+            )
+            
+            workflow_result = await realm.handle_intent(workflow_intent, workflow_context)
+            
+            # Extract workflow_id from result (if available)
+            workflow_id = "test_workflow_123"  # Default if not in result
+            if workflow_result and "artifacts" in workflow_result:
+                artifacts = workflow_result["artifacts"]
+                if isinstance(artifacts, dict) and "workflow_id" in artifacts:
+                    workflow_id = artifacts["workflow_id"]
+            
             # Create generate_sop intent
             intent = IntentFactory.create_intent(
                 intent_type="generate_sop",
-                tenant_id="tenant_journey",
-                session_id="session_journey",
+                tenant_id="journey_sop_tenant",
+                session_id="journey_sop_session",
                 solution_id="solution_journey",
                 parameters={
-                    "workflow_id": "test_workflow_123",
+                    "workflow_id": workflow_id,
                     "generate_visual": True  # Request visual generation
                 }
             )
@@ -195,6 +251,9 @@ class TestJourneyRealm:
             if "artifacts" in result:
                 artifacts = result["artifacts"]
                 # May contain sop_visual with image_base64
+            
+            # Cleanup
+            await test_data_seeder.cleanup_test_files("journey_sop_test")
             
         except ImportError as e:
             pytest.skip(f"Journey Realm not available: {e}")

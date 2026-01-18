@@ -57,10 +57,48 @@ class SupabaseFileAdapter:
     async def create_file(self, file_data: Dict[str, Any]) -> Dict[str, Any]:
         """Raw file creation - no business logic."""
         try:
-            result = self._client.table("project_files").insert(file_data).execute()
+            # Filter out fields that don't exist in schema (e.g., session_id)
+            # This prevents errors when extra fields are passed through
+            schema_fields = {
+                "uuid", "user_id", "tenant_id", "ui_name", "file_path", "parsed_path",
+                "artifact_type", "file_type", "mime_type", "file_size", "file_hash", "file_checksum",
+                "status", "processing_status", "processing_errors", "ingestion_type",
+                "created_by", "updated_by", "client_ip", "user_agent",
+                "access_level", "permissions", "data_classification", "retention_policy",
+                "compliance_flags", "pillar_origin", "service_context", "processing_pipeline",
+                "arango_content_id", "lineage_depth", "root_file_uuid", "parent_file_uuid",
+                "generation", "lineage_path", "version", "insights",
+                "archived_at", "archive_reason", "purged_at",
+                "created_at", "updated_at", "deleted"
+            }
+            filtered_data = {k: v for k, v in file_data.items() if k in schema_fields}
+            
+            # Log if session_id was filtered out (for debugging)
+            if "session_id" in file_data:
+                self.logger.debug(f"Filtered out session_id from file_data: {file_data.get('session_id')}")
+            
+            # Double-check: explicitly remove session_id if it somehow got through
+            filtered_data.pop("session_id", None)
+            
+            # Log the actual data being inserted (for debugging)
+            self.logger.debug(f"Inserting file with keys: {list(filtered_data.keys())}")
+            
+            # Log UUID values to check for "session_" prefix issue
+            if "user_id" in filtered_data:
+                self.logger.debug(f"user_id value: {filtered_data['user_id']} (type: {type(filtered_data['user_id'])})")
+            if "tenant_id" in filtered_data:
+                self.logger.debug(f"tenant_id value: {filtered_data['tenant_id']} (type: {type(filtered_data['tenant_id'])})")
+            if "uuid" in filtered_data:
+                self.logger.debug(f"uuid value: {filtered_data['uuid']} (type: {type(filtered_data['uuid'])})")
+            
+            result = self._client.table("project_files").insert(filtered_data).execute()
             return result.data[0] if result.data else {}
         except Exception as e:
+            # Log the filtered_data to help debug
             self.logger.error(f"Failed to create file: {e}")
+            self.logger.error(f"Filtered data keys: {list(filtered_data.keys())}")
+            if "session_id" in filtered_data:
+                self.logger.error(f"ERROR: session_id still in filtered_data: {filtered_data.get('session_id')}")
             raise
     
     async def get_file(self, file_uuid: str) -> Optional[Dict[str, Any]]:

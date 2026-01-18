@@ -1,0 +1,220 @@
+"""
+Authentication API Endpoints
+
+Follows Security Guard SDK pattern for authentication.
+"""
+import sys
+from pathlib import Path
+
+# Add project root to path
+# Find project root by looking for common markers (pyproject.toml, requirements.txt, etc.)
+current = Path(__file__).resolve()
+project_root = current
+for _ in range(10):  # Max 10 levels up
+    if (project_root / "pyproject.toml").exists() or (project_root / "requirements.txt").exists():
+        break
+    project_root = project_root.parent
+if str(project_root) not in sys.path:
+    sys.path.insert(0, str(project_root))
+
+from fastapi import APIRouter, HTTPException, Depends, Request, status
+from fastapi.responses import JSONResponse
+from pydantic import BaseModel, EmailStr, Field, validator
+from typing import Dict, Any, Optional
+import re
+
+from utilities import get_logger
+from symphainy_platform.civic_systems.smart_city.sdk.security_guard_sdk import SecurityGuardSDK
+from ..middleware.rate_limiter import rate_limit_login, rate_limit_register
+
+
+router = APIRouter(prefix="/api/auth", tags=["authentication"])
+logger = get_logger("ExperienceAPI.Auth")
+
+
+def get_security_guard_sdk(request: Request) -> SecurityGuardSDK:
+    """Dependency to get Security Guard SDK."""
+    if not hasattr(request.app.state, "security_guard_sdk"):
+        raise RuntimeError("Security Guard SDK not initialized. Check Experience service startup.")
+    return request.app.state.security_guard_sdk
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=128, description="Password must be 8-128 characters")
+    
+    @validator('email')
+    def validate_email_length(cls, v):
+        if len(v) > 254:  # RFC 5321 limit
+            raise ValueError('Email address too long (max 254 characters)')
+        return v
+
+
+class RegisterRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100, description="Name must be 1-100 characters")
+    email: EmailStr
+    password: str = Field(..., min_length=8, max_length=128, description="Password must be 8-128 characters")
+    
+    @validator('email')
+    def validate_email_length(cls, v):
+        if len(v) > 254:  # RFC 5321 limit
+            raise ValueError('Email address too long (max 254 characters)')
+        return v
+    
+    @validator('name')
+    def sanitize_name(cls, v):
+        """Sanitize name to remove potentially dangerous characters."""
+        # Remove HTML/script tags and special characters
+        sanitized = re.sub(r'[<>"\']', '', v)
+        # Remove leading/trailing whitespace
+        sanitized = sanitized.strip()
+        if not sanitized:
+            raise ValueError('Name cannot be empty after sanitization')
+        return sanitized
+
+
+class AuthResponse(BaseModel):
+    success: bool
+    access_token: Optional[str] = None
+    refresh_token: Optional[str] = None
+    user_id: Optional[str] = None
+    tenant_id: Optional[str] = None
+    roles: Optional[list] = None
+    permissions: Optional[list] = None
+    message: Optional[str] = None
+    error: Optional[str] = None
+
+
+@router.post("/login", response_model=AuthResponse)
+async def login(
+    http_request: Request,
+    request: LoginRequest,
+    security_guard: SecurityGuardSDK = Depends(get_security_guard_sdk),
+    _rate_limit: None = Depends(rate_limit_login)  # FastAPI dependency for rate limiting
+):
+    """
+    Login user.
+    
+    Uses Security Guard SDK to authenticate user.
+    """
+    try:
+        # Use auth_abstraction directly to get both validation and tokens in one call
+        auth_abstraction = security_guard.auth_abstraction
+        auth_data = await auth_abstraction.authenticate({
+            "email": request.email,
+            "password": request.password
+        })
+        
+        # Check if authentication failed
+        if not auth_data or not auth_data.get("success") or not auth_data.get("access_token"):
+            # Authentication failed - return 401 directly
+            logger.warning(f"Authentication failed for {request.email}")
+            return JSONResponse(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                content={
+                    "error": "authentication_failed",
+                    "message": "Invalid email or password",
+                    "details": "Please check your credentials and try again"
+                },
+                headers={"WWW-Authenticate": "Bearer"}
+            )
+        
+        # Authentication succeeded - get user context via Security Guard SDK
+        try:
+            auth_result = await security_guard.authenticate({
+                "email": request.email,
+                "password": request.password
+            })
+        except Exception as e:
+            # If Security Guard SDK call fails, use data from auth_abstraction
+            logger.warning(f"Security Guard SDK authentication failed, using auth_abstraction data: {e}")
+            auth_result = None
+        
+        access_token = auth_data.get("access_token")
+        refresh_token = auth_data.get("refresh_token")
+        
+        return AuthResponse(
+            success=True,
+            access_token=access_token,
+            refresh_token=refresh_token,
+            user_id=auth_result.user_id if auth_result else auth_data.get("user_id"),
+            tenant_id=auth_result.tenant_id if auth_result else auth_data.get("tenant_id"),
+            roles=auth_result.roles if auth_result else [],
+            permissions=auth_result.permissions if auth_result else []
+        )
+    except HTTPException as http_ex:
+        # Re-raise HTTP exceptions (like our 401) - don't log as error
+        raise
+    except Exception as e:
+        # Check if it's an authentication error (invalid credentials)
+        error_str = str(e).lower()
+        if "invalid" in error_str or "authentication" in error_str or "credentials" in error_str or "password" in error_str:
+            logger.warning(f"Authentication failed: {e}")
+            raise HTTPException(
+                status_code=401,
+                detail={
+                    "error": "authentication_failed",
+                    "message": "Invalid email or password",
+                    "details": "Please check your credentials and try again"
+                }
+            )
+        # Other errors are server errors
+        logger.error(f"Login failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/register", response_model=AuthResponse)
+async def register(
+    http_request: Request,
+    request: RegisterRequest,
+    security_guard: SecurityGuardSDK = Depends(get_security_guard_sdk),
+    _rate_limit: None = Depends(rate_limit_register)  # FastAPI dependency for rate limiting
+):
+    """
+    Register new user.
+    
+    Uses Security Guard SDK (via auth_abstraction) to register user.
+    """
+    try:
+        # Use auth_abstraction directly to get both registration and tokens in one call
+        auth_abstraction = security_guard.auth_abstraction
+        auth_data = await auth_abstraction.register_user({
+            "email": request.email,
+            "password": request.password,
+            "user_metadata": {
+                "name": request.name,
+                "full_name": request.name
+            }
+        })
+        
+        if not auth_data or not auth_data.get("access_token"):
+            return AuthResponse(
+                success=False,
+                error="Registration failed"
+            )
+        
+        # Get user context via Security Guard SDK for roles/permissions
+        auth_result = await security_guard.register_user({
+            "email": request.email,
+            "password": request.password,
+            "user_metadata": {
+                "name": request.name,
+                "full_name": request.name
+            }
+        })
+        
+        access_token = auth_data.get("access_token")
+        refresh_token = auth_data.get("refresh_token")
+        
+        return AuthResponse(
+            success=True,
+            access_token=access_token,
+            refresh_token=refresh_token,
+            user_id=auth_result.user_id if auth_result else auth_data.get("user_id"),
+            tenant_id=auth_result.tenant_id if auth_result else auth_data.get("tenant_id"),
+            roles=auth_result.roles if auth_result else [],
+            permissions=auth_result.permissions if auth_result else []
+        )
+    except Exception as e:
+        logger.error(f"Registration failed: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=str(e))

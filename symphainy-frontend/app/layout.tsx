@@ -1,7 +1,7 @@
 "use client";
 import "../styles/globals.css";
 import React from "react";
-import AppProviders from "@/shared/agui/AppProviders";
+import AppProviders from "@/shared/state/AppProviders";
 import { Toaster } from "sonner";
 
 /**

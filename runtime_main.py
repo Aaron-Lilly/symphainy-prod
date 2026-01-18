@@ -24,6 +24,7 @@ import uvicorn
 
 from utilities import get_logger
 from symphainy_platform.config import get_env_contract
+from symphainy_platform.config.service_config import get_redis_url, get_arango_url, get_consul_host, get_consul_port
 
 # Runtime Components
 from symphainy_platform.runtime.intent_registry import IntentRegistry
@@ -63,19 +64,12 @@ async def initialize_runtime():
         # Step 1: Initialize Public Works Foundation
         logger.info("📦 Step 1: Initializing Public Works Foundation...")
         
-        # Parse REDIS_URL if available
-        redis_host = "redis"
-        redis_port = 6379
-        if hasattr(env, "REDIS_URL") and env.REDIS_URL:
-            # Parse redis://host:port or redis://host:port/db
-            from urllib.parse import urlparse
-            parsed = urlparse(env.REDIS_URL)
-            redis_host = parsed.hostname or "redis"
-            redis_port = parsed.port or 6379
-        elif hasattr(env, "REDIS_HOST"):
-            redis_host = env.REDIS_HOST
-        elif hasattr(env, "REDIS_PORT"):
-            redis_port = int(env.REDIS_PORT)
+        # Get Redis URL from service_config
+        from urllib.parse import urlparse
+        redis_url = get_redis_url()
+        parsed = urlparse(redis_url)
+        redis_host = parsed.hostname or "redis"
+        redis_port = parsed.port or 6379
         
         public_works = PublicWorksFoundationService(
             config={
@@ -84,10 +78,10 @@ async def initialize_runtime():
                     "port": redis_port,
                 },
                 "consul": {
-                    "host": getattr(env, "CONSUL_HOST", "consul"),
-                    "port": int(getattr(env, "CONSUL_PORT", 8500)),
+                    "host": get_consul_host(),
+                    "port": get_consul_port(),
                 },
-                "arango_url": getattr(env, "ARANGO_URL", "http://arango:8529"),
+                "arango_url": get_arango_url(),
                 "arango_username": "root",
                 "arango_password": getattr(env, "ARANGO_ROOT_PASSWORD", "changeme"),
                 "arango_database": "symphainy_platform",
@@ -132,12 +126,54 @@ async def initialize_runtime():
         )
         logger.info("✅ Transactional Outbox initialized")
         
+        # Materialization Policy & Artifact Storage
+        from symphainy_platform.runtime.policies.materialization_policy_abstraction import (
+            MaterializationPolicyAbstraction,
+            MVP_POLICY_OVERRIDE
+        )
+        
+        # Get Artifact Storage Abstraction from Public Works
+        artifact_storage = public_works.get_artifact_storage_abstraction() if public_works else None
+        if artifact_storage:
+            logger.info("✅ Artifact Storage Abstraction available")
+        else:
+            logger.warning("⚠️ Artifact Storage Abstraction not available")
+        
+        # Try to load materialization policy from config file, fallback to MVP override
+        import yaml
+        import os
+        solution_config = None
+        # Use absolute path based on project root for container reliability
+        config_path = project_root / "config" / "mvp_materialization_policy.yaml"
+        
+        if config_path.exists():
+            try:
+                with open(str(config_path), 'r') as f:
+                    solution_config = yaml.safe_load(f)
+                logger.info(f"✅ Loaded materialization policy from {config_path}")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to load materialization policy from {config_path}: {e}, using defaults")
+                solution_config = {"materialization_policy": MVP_POLICY_OVERRIDE}
+        else:
+            logger.info(f"ℹ️ Materialization policy config not found at {config_path}, using hardcoded MVP override")
+            solution_config = {"materialization_policy": MVP_POLICY_OVERRIDE}
+        
+        # Create Materialization Policy Abstraction
+        materialization_policy = MaterializationPolicyAbstraction(
+            default_policy=None,  # Use default
+            solution_config=solution_config
+        )
+        logger.info("✅ Materialization Policy Abstraction initialized")
+        
         # Execution Lifecycle Manager
         execution_lifecycle_manager = ExecutionLifecycleManager(
             intent_registry=intent_registry,
             state_surface=state_surface,
             wal=wal,
-            transactional_outbox=transactional_outbox
+            transactional_outbox=transactional_outbox,
+            materialization_policy=materialization_policy,
+            artifact_storage=public_works.get_artifact_storage_abstraction(),
+            solution_config=solution_config
         )
         logger.info("✅ Execution Lifecycle Manager initialized")
         
@@ -216,7 +252,8 @@ async def lifespan(app: FastAPI):
         
         runtime_api = RuntimeAPI(
             execution_lifecycle_manager=components["execution_lifecycle_manager"],
-            state_surface=components["state_surface"]
+            state_surface=components["state_surface"],
+            artifact_storage=components["public_works"].get_artifact_storage_abstraction()
         )
         
         app.state.runtime_api = runtime_api
@@ -320,6 +357,31 @@ def create_app() -> FastAPI:
     ):
         """Get execution status."""
         return await app.state.runtime_api.get_execution_status(execution_id, tenant_id)
+
+    @app.get("/api/artifacts/{artifact_id}")
+    async def get_artifact(
+        artifact_id: str,
+        tenant_id: str,
+        include_visuals: bool = False
+    ):
+        """Get artifact by ID."""
+        from fastapi import HTTPException
+        artifact = await app.state.runtime_api.get_artifact(artifact_id, tenant_id, include_visuals)
+        if not artifact:
+            raise HTTPException(status_code=404, detail="Artifact not found")
+        return artifact
+
+    @app.get("/api/artifacts/visual/{visual_path:path}")
+    async def get_visual(
+        visual_path: str,
+        tenant_id: str
+    ):
+        """Get visual image by storage path."""
+        from fastapi import HTTPException, Response
+        visual_bytes = await app.state.runtime_api.get_visual(visual_path, tenant_id)
+        if not visual_bytes:
+            raise HTTPException(status_code=404, detail="Visual not found")
+        return Response(content=visual_bytes, media_type="image/png")
     
     @app.get("/api/realms")
     async def get_realms():

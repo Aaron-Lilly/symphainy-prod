@@ -21,6 +21,7 @@ import uvicorn
 
 from utilities import get_logger
 from symphainy_platform.config import get_env_contract
+from symphainy_platform.config.service_config import get_redis_url, get_arango_url, get_consul_host, get_consul_port
 
 from symphainy_platform.civic_systems.experience.experience_service import create_app
 from symphainy_platform.foundations.public_works.foundation_service import PublicWorksFoundationService
@@ -45,21 +46,18 @@ async def lifespan(app: FastAPI):
         # Initialize Public Works Foundation
         logger.info("📦 Step 1: Initializing Public Works Foundation...")
         # Parse Redis URL if provided, otherwise use defaults
-        redis_url = getattr(env, "REDIS_URL", "redis://redis:6379")
-        # Extract host and port from URL or use defaults
-        if redis_url.startswith("redis://"):
-            redis_parts = redis_url.replace("redis://", "").split(":")
-            redis_host = redis_parts[0] if len(redis_parts) > 0 else "redis"
-            redis_port = int(redis_parts[1]) if len(redis_parts) > 1 else 6379
-        else:
-            redis_host = "redis"
-            redis_port = int(getattr(env, "REDIS_PORT", 6379))
+        # Get Redis URL from service_config
+        from urllib.parse import urlparse
+        redis_url = get_redis_url()
+        parsed = urlparse(redis_url)
+        redis_host = parsed.hostname or "redis"
+        redis_port = parsed.port or 6379
         
         public_works = PublicWorksFoundationService(
             config={
                 "redis": {"host": redis_host, "port": redis_port},
-                "consul": {"host": getattr(env, "CONSUL_HOST", "consul"), "port": int(getattr(env, "CONSUL_PORT", 8500))},
-                "arango_url": env.ARANGO_URL,
+                "consul": {"host": get_consul_host(), "port": get_consul_port()},
+                "arango_url": get_arango_url(),
                 "arango_username": "root",
                 "arango_password": env.ARANGO_ROOT_PASSWORD,
                 "arango_database": "symphainy_platform",

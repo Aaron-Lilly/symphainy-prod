@@ -288,10 +288,18 @@ async def test_gcs(test_infrastructure) -> AsyncGenerator[GCSAdapter, None]:
     
     # Create test bucket if it doesn't exist
     try:
-        if not adapter.bucket_exists(TEST_GCS_BUCKET_NAME):
-            adapter.create_bucket(TEST_GCS_BUCKET_NAME)
-    except Exception:
-        pass  # Bucket may already exist or creation may fail
+        # Use direct GCS client to check/create bucket
+        from google.cloud import storage as gcs_storage
+        client = gcs_storage.Client(project=TEST_GCS_PROJECT_ID)
+        bucket = client.bucket(TEST_GCS_BUCKET_NAME)
+        if not bucket.exists():
+            bucket.create()
+            logger.info(f"Created test bucket: {TEST_GCS_BUCKET_NAME}")
+        else:
+            logger.debug(f"Test bucket already exists: {TEST_GCS_BUCKET_NAME}")
+    except Exception as e:
+        logger.warning(f"Bucket creation check failed (may already exist): {e}")
+        # Try to continue anyway - bucket might exist
     
     yield adapter
     

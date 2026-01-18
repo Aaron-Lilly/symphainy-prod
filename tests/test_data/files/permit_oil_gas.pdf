@@ -1,0 +1,94 @@
+%PDF-1.4
+1 0 obj
+<<
+/Type /Catalog
+/Pages 2 0 R
+>>
+endobj
+2 0 obj
+<<
+/Type /Pages
+/Kids [3 0 R]
+/Count 1
+>>
+endobj
+3 0 obj
+<<
+/Type /Page
+/Parent 2 0 R
+/MediaBox [0 0 612 792]
+/Contents 4 0 R
+/Resources <<
+/Font <<
+/F1 <<
+/Type /Font
+/Subtype /Type1
+/BaseFont /Helvetica
+>>
+>>
+>>
+>>
+endobj
+4 0 obj
+<<
+/Length 500
+>>
+stream
+BT
+/F1 12 Tf
+100 700 Td
+(OIL AND GAS PERMIT APPLICATION) Tj
+0 -20 Td
+(Permit Number: PER-2024-001234) Tj
+0 -20 Td
+(Applicant: Energy Corp Inc.) Tj
+0 -20 Td
+(Location: Section 12, Township 5N, Range 3W) Tj
+0 -20 Td
+(County: Harris County, Texas) Tj
+0 -20 Td
+( ) Tj
+0 -20 Td
+(PERMIT REQUIREMENTS:) Tj
+0 -20 Td
+(1. Well drilling must commence within 90 days of permit issuance) Tj
+0 -20 Td
+(2. Environmental impact assessment required before drilling) Tj
+0 -20 Td
+(3. Water usage limited to 500,000 gallons per day) Tj
+0 -20 Td
+(4. Fracking operations require 72-hour advance notice) Tj
+0 -20 Td
+(5. Monthly production reports required) Tj
+0 -20 Td
+(6. Well abandonment procedures must be followed) Tj
+0 -20 Td
+(7. Spill contingency plan must be on file) Tj
+0 -20 Td
+( ) Tj
+0 -20 Td
+(COMPLIANCE DATES:) Tj
+0 -20 Td
+(Issue Date: 2024-01-15) Tj
+0 -20 Td
+(Expiration Date: 2025-01-15) Tj
+0 -20 Td
+(First Report Due: 2024-02-15) Tj
+ET
+endstream
+endobj
+xref
+0 5
+0000000000 65535 f 
+0000000009 00000 n 
+0000000058 00000 n 
+0000000115 00000 n 
+0000000300 00000 n 
+trailer
+<<
+/Size 5
+/Root 1 0 R
+>>
+startxref
+400
+%%EOF

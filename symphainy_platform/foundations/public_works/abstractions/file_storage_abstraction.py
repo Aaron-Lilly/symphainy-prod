@@ -9,6 +9,7 @@ HOW (Infrastructure Implementation): I use GCS adapter for storage and Supabase 
 """
 
 import hashlib
+import uuid as uuid_lib
 from typing import Dict, Any, Optional, List
 
 from utilities import get_logger, get_clock, generate_session_id
@@ -69,31 +70,43 @@ class FileStorageAbstraction(FileStorageProtocol):
             file_hash = hashlib.sha256(file_data).hexdigest()
             file_size = len(file_data)
             
-            # Determine content type from metadata or file path
-            content_type = None
+            # Determine MIME type from metadata or file path
+            mime_type = None
             if metadata:
-                content_type = metadata.get("content_type")
+                mime_type = metadata.get("mime_type") or metadata.get("content_type")  # Support both for transition
             
-            if not content_type:
+            if not mime_type:
                 # Try to infer from file path
                 if file_path.endswith('.parquet'):
-                    content_type = 'application/parquet'
+                    mime_type = 'application/parquet'
                 elif file_path.endswith('.json'):
-                    content_type = 'application/json'
+                    mime_type = 'application/json'
                 elif file_path.endswith('.csv'):
-                    content_type = 'text/csv'
+                    mime_type = 'text/csv'
+                elif file_path.endswith('.pdf'):
+                    mime_type = 'application/pdf'
+                elif file_path.endswith('.xlsx'):
+                    mime_type = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                elif file_path.endswith('.xls'):
+                    mime_type = 'application/vnd.ms-excel'
+                elif file_path.endswith('.docx'):
+                    mime_type = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                elif file_path.endswith('.doc'):
+                    mime_type = 'application/msword'
+                elif file_path.endswith('.txt'):
+                    mime_type = 'text/plain'
                 else:
-                    content_type = 'application/octet-stream'
+                    mime_type = 'application/octet-stream'
             
             # Upload to GCS
             gcs_metadata = {}
             if metadata:
-                gcs_metadata = {k: str(v) for k, v in metadata.items() if k != 'content_type'}
+                gcs_metadata = {k: str(v) for k, v in metadata.items() if k not in ('mime_type', 'content_type')}
             
             success = await self.gcs.upload_file(
                 blob_name=file_path,
                 file_data=file_data,
-                content_type=content_type,
+                content_type=mime_type,  # GCS API uses content_type parameter name
                 metadata=gcs_metadata
             )
             
@@ -101,19 +114,66 @@ class FileStorageAbstraction(FileStorageProtocol):
                 self.logger.error(f"Failed to upload file to GCS: {file_path}")
                 return {"success": False, "error": "GCS upload failed"}
             
-            # Generate file_id
-            file_id = generate_session_id()  # Generate unique file ID
+            # Generate file_id as a proper UUID (not session_id which has "session_" prefix)
+            # The uuid column in Supabase requires a valid UUID format
+            import uuid as uuid_lib
+            file_id = str(uuid_lib.uuid4())  # Generate proper UUID for file_id
             
             # Create metadata in Supabase if metadata provided
             if metadata and metadata.get("user_id"):
+                # Convert user_id and tenant_id to UUID if they're strings (for backward compatibility)
+                user_id = metadata.get("user_id")
+                tenant_id = metadata.get("tenant_id")
+                
+                # CRITICAL: Filter out any values that start with "session_" prefix
+                # These are likely session IDs being passed incorrectly
+                if isinstance(user_id, str) and user_id.startswith("session_"):
+                    self.logger.warning(f"user_id starts with 'session_' prefix, using 'system' instead: {user_id}")
+                    user_id = "system"
+                
+                if isinstance(tenant_id, str) and tenant_id.startswith("session_"):
+                    self.logger.warning(f"tenant_id starts with 'session_' prefix, this is invalid: {tenant_id}")
+                    # tenant_id is required, so we can't use a default - this should be an error
+                    raise ValueError(f"tenant_id cannot start with 'session_' prefix: {tenant_id}")
+                
+                # If they're strings, generate deterministic UUID from string
+                try:
+                    if isinstance(user_id, str):
+                        try:
+                            # Try to parse as UUID first
+                            user_id = uuid_lib.UUID(user_id)
+                        except ValueError:
+                            # If not valid UUID format, generate deterministic UUID from string
+                            user_id = uuid_lib.uuid5(uuid_lib.NAMESPACE_DNS, user_id)
+                    
+                    if isinstance(tenant_id, str):
+                        try:
+                            # Try to parse as UUID first
+                            tenant_id = uuid_lib.UUID(tenant_id)
+                        except ValueError:
+                            # If not valid UUID format, generate deterministic UUID from string
+                            tenant_id = uuid_lib.uuid5(uuid_lib.NAMESPACE_DNS, tenant_id)
+                except Exception as e:
+                    self.logger.warning(f"Failed to convert user_id/tenant_id to UUID: {e}, using as-is")
+                
+                # Build file_metadata dictionary - only include fields that exist in schema
+                # Note: session_id is NOT in the schema, so we explicitly exclude it
+                # file_type must be one of: 'structured', 'unstructured', 'hybrid' (parsing pathway)
+                # NOT the MIME type (that goes in mime_type)
+                file_type = metadata.get("file_type", "unstructured")
+                # Validate file_type is one of the allowed values
+                if file_type not in ("structured", "unstructured", "hybrid"):
+                    self.logger.warning(f"Invalid file_type '{file_type}', defaulting to 'unstructured'")
+                    file_type = "unstructured"
+                
                 file_metadata = {
                     "uuid": file_id,
-                    "user_id": metadata.get("user_id"),
-                    "tenant_id": metadata.get("tenant_id"),
+                    "user_id": str(user_id) if hasattr(uuid_lib, 'UUID') and isinstance(user_id, uuid_lib.UUID) else user_id,
+                    "tenant_id": str(tenant_id) if hasattr(uuid_lib, 'UUID') and isinstance(tenant_id, uuid_lib.UUID) else tenant_id,
                     "ui_name": metadata.get("ui_name", file_path.split('/')[-1]),
                     "file_path": file_path,
-                    "file_type": metadata.get("file_type", "unstructured"),
-                    "content_type": content_type,
+                    "file_type": file_type,  # Parsing pathway: structured, unstructured, hybrid
+                    "mime_type": mime_type,  # MIME type (e.g., application/pdf) - for rendering, storage
                     "file_size": file_size,
                     "file_hash": file_hash,
                     "status": metadata.get("status", "uploaded"),
@@ -121,6 +181,10 @@ class FileStorageAbstraction(FileStorageProtocol):
                     "updated_at": self.clock.now_iso(),
                     "deleted": False
                 }
+                
+                # Explicitly remove session_id if it exists (not in schema)
+                # This prevents errors when metadata dict is passed through with extra fields
+                file_metadata.pop("session_id", None)
                 
                 try:
                     await self.supabase.create_file(file_metadata)
@@ -206,22 +270,72 @@ class FileStorageAbstraction(FileStorageProtocol):
     
     async def list_files(
         self,
-        prefix: Optional[str] = None
+        prefix: Optional[str] = None,
+        tenant_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        file_type: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None
     ) -> List[Dict[str, Any]]:
         """
         List files in storage.
         
         Args:
-            prefix: Optional prefix filter
+            prefix: Optional prefix filter (for GCS)
+            tenant_id: Optional tenant_id filter (for Supabase metadata)
+            user_id: Optional user_id filter (for Supabase metadata)
+            file_type: Optional file_type filter (for Supabase metadata)
+            limit: Optional result limit
+            offset: Optional pagination offset
         
         Returns:
             List of file metadata dictionaries
         """
         try:
-            files = await self.gcs.list_files(prefix=prefix)
-            
-            self.logger.info(f"Listed {len(files)} files (prefix: {prefix or 'all'})")
-            return files
+            # If tenant_id or user_id is provided, query Supabase for metadata
+            # Otherwise, list from GCS
+            if tenant_id or user_id:
+                # Convert tenant_id/user_id to UUID if needed
+                import uuid as uuid_lib
+                tenant_id_uuid = tenant_id
+                user_id_uuid = user_id
+                
+                try:
+                    if tenant_id and isinstance(tenant_id, str):
+                        try:
+                            tenant_id_uuid = str(uuid_lib.UUID(tenant_id))
+                        except ValueError:
+                            tenant_id_uuid = str(uuid_lib.uuid5(uuid_lib.NAMESPACE_DNS, tenant_id))
+                    
+                    if user_id and isinstance(user_id, str):
+                        try:
+                            user_id_uuid = str(uuid_lib.UUID(user_id))
+                        except ValueError:
+                            user_id_uuid = str(uuid_lib.uuid5(uuid_lib.NAMESPACE_DNS, user_id))
+                except Exception as e:
+                    self.logger.warning(f"Failed to convert tenant_id/user_id to UUID: {e}")
+                
+                # Query Supabase for file metadata
+                filters = {}
+                if file_type:
+                    filters["file_type"] = file_type
+                
+                files = await self.supabase.list_files(
+                    user_id=user_id_uuid or "system",
+                    tenant_id=tenant_id_uuid,
+                    filters=filters,
+                    limit=limit,
+                    offset=offset
+                )
+                
+                self.logger.info(f"Listed {len(files)} files from Supabase (tenant_id: {tenant_id_uuid}, user_id: {user_id_uuid})")
+                return files
+            else:
+                # Fallback to GCS listing
+                files = await self.gcs.list_files(prefix=prefix)
+                
+                self.logger.info(f"Listed {len(files)} files from GCS (prefix: {prefix or 'all'})")
+                return files
             
         except Exception as e:
             self.logger.error(f"Failed to list files: {e}", exc_info=True)

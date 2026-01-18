@@ -8,7 +8,13 @@ import sys
 from pathlib import Path
 
 # Add project root to path
-project_root = Path(__file__).resolve().parents[6]
+# Find project root by looking for common markers (pyproject.toml, requirements.txt, etc.)
+current = Path(__file__).resolve()
+project_root = current
+for _ in range(10):  # Max 10 levels up
+    if (project_root / "pyproject.toml").exists() or (project_root / "requirements.txt").exists():
+        break
+    project_root = project_root.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
@@ -123,8 +129,9 @@ async def get_execution_context(
     Returns:
         ExecutionContext instance
     """
-    from symphainy_platform.runtime.execution_context import ExecutionContext
-    from utilities import generate_session_id, get_clock
+    from symphainy_platform.runtime.execution_context import ExecutionContextFactory
+    from symphainy_platform.runtime.intent_model import IntentFactory
+    from utilities import generate_session_id
     
     if not session_id:
         session_id = generate_session_id()
@@ -145,12 +152,25 @@ async def get_execution_context(
                 use_memory=(state_abstraction is None)
             )
     
-    context = ExecutionContext(
-        session_id=session_id,
+    # Create a minimal intent for guide agent operations
+    # Using a generic query intent type for guide agent interactions
+    intent = IntentFactory.create_intent(
+        intent_type="query_data",  # Generic intent type for guide agent
         tenant_id=tenant_id,
-        intent_id=None,
+        session_id=session_id,
+        solution_id="default",  # Default solution for guide agent
+        parameters={
+            "operation": "guide_agent_interaction"
+        },
+        metadata={}
+    )
+    
+    # Create execution context using factory
+    context = ExecutionContextFactory.create_context(
+        intent=intent,
         state_surface=state_surface,
-        clock=get_clock()
+        wal=None,
+        metadata={}
     )
     
     return context

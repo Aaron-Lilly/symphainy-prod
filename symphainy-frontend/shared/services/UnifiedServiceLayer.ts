@@ -74,12 +74,10 @@ export function useUnifiedServiceLayer(
       // Note: In practice, you'd use specific managers (ContentAPIManager, etc.)
       // This is a placeholder - actual managers extend BaseAPIManager
       // Use ContentAPIManager as a concrete implementation
+      // Note: ContentAPIManager now requires ExperiencePlaneClient and getPlatformState
+      // This should be refactored to use the hook pattern
       const { ContentAPIManager } = await import('../managers/ContentAPIManager');
-      const apiManager = new ContentAPIManager(
-        config.sessionToken,
-        config.baseURL,
-        config.userContext
-      );
+      const apiManager = new ContentAPIManager();
 
       // Create Runtime Client if auto-connect is enabled
       let runtimeClient: RuntimeClient | null = null;
@@ -95,7 +93,7 @@ export function useUnifiedServiceLayer(
       }
 
       setServiceLayer({
-        api: apiManager,
+        api: apiManager as any, // ContentAPIManager doesn't extend BaseAPIManager in new architecture
         runtimeClient,
         isInitialized: true,
         sessionToken: config.sessionToken,
@@ -176,11 +174,7 @@ export class UnifiedServiceLayerFactory {
     try {
       // Create API manager (using ContentAPIManager as concrete implementation)
       const { ContentAPIManager } = await import('../managers/ContentAPIManager');
-      const apiManager = new ContentAPIManager(
-        config.sessionToken,
-        config.baseURL,
-        config.userContext
-      );
+      const apiManager = new ContentAPIManager();
 
       // Create Runtime Client if auto-connect is enabled
       let runtimeClient: RuntimeClient | null = null;
@@ -195,7 +189,7 @@ export class UnifiedServiceLayerFactory {
       }
 
       this.serviceLayer = {
-        api: apiManager,
+        api: apiManager as any,
         runtimeClient,
         isInitialized: true,
         sessionToken: config.sessionToken,

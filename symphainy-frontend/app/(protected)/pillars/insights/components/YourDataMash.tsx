@@ -16,7 +16,8 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { AlertCircle, RefreshCw, Download, Eye, FileText, Database, Brain, Sparkles, GitBranch } from 'lucide-react';
 import { usePlatformState } from '@/shared/state/PlatformStateProvider';
-import { useInsightsAPIManager, LineageVisualization, LineageVisualizationResponse } from '@/shared/managers/InsightsAPIManager';
+import { useInsightsAPIManager } from '@/shared/hooks/useInsightsAPIManager';
+import { LineageVisualization, LineageVisualizationResponse } from '@/shared/managers/InsightsAPIManager';
 import { InsightsFileSelector } from './InsightsFileSelector';
 import ReactFlow, {
   Node,
@@ -31,7 +32,7 @@ import ReactFlow, {
 import 'reactflow/dist/style.css';
 
 interface YourDataMashProps {
-  onVisualizationComplete?: (visualization: LineageVisualization) => void;
+  onVisualizationComplete?: (visualization: LineageVisualizationResponse) => void;
 }
 
 export function YourDataMash({ onVisualizationComplete }: YourDataMashProps) {

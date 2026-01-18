@@ -64,11 +64,40 @@ class ContentRealm(RealmBase):
             List of supported intent types
         """
         return [
-            "ingest_file",
-            "parse_content",
-            "extract_embeddings",
-            "get_parsed_file",
-            "get_semantic_interpretation"
+            # File Ingestion
+            "ingest_file",              # Unified ingestion (upload, EDI, API)
+            
+            # Bulk Operations (Phase 2)
+            "bulk_ingest_files",        # Bulk ingestion with batching
+            "bulk_parse_files",         # Bulk parse with parallel processing
+            "bulk_extract_embeddings",  # Bulk embedding creation
+            "bulk_interpret_data",      # Bulk interpretation
+            
+            # Operation Status (Phase 3)
+            "get_operation_status",     # Get operation progress/status
+            
+            # File Management
+            "register_file",            # Register existing file in State Surface
+            "retrieve_file_metadata",   # Get Supabase record (metadata only)
+            "retrieve_file",             # Get file contents from GCS
+            "list_files",                # List files for tenant/session
+            "get_file_by_id",            # Get file by file_id
+            
+            # File Lifecycle (Phase 4)
+            "archive_file",              # Archive file (soft delete)
+            "purge_file",                # Permanently delete file
+            "restore_file",              # Restore archived file
+            "validate_file",             # Validate file format/contents
+            "preprocess_file",           # Preprocess file (normalize, clean, etc.)
+            "search_files",              # Search files by name/content
+            "query_files",               # Query files with filters
+            "update_file_metadata",      # Update file metadata
+            
+            # Content Processing
+            "parse_content",             # Parse file
+            "extract_embeddings",        # Create embeddings
+            "get_parsed_file",           # Get parsed results
+            "get_semantic_interpretation"  # Get semantic interpretation
         ]
     
     async def handle_intent(

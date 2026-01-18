@@ -66,7 +66,10 @@ class ExecutionLifecycleManager:
         intent_registry: IntentRegistry,
         state_surface: StateSurface,
         wal: WriteAheadLog,
-        transactional_outbox: Optional[Any] = None  # Will be TransactionalOutbox
+        transactional_outbox: Optional[Any] = None,  # Will be TransactionalOutbox
+        materialization_policy: Optional[Any] = None,  # MaterializationPolicyAbstraction
+        artifact_storage: Optional[Any] = None,  # ArtifactStorageAbstraction
+        solution_config: Optional[Dict[str, Any]] = None
     ):
         """
         Initialize execution lifecycle manager.
@@ -76,11 +79,17 @@ class ExecutionLifecycleManager:
             state_surface: State surface for execution state
             wal: Write-ahead log for audit
             transactional_outbox: Optional transactional outbox for event publishing
+            materialization_policy: Optional materialization policy abstraction
+            artifact_storage: Optional artifact storage abstraction
+            solution_config: Optional solution-specific configuration
         """
         self.intent_registry = intent_registry
         self.state_surface = state_surface
         self.wal = wal
         self.transactional_outbox = transactional_outbox
+        self.materialization_policy = materialization_policy
+        self.artifact_storage = artifact_storage
+        self.solution_config = solution_config or {}
         self.logger = get_logger(self.__class__.__name__)
         self.clock = get_clock()
     
@@ -252,7 +261,7 @@ class ExecutionLifecycleManager:
                 # Context manager will handle span end automatically
                 pass
             
-            # Stage 5: Handle Artifacts
+            # Stage 5: Handle Artifacts & Evaluate Materialization Policy
             self.logger.info(f"Handling artifacts from execution: {execution_id}")
             
             if OTEL_AVAILABLE and trace and current_span and hasattr(current_span, 'set_attribute'):
@@ -260,7 +269,89 @@ class ExecutionLifecycleManager:
             if OTEL_AVAILABLE and trace and current_span and hasattr(current_span, 'add_event'):
                 current_span.add_event("artifacts.handled")
             
-            # Artifacts are stored in execution state (domain services return them)
+            # Evaluate materialization policy for each artifact BEFORE storing in state
+            if artifacts and self.materialization_policy and self.artifact_storage:
+                self.logger.info(f"Evaluating materialization policy for {len(artifacts)} artifacts")
+                
+                for artifact_key, artifact_data in list(artifacts.items()):
+                    # Skip artifact_id references (already processed)
+                    if artifact_key.endswith("_artifact_id") or artifact_key.endswith("_storage_path"):
+                        continue
+                    
+                    # Skip non-dict artifacts (e.g., strings, lists)
+                    if not isinstance(artifact_data, dict):
+                        continue
+                    
+                    # Determine result_type from artifact_key or artifact_data
+                    result_type = self._infer_result_type(artifact_key, artifact_data)
+                    
+                    # Extract semantic_payload and renderings from structured format
+                    # Realms now return structured artifacts with result_type, semantic_payload, and renderings
+                    if isinstance(artifact_data, dict) and "result_type" in artifact_data:
+                        # Structured format (native)
+                        result_type = artifact_data.get("result_type", result_type)  # Use artifact's result_type if available
+                        semantic_payload = artifact_data.get("semantic_payload", {})
+                        renderings = artifact_data.get("renderings", {})
+                    else:
+                        # Fallback for legacy format (should not happen, but safe)
+                        self.logger.warning(f"Artifact {artifact_key} is not in structured format, using fallback extraction")
+                        semantic_payload = self._extract_semantic_payload(artifact_data)
+                        renderings = artifact_data.copy()
+                        if "semantic_payload" in renderings:
+                            del renderings["semantic_payload"]
+                    
+                    # Evaluate policy (with error handling)
+                    try:
+                        from .policies.materialization_policy_protocol import MaterializationDecision
+                        decision = await self.materialization_policy.evaluate_policy(
+                            result_type=result_type,
+                            semantic_payload=semantic_payload,
+                            renderings=renderings,
+                            intent=intent,
+                            context=context,
+                            solution_config=self.solution_config
+                        )
+                    except Exception as e:
+                        self.logger.error(f"Policy evaluation failed for {artifact_key}: {e}", exc_info=True)
+                        # Default to DISCARD on policy evaluation failure (safest)
+                        decision = MaterializationDecision.DISCARD
+                    
+                    if decision == MaterializationDecision.PERSIST:
+                        # Store artifact
+                        try:
+                            storage_result = await self.artifact_storage.store_composite_artifact(
+                                artifact_type=result_type,
+                                artifact_data=renderings,
+                                tenant_id=intent.tenant_id,
+                                metadata={
+                                    "execution_id": execution_id,
+                                    "session_id": context.session_id,
+                                    "intent_id": intent.intent_id,
+                                    "intent_type": intent.intent_type,
+                                    "semantic_payload_stored": bool(semantic_payload)
+                                }
+                            )
+                            
+                            if storage_result.get("success"):
+                                # Store artifact_id reference in artifacts dict (platform memory)
+                                artifacts[f"{artifact_key}_artifact_id"] = storage_result["artifact_id"]
+                                artifacts[f"{artifact_key}_storage_path"] = storage_result["storage_path"]
+                                self.logger.info(f"Artifact stored: {storage_result['artifact_id']}")
+                            else:
+                                self.logger.warning(f"Artifact storage failed for {artifact_key}: {storage_result.get('error')}")
+                        except Exception as e:
+                            self.logger.error(f"Failed to store artifact {artifact_key}: {e}", exc_info=True)
+                            # Continue - don't fail execution on storage failure
+                    
+                    elif decision == MaterializationDecision.CACHE:
+                        # Cache temporarily (e.g., in State Surface)
+                        self.logger.debug(f"Artifact {artifact_key} cached (not persisted)")
+                    
+                    elif decision == MaterializationDecision.DISCARD:
+                        # Discard (ephemeral)
+                        self.logger.debug(f"Artifact {artifact_key} discarded (ephemeral)")
+            
+            # Artifacts are stored in execution state (includes artifact_id references if persisted)
             await self.state_surface.set_execution_state(
                 execution_id,
                 intent.tenant_id,
@@ -270,7 +361,6 @@ class ExecutionLifecycleManager:
                     "updated_at": self.clock.now_iso(),
                 }
             )
-            
             # Stage 6: Publish Events (via Transactional Outbox)
             if events and self.transactional_outbox:
                 self.logger.info(f"Publishing {len(events)} events via transactional outbox")
@@ -402,3 +492,61 @@ class ExecutionLifecycleManager:
         )
         
         return True
+
+    def _infer_result_type(self, artifact_key: str, artifact_data: Dict[str, Any]) -> str:
+        """
+        Infer result_type from artifact_key or artifact_data.
+        
+        Args:
+            artifact_key: Key of the artifact in artifacts dict
+            artifact_data: Artifact data dictionary
+        
+        Returns:
+            str: Result type (e.g., 'workflow', 'sop', 'blueprint')
+        """
+        # Try artifact_key first
+        if artifact_key in ["workflow", "sop", "blueprint", "solution", "roadmap", "poc", "visual"]:
+            return artifact_key
+        
+        # Try artifact_data
+        if isinstance(artifact_data, dict) and "result_type" in artifact_data:
+            return artifact_data["result_type"]
+        
+        # Default
+        return "unknown"
+    
+    def _extract_semantic_payload(self, artifact_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Extract semantic payload from artifact data.
+        
+        For MVP: Extract key semantic fields if available.
+        Future: Realms will return structured results with explicit semantic_payload.
+        
+        Args:
+            artifact_data: Artifact data dictionary
+        
+        Returns:
+            Dict[str, Any]: Semantic payload dictionary
+        """
+        semantic = {}
+        
+        # Skip if not a dict
+        if not isinstance(artifact_data, dict):
+            return semantic
+        
+        # If artifact_data already has semantic_payload, use it
+        if "semantic_payload" in artifact_data:
+            semantic.update(artifact_data["semantic_payload"])
+        
+        # Extract common semantic fields
+        semantic_fields = [
+            "workflow_id", "sop_id", "blueprint_id", "solution_id", 
+            "roadmap_id", "poc_id", "intent_id", "execution_id"
+        ]
+        
+        for field in semantic_fields:
+            if field in artifact_data:
+                semantic[field] = artifact_data[field]
+        
+        return semantic
+

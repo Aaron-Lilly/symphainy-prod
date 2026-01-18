@@ -49,6 +49,7 @@ from .abstractions.semantic_search_abstraction import SemanticSearchAbstraction
 from .abstractions.auth_abstraction import AuthAbstraction
 from .abstractions.tenant_abstraction import TenantAbstraction
 from .abstractions.file_storage_abstraction import FileStorageAbstraction
+from .abstractions.artifact_storage_abstraction import ArtifactStorageAbstraction
 from .abstractions.visual_generation_abstraction import VisualGenerationAbstraction
 
 class PublicWorksFoundationService:
@@ -107,6 +108,7 @@ class PublicWorksFoundationService:
         self.auth_abstraction: Optional[AuthAbstraction] = None
         self.tenant_abstraction: Optional[TenantAbstraction] = None
         self.file_storage_abstraction: Optional[FileStorageAbstraction] = None
+        self.artifact_storage_abstraction: Optional[ArtifactStorageAbstraction] = None
         self.event_publisher_abstraction: Optional[Any] = None  # EventPublisherAbstraction
         
         # Layer 1: Parsing Abstractions
@@ -274,6 +276,17 @@ class PublicWorksFoundationService:
         )
         supabase_jwks_url = self.config.get("supabase_jwks_url") or (getattr(env, "SUPABASE_JWKS_URL", None) if hasattr(env, "SUPABASE_JWKS_URL") else None)
         supabase_jwt_issuer = self.config.get("supabase_jwt_issuer") or (getattr(env, "SUPABASE_JWT_ISSUER", None) if hasattr(env, "SUPABASE_JWT_ISSUER") else None)
+        
+        # Debug logging for Supabase credential access
+        self.logger.info(f"🔍 Supabase Configuration Check:")
+        self.logger.info(f"   SUPABASE_URL: {'✅ Set' if supabase_url else '❌ Missing'}")
+        self.logger.info(f"   SUPABASE_ANON_KEY: {'✅ Set' if supabase_anon_key else '❌ Missing'}")
+        self.logger.info(f"   SUPABASE_SERVICE_KEY: {'✅ Set' if supabase_service_key else '❌ Missing'}")
+        if supabase_service_key:
+            # Log first 30 chars to verify it's being read (without exposing full key)
+            key_preview = supabase_service_key[:30] + "..." if len(supabase_service_key) > 30 else supabase_service_key
+            self.logger.info(f"   Service key preview: {key_preview}")
+        
         if supabase_url and supabase_anon_key:
             self.supabase_adapter = SupabaseAdapter(
                 url=supabase_url,
@@ -308,6 +321,17 @@ class PublicWorksFoundationService:
             get_gcs_credentials_json() or
             (getattr(env, "GCS_CREDENTIALS_JSON", None) if hasattr(env, "GCS_CREDENTIALS_JSON") else None)
         )
+        
+        # Debug logging for credential access
+        self.logger.info(f"🔍 GCS Configuration Check:")
+        self.logger.info(f"   GCS_PROJECT_ID: {'✅ Set' if gcs_project_id else '❌ Missing'}")
+        self.logger.info(f"   GCS_BUCKET_NAME: {'✅ Set' if gcs_bucket_name else '❌ Missing'}")
+        self.logger.info(f"   GCS_CREDENTIALS_JSON: {'✅ Set' if gcs_credentials_json else '❌ Missing'}")
+        if gcs_credentials_json:
+            # Log first 50 chars to verify it's being read (without exposing full key)
+            creds_preview = gcs_credentials_json[:50] + "..." if len(gcs_credentials_json) > 50 else gcs_credentials_json
+            self.logger.info(f"   Credentials preview: {creds_preview}")
+        
         # GCS adapter is REQUIRED for platform operation
         if not gcs_project_id or not gcs_bucket_name:
             raise RuntimeError(
@@ -494,6 +518,21 @@ class PublicWorksFoundationService:
         )
         self.logger.info("File storage abstraction created")
         
+        # Artifact storage abstraction (REQUIRED for platform operation)
+        if not self.gcs_adapter:
+            raise RuntimeError("GCS adapter is required for artifact storage abstraction")
+        if not self.supabase_file_adapter:
+            raise RuntimeError("Supabase file adapter is required for artifact storage abstraction")
+        if not gcs_bucket_name:
+            raise RuntimeError("GCS bucket name is required for artifact storage abstraction")
+        
+        self.artifact_storage_abstraction = ArtifactStorageAbstraction(
+            gcs_adapter=self.gcs_adapter,
+            supabase_file_adapter=self.supabase_file_adapter,
+            bucket_name=gcs_bucket_name
+        )
+        self.logger.info("Artifact storage abstraction created")
+        
         # Visual Generation abstraction
         from .abstractions.visual_generation_abstraction import VisualGenerationAbstraction
         self.visual_generation_abstraction = VisualGenerationAbstraction(
@@ -502,21 +541,26 @@ class PublicWorksFoundationService:
         )
         self.logger.info("Visual Generation abstraction created")
         
-        # Event publisher abstraction
+        # Event publisher abstraction (optional - may not be available)
         if self.redis_adapter:
-            from .adapters.redis_streams_publisher import RedisStreamsPublisher
-            from .abstractions.event_publisher_abstraction import EventPublisherAbstraction
-            
-            redis_streams_publisher = RedisStreamsPublisher(self.redis_adapter)
-            self.event_publisher_abstraction = EventPublisherAbstraction(
-                primary_publisher=redis_streams_publisher
-            )
-            if await self.event_publisher_abstraction.initialize():
-                self.logger.info("Event publisher abstraction created")
-            else:
-                self.logger.warning("Event publisher abstraction initialization failed")
+            try:
+                from .adapters.redis_streams_publisher import RedisStreamsPublisher
+                from .abstractions.event_publisher_abstraction import EventPublisherAbstraction
+                
+                redis_streams_publisher = RedisStreamsPublisher(self.redis_adapter)
+                self.event_publisher_abstraction = EventPublisherAbstraction(
+                    primary_publisher=redis_streams_publisher
+                )
+                if await self.event_publisher_abstraction.initialize():
+                    self.logger.info("Event publisher abstraction created")
+                else:
+                    self.logger.warning("Event publisher abstraction initialization failed")
+            except ImportError:
+                self.logger.warning("Event publisher abstraction not available (redis_streams_publisher module not found)")
+                self.event_publisher_abstraction = None
         else:
             self.logger.warning("Event publisher abstraction not created (Redis adapter missing)")
+            self.event_publisher_abstraction = None
         
         # Ingestion adapters (created after file_storage_abstraction is available)
         from .adapters.upload_adapter import UploadAdapter
@@ -859,6 +903,15 @@ class PublicWorksFoundationService:
             Optional[SupabaseAdapter]: Supabase adapter or None
         """
         return self.supabase_adapter
+    
+    def get_artifact_storage_abstraction(self) -> Optional[ArtifactStorageAbstraction]:
+        """
+        Get Artifact Storage abstraction.
+        
+        Returns:
+            Optional[ArtifactStorageAbstraction]: Artifact Storage abstraction or None
+        """
+        return self.artifact_storage_abstraction
     
     def get_state_surface(self) -> Optional[Any]:
         """

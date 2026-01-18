@@ -1,0 +1,22 @@
+# MVP Materialization Policy Override
+# This demonstrates how clients can configure artifact persistence
+
+materialization_policy:
+  # Platform-native records (always persisted in State Surface / WAL)
+  intent: persist
+  journey: persist
+  state_transition: persist
+  governance_decision: persist
+  
+  # Derived artifacts (MVP persists for demo purposes)
+  workflow: persist
+  sop: persist
+  blueprint: persist
+  solution: persist
+  roadmap: persist
+  poc: persist
+  visual: persist
+  
+  # Future: Client-specific overrides
+  # business_analysis: cache  # Cache for session
+  # chart: discard            # Ephemeral

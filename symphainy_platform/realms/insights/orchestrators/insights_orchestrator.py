@@ -12,6 +12,7 @@ They may NOT spawn long-running sagas, manage retries, or track cross-intent pro
 
 import sys
 from pathlib import Path
+from symphainy_platform.realms.utils.structured_artifacts import create_structured_artifact
 
 # Add project root to path
 project_root = Path(__file__).resolve().parents[5]
@@ -306,9 +307,10 @@ class InsightsOrchestrator:
         context: ExecutionContext
     ) -> Dict[str, Any]:
         """Handle interpret_data_self_discovery intent."""
-        parsed_file_id = intent.parameters.get("parsed_file_id")
+        # Accept both parsed_file_id and parsed_result_id (aliases)
+        parsed_file_id = intent.parameters.get("parsed_file_id") or intent.parameters.get("parsed_result_id")
         if not parsed_file_id:
-            raise ValueError("parsed_file_id is required for interpret_data_self_discovery intent")
+            raise ValueError("parsed_file_id or parsed_result_id is required for interpret_data_self_discovery intent")
         
         discovery_options = intent.parameters.get("discovery_options", {})
         
@@ -353,11 +355,12 @@ class InsightsOrchestrator:
         context: ExecutionContext
     ) -> Dict[str, Any]:
         """Handle interpret_data_guided intent."""
-        parsed_file_id = intent.parameters.get("parsed_file_id")
+        # Accept both parsed_file_id and parsed_result_id (aliases)
+        parsed_file_id = intent.parameters.get("parsed_file_id") or intent.parameters.get("parsed_result_id")
         guide_id = intent.parameters.get("guide_id")
         
         if not parsed_file_id:
-            raise ValueError("parsed_file_id is required for interpret_data_guided intent")
+            raise ValueError("parsed_file_id or parsed_result_id is required for interpret_data_guided intent")
         
         if not guide_id:
             raise ValueError("guide_id is required for interpret_data_guided intent")
@@ -411,9 +414,10 @@ class InsightsOrchestrator:
         context: ExecutionContext
     ) -> Dict[str, Any]:
         """Handle analyze_structured_data intent."""
-        parsed_file_id = intent.parameters.get("parsed_file_id")
+        # Accept both parsed_file_id and parsed_result_id (aliases)
+        parsed_file_id = intent.parameters.get("parsed_file_id") or intent.parameters.get("parsed_result_id")
         if not parsed_file_id:
-            raise ValueError("parsed_file_id is required for analyze_structured_data intent")
+            raise ValueError("parsed_file_id or parsed_result_id is required for analyze_structured_data intent")
         
         analysis_options = intent.parameters.get("analysis_options", {})
         
@@ -455,9 +459,10 @@ class InsightsOrchestrator:
         context: ExecutionContext
     ) -> Dict[str, Any]:
         """Handle analyze_unstructured_data intent."""
-        parsed_file_id = intent.parameters.get("parsed_file_id")
+        # Accept both parsed_file_id and parsed_result_id (aliases)
+        parsed_file_id = intent.parameters.get("parsed_file_id") or intent.parameters.get("parsed_result_id")
         if not parsed_file_id:
-            raise ValueError("parsed_file_id is required for analyze_unstructured_data intent")
+            raise ValueError("parsed_file_id or parsed_result_id is required for analyze_unstructured_data intent")
         
         analysis_options = intent.parameters.get("analysis_options", {})
         deep_dive = analysis_options.get("deep_dive", False)

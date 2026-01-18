@@ -27,8 +27,9 @@ import {
   GitBranch,
   Target
 } from 'lucide-react';
-// Removed deprecated ExperienceLayerProvider import
-import { useAuth } from '@/shared/agui/AuthProvider';
+import { useAuth } from '@/shared/auth/AuthProvider';
+import { usePlatformState } from '@/shared/state/PlatformStateProvider';
+import { useUnifiedAgentChat } from '@/shared/hooks/useUnifiedAgentChat';
 
 // ============================================================================
 // COMPONENT INTERFACES
@@ -67,12 +68,31 @@ export const OperationsLiaisonAgent: React.FC<OperationsLiaisonAgentProps> = ({
   className = ''
 }) => {
   const { user } = useAuth();
-  // Removed deprecated operationsPillar usage
+  const { state } = usePlatformState();
+  
+  // Use real-time chat hook for liaison agent
+  // Note: Using 'operations' as pillar type (may need to update to 'journey' if backend changes)
+  const {
+    messages,
+    isConnected,
+    isLoading: isChatLoading,
+    error: chatError,
+    sendMessage,
+    switchAgent
+  } = useUnifiedAgentChat({
+    sessionToken: state.session.sessionId || undefined,
+    autoConnect: true,
+    initialAgent: 'liaison',
+    initialPillar: 'operations'
+  });
   
   const [currentGuidance, setCurrentGuidance] = useState<OperationsGuidance | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [conversationHistory, setConversationHistory] = useState<any[]>([]);
   const [userMessage, setUserMessage] = useState('');
+  
+  // Switch to liaison agent on mount
+  useEffect(() => {
+    switchAgent('liaison', 'operations');
+  }, [switchAgent]);
 
   // ============================================================================
   // GUIDANCE LOGIC
@@ -151,105 +171,41 @@ export const OperationsLiaisonAgent: React.FC<OperationsLiaisonAgentProps> = ({
   // ============================================================================
 
   const handleSuggestionClick = async (suggestion: string) => {
-    setIsAnalyzing(true);
-    
-    // Add user message to conversation
-    const userMsg = {
-      id: Date.now().toString(),
-      type: 'user',
-      content: suggestion,
-      timestamp: new Date()
-    };
-    setConversationHistory(prev => [...prev, userMsg]);
-
-    // Simulate AI response
-    setTimeout(() => {
-      const aiResponse = {
-        id: (Date.now() + 1).toString(),
-        type: 'agent',
-        content: getSuggestionResponse(suggestion),
-        timestamp: new Date()
-      };
-      setConversationHistory(prev => [...prev, aiResponse]);
-      setIsAnalyzing(false);
-    }, 1000);
+    // Send suggestion as message to real-time chat
+    try {
+      await sendMessage(suggestion, 'liaison', 'operations');
+    } catch (error) {
+      console.error('Failed to send suggestion:', error);
+    }
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userMessage.trim()) return;
+    if (!userMessage.trim() || isChatLoading) return;
 
     const message = userMessage.trim();
     setUserMessage('');
 
-    // Add user message
-    const userMsg = {
-      id: Date.now().toString(),
-      type: 'user',
-      content: message,
-      timestamp: new Date()
-    };
-    setConversationHistory(prev => [...prev, userMsg]);
-
-    // Generate AI response
-    setIsAnalyzing(true);
-    setTimeout(() => {
-      const aiResponse = {
-        id: (Date.now() + 1).toString(),
-        type: 'agent',
-        content: generateOperationsResponse(message),
-        timestamp: new Date()
-      };
-      setConversationHistory(prev => [...prev, aiResponse]);
-      setIsAnalyzing(false);
-    }, 1500);
+    // Send message via real-time chat
+    try {
+      await sendMessage(message, 'liaison', 'operations');
+    } catch (error) {
+      console.error('Failed to send message:', error);
+    }
   };
 
   // ============================================================================
   // HELPER FUNCTIONS
   // ============================================================================
 
-  const getSuggestionResponse = (suggestion: string): string => {
-    if (suggestion.includes('Select') || suggestion.includes('Choose')) {
-      return 'I can help you select the right files for operations. Look for documents that describe your current processes, procedures, or workflows. These will be the foundation for creating optimized SOPs and workflows.';
-    } else if (suggestion.includes('SOP') || suggestion.includes('procedures')) {
-      return 'SOPs (Standard Operating Procedures) document how tasks should be performed. I can help you create clear, step-by-step procedures that ensure consistency and quality in your operations.';
-    } else if (suggestion.includes('workflow') || suggestion.includes('process')) {
-      return 'Workflows show the flow of activities and decisions in your processes. I can help you create visual workflows that make it easy to understand and follow your procedures.';
-    } else if (suggestion.includes('coexistence') || suggestion.includes('blueprint')) {
-      return 'Coexistence analysis ensures your SOPs and workflows work together effectively. I can help you identify gaps, overlaps, and optimization opportunities to create a seamless operational system.';
-    } else if (suggestion.includes('Proceed') || suggestion.includes('experience')) {
-      return 'Great! Your operations are ready for the Experience Pillar. The SOPs, workflows, and blueprint will be used to create strategic roadmaps and implementation plans.';
-    }
-    return 'I understand you want help with operations optimization. Let me guide you through the next steps.';
-  };
-
-  const generateOperationsResponse = (message: string): string => {
-    const lowerMessage = message.toLowerCase();
-    
-    if (lowerMessage.includes('sop') || lowerMessage.includes('procedure')) {
-      return 'SOPs should be clear, concise, and actionable. I recommend including purpose, scope, responsibilities, step-by-step procedures, and quality checkpoints. Good SOPs make training easier and ensure consistency.';
-    } else if (lowerMessage.includes('workflow') || lowerMessage.includes('process')) {
-      return 'Workflows should show the logical flow of activities, decision points, and handoffs. I can help you create BPMN diagrams that are easy to understand and follow. Consider automation opportunities.';
-    } else if (lowerMessage.includes('optimization') || lowerMessage.includes('improve')) {
-      return 'Process optimization involves identifying bottlenecks, eliminating waste, and improving efficiency. I can help you analyze your current processes and suggest improvements based on best practices.';
-    } else if (lowerMessage.includes('automation') || lowerMessage.includes('automate')) {
-      return 'Automation can reduce errors and save time. I can help you identify which parts of your processes can be automated and suggest tools and technologies to implement automation.';
-    } else if (lowerMessage.includes('training') || lowerMessage.includes('implementation')) {
-      return 'Successful implementation requires proper training and change management. I can help you create training materials and implementation plans that ensure smooth adoption of new processes.';
-    } else if (lowerMessage.includes('quality') || lowerMessage.includes('control')) {
-      return 'Quality control is essential for consistent results. I can help you design checkpoints, metrics, and feedback loops to ensure your processes maintain high quality standards.';
-    }
-    
-    return 'I\'m here to help with operations optimization! You can ask me about SOPs, workflows, process improvement, automation, or any other operations-related questions.';
-  };
+  // Helper functions removed - now handled by real-time agent
 
   // ============================================================================
   // RENDER HELPERS
   // ============================================================================
 
   const renderMessage = (message: any) => {
-    const isUser = message.type === 'user';
+    const isUser = message.role === 'user';
     
     return (
       <div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-3`}>
@@ -324,15 +280,24 @@ export const OperationsLiaisonAgent: React.FC<OperationsLiaisonAgentProps> = ({
         <CardHeader className="pb-3">
           <CardTitle className="text-gray-800 flex items-center space-x-2">
             <Bot className="w-4 h-4" />
-            <span>Operations Liaison Agent</span>
+            <span>Journey Liaison Agent</span>
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Connection Status */}
+          {!isConnected && (
+            <Alert>
+              <AlertDescription className="text-xs">
+                {chatError ? `Connection error: ${chatError}` : 'Connecting to Journey Liaison Agent...'}
+              </AlertDescription>
+            </Alert>
+          )}
+          
           {/* Conversation History */}
-          {conversationHistory.length > 0 && (
+          {messages.length > 0 && (
             <div className="max-h-60 overflow-y-auto space-y-2">
-              {conversationHistory.map(renderMessage)}
-              {isAnalyzing && (
+              {messages.map(renderMessage)}
+              {isChatLoading && (
                 <div className="flex justify-start">
                   <div className="flex items-center space-x-2 bg-gray-100 rounded-lg px-3 py-2">
                     <Loader2 className="w-3 h-3 animate-spin text-gray-400" />
@@ -340,6 +305,12 @@ export const OperationsLiaisonAgent: React.FC<OperationsLiaisonAgentProps> = ({
                   </div>
                 </div>
               )}
+            </div>
+          )}
+          
+          {messages.length === 0 && isConnected && (
+            <div className="text-center text-sm text-gray-500 py-4">
+              Ask me about SOPs, workflows, process optimization, or automation!
             </div>
           )}
 
@@ -355,9 +326,9 @@ export const OperationsLiaisonAgent: React.FC<OperationsLiaisonAgentProps> = ({
             <Button
               type="submit"
               size="sm"
-              disabled={!userMessage.trim() || isAnalyzing}
+              disabled={!userMessage.trim() || isChatLoading || !isConnected}
             >
-              {isAnalyzing ? (
+              {isChatLoading ? (
                 <Loader2 className="w-3 h-3 animate-spin" />
               ) : (
                 <SendHorizontal className="w-3 h-3" />

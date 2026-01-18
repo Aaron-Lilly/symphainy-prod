@@ -20,7 +20,9 @@ import {
   Loader2
 } from 'lucide-react';
 
-import { useAuth } from '@/shared/agui/AuthProvider';
+import { useAuth } from '@/shared/auth/AuthProvider';
+import { usePlatformState } from '@/shared/state/PlatformStateProvider';
+import { useUnifiedAgentChat } from '@/shared/hooks/useUnifiedAgentChat';
 
 // ============================================================================
 // COMPONENT INTERFACES
@@ -57,12 +59,30 @@ export const ContentLiaisonAgent: React.FC<ContentLiaisonAgentProps> = ({
   className = ''
 }) => {
   const { user } = useAuth();
+  const { state } = usePlatformState();
   
+  // Use real-time chat hook for liaison agent
+  const {
+    messages,
+    isConnected,
+    isLoading: isChatLoading,
+    error: chatError,
+    sendMessage,
+    switchAgent
+  } = useUnifiedAgentChat({
+    sessionToken: state.session.sessionId || undefined,
+    autoConnect: true,
+    initialAgent: 'liaison',
+    initialPillar: 'content'
+  });
   
   const [currentGuidance, setCurrentGuidance] = useState<ContentGuidance | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [conversationHistory, setConversationHistory] = useState<any[]>([]);
   const [userMessage, setUserMessage] = useState('');
+  
+  // Switch to liaison agent on mount
+  useEffect(() => {
+    switchAgent('liaison', 'content');
+  }, [switchAgent]);
 
   // ============================================================================
   // GUIDANCE LOGIC
@@ -129,101 +149,41 @@ export const ContentLiaisonAgent: React.FC<ContentLiaisonAgentProps> = ({
   // ============================================================================
 
   const handleSuggestionClick = async (suggestion: string) => {
-    setIsAnalyzing(true);
-    
-    // Add user message to conversation
-    const userMsg = {
-      id: Date.now().toString(),
-      type: 'user',
-      content: suggestion,
-      timestamp: new Date()
-    };
-    setConversationHistory(prev => [...prev, userMsg]);
-
-    // Simulate AI response
-    setTimeout(() => {
-      const aiResponse = {
-        id: (Date.now() + 1).toString(),
-        type: 'agent',
-        content: getSuggestionResponse(suggestion),
-        timestamp: new Date()
-      };
-      setConversationHistory(prev => [...prev, aiResponse]);
-      setIsAnalyzing(false);
-    }, 1000);
+    // Send suggestion as message to real-time chat
+    try {
+      await sendMessage(suggestion, 'liaison', 'content');
+    } catch (error) {
+      console.error('Failed to send suggestion:', error);
+    }
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userMessage.trim()) return;
+    if (!userMessage.trim() || isChatLoading) return;
 
     const message = userMessage.trim();
     setUserMessage('');
 
-    // Add user message
-    const userMsg = {
-      id: Date.now().toString(),
-      type: 'user',
-      content: message,
-      timestamp: new Date()
-    };
-    setConversationHistory(prev => [...prev, userMsg]);
-
-    // Generate AI response
-    setIsAnalyzing(true);
-    setTimeout(() => {
-      const aiResponse = {
-        id: (Date.now() + 1).toString(),
-        type: 'agent',
-        content: generateContentResponse(message),
-        timestamp: new Date()
-      };
-      setConversationHistory(prev => [...prev, aiResponse]);
-      setIsAnalyzing(false);
-    }, 1500);
+    // Send message via real-time chat
+    try {
+      await sendMessage(message, 'liaison', 'content');
+    } catch (error) {
+      console.error('Failed to send message:', error);
+    }
   };
 
   // ============================================================================
   // HELPER FUNCTIONS
   // ============================================================================
 
-  const getSuggestionResponse = (suggestion: string): string => {
-    if (suggestion.includes('Upload')) {
-      return 'I can help you upload files! Make sure to select the appropriate file type (PDF, DOCX, CSV, etc.) for best results. The system will automatically detect the content and prepare it for processing.';
-    } else if (suggestion.includes('Parse')) {
-      return 'Parsing will convert your file into a structured format that our AI can analyze. This process extracts text, identifies sections, and prepares the content for metadata extraction.';
-    } else if (suggestion.includes('Extract') || suggestion.includes('metadata')) {
-      return 'Metadata extraction will analyze your content to identify key themes, entities, and insights. This creates a rich understanding of your document that can be used for further analysis.';
-    } else if (suggestion.includes('Proceed')) {
-      return 'Great! Your content is ready for the Insights Pillar. The structured data and metadata will be used to generate business insights and recommendations.';
-    }
-    return 'I understand you want help with content processing. Let me guide you through the next steps.';
-  };
-
-  const generateContentResponse = (message: string): string => {
-    const lowerMessage = message.toLowerCase();
-    
-    if (lowerMessage.includes('upload') || lowerMessage.includes('file')) {
-      return 'To upload a file, use the file uploader above. I recommend starting with a PDF or Word document. The system supports PDF, DOCX, CSV, and Excel files.';
-    } else if (lowerMessage.includes('parse') || lowerMessage.includes('structure')) {
-      return 'Parsing converts your file into structured data. This process identifies headings, paragraphs, tables, and other elements to create a machine-readable format.';
-    } else if (lowerMessage.includes('metadata') || lowerMessage.includes('insight')) {
-      return 'Metadata extraction analyzes your content to identify key themes, entities, keywords, and insights. This creates a comprehensive understanding of your document.';
-    } else if (lowerMessage.includes('error') || lowerMessage.includes('problem')) {
-      return 'I can help troubleshoot content processing issues. Common problems include unsupported file formats, corrupted files, or network issues. Let me know what specific error you\'re seeing.';
-    } else if (lowerMessage.includes('format') || lowerMessage.includes('type')) {
-      return 'Supported file formats include: PDF documents, Word documents (.docx), CSV files, Excel spreadsheets (.xlsx), and plain text files. Each format is processed differently for optimal results.';
-    }
-    
-    return 'I\'m here to help with content processing! You can ask me about file uploads, parsing, metadata extraction, or any other content-related questions.';
-  };
+  // Helper functions removed - now handled by real-time agent
 
   // ============================================================================
   // RENDER HELPERS
   // ============================================================================
 
   const renderMessage = (message: any) => {
-    const isUser = message.type === 'user';
+    const isUser = message.role === 'user';
     
     return (
       <div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-3`}>
@@ -302,11 +262,20 @@ export const ContentLiaisonAgent: React.FC<ContentLiaisonAgentProps> = ({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Connection Status */}
+          {!isConnected && (
+            <Alert>
+              <AlertDescription className="text-xs">
+                {chatError ? `Connection error: ${chatError}` : 'Connecting to Content Liaison Agent...'}
+              </AlertDescription>
+            </Alert>
+          )}
+          
           {/* Conversation History */}
-          {conversationHistory.length > 0 && (
+          {messages.length > 0 && (
             <div className="max-h-60 overflow-y-auto space-y-2">
-              {conversationHistory.map(renderMessage)}
-              {isAnalyzing && (
+              {messages.map(renderMessage)}
+              {isChatLoading && (
                 <div className="flex justify-start">
                   <div className="flex items-center space-x-2 bg-gray-100 rounded-lg px-3 py-2">
                     <Loader2 className="w-3 h-3 animate-spin text-gray-400" />
@@ -314,6 +283,12 @@ export const ContentLiaisonAgent: React.FC<ContentLiaisonAgentProps> = ({
                   </div>
                 </div>
               )}
+            </div>
+          )}
+          
+          {messages.length === 0 && isConnected && (
+            <div className="text-center text-sm text-gray-500 py-4">
+              Ask me about content processing, file uploads, parsing, or metadata extraction!
             </div>
           )}
 
@@ -329,9 +304,9 @@ export const ContentLiaisonAgent: React.FC<ContentLiaisonAgentProps> = ({
             <Button
               type="submit"
               size="sm"
-              disabled={!userMessage.trim() || isAnalyzing}
+              disabled={!userMessage.trim() || isChatLoading || !isConnected}
             >
-              {isAnalyzing ? (
+              {isChatLoading ? (
                 <Loader2 className="w-3 h-3 animate-spin" />
               ) : (
                 <SendHorizontal className="w-3 h-3" />

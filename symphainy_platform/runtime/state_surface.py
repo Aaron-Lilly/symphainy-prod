@@ -117,6 +117,60 @@ class StateSurface:
             self.logger.error(f"Failed to store execution state: {e}", exc_info=True)
             return False
     
+    async def store_session_state(
+        self,
+        session_id: str,
+        tenant_id: str,
+        state: Dict[str, Any]
+    ) -> bool:
+        """
+        Store session state.
+        
+        Args:
+            session_id: Session identifier
+            tenant_id: Tenant identifier (for isolation)
+            state: State dictionary
+        
+        Returns:
+            True if successful
+        """
+        state_id = f"session:{tenant_id}:{session_id}"
+        state["updated_at"] = self.clock.now_iso()
+        
+        if self.use_memory:
+            self._memory_store[state_id] = state
+            return True
+        
+        if not self.state_abstraction:
+            self.logger.warning("State abstraction not available, using in-memory fallback")
+            self._memory_store[state_id] = state
+            return True
+        
+        try:
+            success = await self.state_abstraction.store_state(
+                state_id=state_id,
+                state_data=state,
+                metadata={
+                    "type": "session_state",
+                    "tenant_id": tenant_id,
+                    "session_id": session_id
+                },
+                ttl=86400  # 24 hour TTL for session state
+            )
+            
+            if success:
+                self.logger.debug(f"Session state stored: {session_id}")
+            else:
+                self.logger.warning(f"Failed to store session state, using in-memory fallback: {session_id}")
+                self._memory_store[state_id] = state
+            
+            return success
+        except Exception as e:
+            self.logger.error(f"Failed to store session state: {e}", exc_info=True)
+            # Fallback to memory
+            self._memory_store[state_id] = state
+            return False
+    
     async def get_session_state(
         self,
         session_id: str,
@@ -186,6 +240,161 @@ class StateSurface:
         except Exception as e:
             self.logger.error(f"Failed to store session state: {e}", exc_info=True)
             return False
+    
+    # ============================================================================
+    # IDEMPOTENCY & OPERATION TRACKING
+    # ============================================================================
+    
+    async def check_idempotency(
+        self,
+        idempotency_key: str,
+        tenant_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Check if operation with idempotency key already executed.
+        
+        Args:
+            idempotency_key: Unique idempotency key
+            tenant_id: Tenant identifier (for isolation)
+        
+        Returns:
+            Previous result if found, None otherwise
+        """
+        state_id = f"idempotency:{tenant_id}:{idempotency_key}"
+        
+        if self.use_memory:
+            return self._memory_store.get(state_id)
+        
+        if not self.state_abstraction:
+            return self._memory_store.get(state_id)
+        
+        try:
+            state_data = await self.state_abstraction.retrieve_state(state_id)
+            return state_data
+        except Exception as e:
+            self.logger.error(f"Failed to check idempotency: {e}", exc_info=True)
+            return None
+    
+    async def store_idempotency_result(
+        self,
+        idempotency_key: str,
+        tenant_id: str,
+        result: Dict[str, Any],
+        ttl: int = 86400  # 24 hours
+    ) -> bool:
+        """
+        Store idempotency result.
+        
+        Args:
+            idempotency_key: Unique idempotency key
+            tenant_id: Tenant identifier (for isolation)
+            result: Operation result to store
+            ttl: Time to live in seconds (default: 24 hours)
+        
+        Returns:
+            True if successful
+        """
+        state_id = f"idempotency:{tenant_id}:{idempotency_key}"
+        result["stored_at"] = self.clock.now_iso()
+        
+        if self.use_memory:
+            self._memory_store[state_id] = result
+            return True
+        
+        if not self.state_abstraction:
+            self._memory_store[state_id] = result
+            return True
+        
+        try:
+            success = await self.state_abstraction.store_state(
+                state_id,
+                result,
+                metadata={"type": "idempotency", "tenant_id": tenant_id},
+                ttl=ttl
+            )
+            return success
+        except Exception as e:
+            self.logger.error(f"Failed to store idempotency result: {e}", exc_info=True)
+            return False
+    
+    async def track_operation_progress(
+        self,
+        operation_id: str,
+        tenant_id: str,
+        progress: Dict[str, Any]
+    ) -> bool:
+        """
+        Track operation progress (for bulk operations, long-running tasks, etc.).
+        
+        Args:
+            operation_id: Operation identifier
+            tenant_id: Tenant identifier (for isolation)
+            progress: Progress dictionary containing:
+                - status: str (e.g., "running", "completed", "failed")
+                - total: int - Total items to process
+                - processed: int - Items processed so far
+                - succeeded: int - Items succeeded
+                - failed: int - Items failed
+                - current_batch: int - Current batch number
+                - last_successful_batch: int - Last successful batch (for resume)
+                - errors: List[Dict] - Error details
+                - results: List[Dict] - Success results
+        
+        Returns:
+            True if successful
+        """
+        state_id = f"operation:{tenant_id}:{operation_id}"
+        progress["updated_at"] = self.clock.now_iso()
+        
+        if self.use_memory:
+            self._memory_store[state_id] = progress
+            return True
+        
+        if not self.state_abstraction:
+            self._memory_store[state_id] = progress
+            return True
+        
+        try:
+            success = await self.state_abstraction.store_state(
+                state_id,
+                progress,
+                metadata={"type": "operation_progress", "tenant_id": tenant_id},
+                ttl=86400  # 24 hour TTL
+            )
+            return success
+        except Exception as e:
+            self.logger.error(f"Failed to track operation progress: {e}", exc_info=True)
+            return False
+    
+    async def get_operation_progress(
+        self,
+        operation_id: str,
+        tenant_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get operation progress.
+        
+        Args:
+            operation_id: Operation identifier
+            tenant_id: Tenant identifier (for isolation)
+        
+        Returns:
+            Progress dictionary or None if not found
+        """
+        state_id = f"operation:{tenant_id}:{operation_id}"
+        
+        if self.use_memory:
+            return self._memory_store.get(state_id)
+        
+        if not self.state_abstraction:
+            return self._memory_store.get(state_id)
+        
+        try:
+            progress_data = await self.state_abstraction.retrieve_state(state_id)
+            return progress_data
+        except Exception as e:
+            self.logger.error(f"Failed to get operation progress: {e}", exc_info=True)
+            return None
     
     # ============================================================================
     # FILE REFERENCE MANAGEMENT

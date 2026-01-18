@@ -12,6 +12,7 @@ They may NOT spawn long-running sagas, manage retries, or track cross-intent pro
 
 import sys
 from pathlib import Path
+from symphainy_platform.realms.utils.structured_artifacts import create_structured_artifact
 
 # Add project root to path
 project_root = Path(__file__).resolve().parents[5]
@@ -119,8 +120,15 @@ class JourneyOrchestrator:
         
         return {
             "artifacts": {
-                "optimization": optimization_result,
-                "workflow_id": workflow_id
+                "optimization": create_structured_artifact(
+                    result_type="optimization",
+                    semantic_payload={
+                        "workflow_id": workflow_id,
+                        "optimization_id": optimization_result.get("optimization_id"),
+                        "status": optimization_result.get("status")
+                    },
+                    renderings={"optimization": optimization_result}
+                )
             },
             "events": [
                 {
@@ -164,19 +172,36 @@ class JourneyOrchestrator:
         except Exception as e:
             self.logger.warning(f"Failed to generate SOP visualization: {e}")
         
-        artifacts = {
-            "sop": sop_result,
-            "workflow_id": workflow_id
+        # Extract semantic payload
+        semantic_payload = {
+            "sop_id": sop_result.get("sop_id"),
+            "workflow_id": workflow_id,
+            "title": sop_result.get("title"),
+            "status": sop_result.get("status")
+        }
+        
+        # Collect renderings
+        renderings = {
+            "sop": sop_result
         }
         
         if visual_result and visual_result.get("success"):
-            artifacts["sop_visual"] = {
+            renderings["sop_visual"] = {
                 "image_base64": visual_result.get("image_base64"),
                 "storage_path": visual_result.get("storage_path")
             }
         
+        # Create structured artifact
+        structured_artifact = create_structured_artifact(
+            result_type="sop",
+            semantic_payload=semantic_payload,
+            renderings=renderings
+        )
+        
         return {
-            "artifacts": artifacts,
+            "artifacts": {
+                "sop": structured_artifact
+            },
             "events": [
                 {
                     "type": "sop_generated",
@@ -235,19 +260,37 @@ class JourneyOrchestrator:
         except Exception as e:
             self.logger.warning(f"Failed to generate workflow visualization: {e}")
         
-        artifacts = {
-            "workflow": workflow_result,
-            "sop_id": sop_id
+        # Extract semantic payload (the meaning)
+        semantic_payload = {
+            "workflow_id": workflow_result.get("workflow_id"),
+            "workflow_type": workflow_result.get("workflow_type"),
+            "status": workflow_result.get("status"),
+            "sop_id": sop_id,
+            "source_file": workflow_result.get("source_file")
+        }
+        
+        # Collect renderings (the views)
+        renderings = {
+            "workflow": workflow_result
         }
         
         if visual_result and visual_result.get("success"):
-            artifacts["workflow_visual"] = {
+            renderings["workflow_visual"] = {
                 "image_base64": visual_result.get("image_base64"),
                 "storage_path": visual_result.get("storage_path")
             }
         
+        # Create structured artifact
+        structured_artifact = create_structured_artifact(
+            result_type="workflow",
+            semantic_payload=semantic_payload,
+            renderings=renderings
+        )
+        
         return {
-            "artifacts": artifacts,
+            "artifacts": {
+                "workflow": structured_artifact
+            },
             "events": [
                 {
                     "type": "workflow_created",
@@ -275,8 +318,15 @@ class JourneyOrchestrator:
         
         return {
             "artifacts": {
-                "coexistence_analysis": analysis_result,
-                "workflow_id": workflow_id
+                "coexistence_analysis": create_structured_artifact(
+                    result_type="coexistence_analysis",
+                    semantic_payload={
+                        "workflow_id": workflow_id,
+                        "analysis_id": analysis_result.get("analysis_id"),
+                        "status": analysis_result.get("status")
+                    },
+                    renderings={"coexistence_analysis": analysis_result}
+                )
             },
             "events": [
                 {
@@ -306,10 +356,28 @@ class JourneyOrchestrator:
             current_state_workflow_id=current_state_workflow_id
         )
         
+        # Extract semantic payload
+        semantic_payload = {
+            "blueprint_id": blueprint_result.get("blueprint_id"),
+            "workflow_id": workflow_id,
+            "components": blueprint_result.get("components", {}).keys() if isinstance(blueprint_result.get("components"), dict) else []
+        }
+        
+        # Blueprint renderings are the full blueprint (it's already structured)
+        renderings = {
+            "blueprint": blueprint_result
+        }
+        
+        # Create structured artifact
+        structured_artifact = create_structured_artifact(
+            result_type="blueprint",
+            semantic_payload=semantic_payload,
+            renderings=renderings
+        )
+        
         return {
             "artifacts": {
-                "blueprint": blueprint_result,
-                "workflow_id": workflow_id
+                "blueprint": structured_artifact
             },
             "events": [
                 {

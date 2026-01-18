@@ -26,6 +26,11 @@ This plan establishes a **docker-based testing infrastructure** and a **holistic
 - ✅ SOP from Interactive Chat (Journey Liaison Agent)
 - ✅ Guide Agent (global concierge for user navigation)
 - ✅ Complete lineage tracking (Supabase + Data Brain)
+- ✅ **Content Realm Phases 1-4** ⭐ NEW (January 2026)
+  - ✅ Phase 1: Unified ingestion (upload, EDI, API) + core file management
+  - ✅ Phase 2: Bulk operations with batching and parallel processing
+  - ✅ Phase 3: Error handling, retry logic, idempotency, progress tracking
+  - ✅ Phase 4: File lifecycle, validation, search, metadata management
 
 ---
 
@@ -147,20 +152,85 @@ This plan establishes a **docker-based testing infrastructure** and a **holistic
 
 ### Phase 3: Realm Integration (Week 1, Days 4-5) - UPDATED
 
-#### Test 3.1: Content Realm ⏳
-- **File:** `tests/integration/realms/test_content_realm.py`
-- **Tests:**
-  - ✅ Realm registration with Runtime
-  - ✅ File ingestion intent
-  - ✅ File parsing intent
-  - ✅ File storage (GCS)
-  - ✅ File metadata (Supabase)
-  - ✅ Parsing results (all file types)
-  - ✅ Preview generation
-  - ✅ **Lineage tracking (parsed_results table)** ⭐ NEW
-  - ✅ **Embedding tracking (embeddings table)** ⭐ NEW
-  - ✅ Error handling
-  - ✅ Cleanup and isolation
+#### Test 3.1: Content Realm ⏳ - MAJOR UPDATE (Phases 1-4)
+
+**File:** `tests/integration/realms/test_content_realm.py`
+
+**Phase 1: Unified Ingestion & File Management** ⭐ NEW
+- ✅ Realm registration with Runtime
+- ✅ **Unified ingestion (upload, EDI, API)** ⭐ NEW
+  - ✅ `ingest_file` with `ingestion_type="upload"`
+  - ✅ `ingest_file` with `ingestion_type="edi"`
+  - ✅ `ingest_file` with `ingestion_type="api"`
+  - ✅ `IngestionAbstraction` integration
+  - ✅ `UploadAdapter`, `EDIAdapter`, `APIAdapter` usage
+- ✅ **File management intents** ⭐ NEW
+  - ✅ `register_file` - Register existing files
+  - ✅ `retrieve_file_metadata` - Get Supabase record
+  - ✅ `retrieve_file` - Get file contents from GCS
+  - ✅ `list_files` - List files with pagination/filters
+  - ✅ `get_file_by_id` - Get file by ID
+- ✅ File storage (GCS)
+- ✅ File metadata (Supabase)
+- ✅ State Surface file reference registration
+- ✅ `ui_name` preservation
+
+**Phase 2: Bulk Operations** ⭐ NEW
+- ✅ **Bulk ingestion** ⭐ NEW
+  - ✅ `bulk_ingest_files` with batching
+  - ✅ Parallel processing within batches
+  - ✅ Results and error tracking
+- ✅ **Bulk parsing** ⭐ NEW
+  - ✅ `bulk_parse_files` with parallel processing
+  - ✅ Parsed results storage
+- ✅ **Bulk embedding extraction** ⭐ NEW
+  - ✅ `bulk_extract_embeddings` with parallel processing
+  - ✅ Embedding storage in ArangoDB
+- ✅ **Bulk interpretation** ⭐ NEW
+  - ✅ `bulk_interpret_data` with parallel processing
+  - ✅ Interpretation results storage
+
+**Phase 3: Error Handling & Resilience** ⭐ NEW
+- ✅ **Idempotency** ⭐ NEW
+  - ✅ Idempotency key support
+  - ✅ Duplicate operation prevention
+  - ✅ Previous result retrieval
+- ✅ **Retry logic** ⭐ NEW
+  - ✅ Exponential backoff
+  - ✅ Ingestion-type-specific retry strategies
+  - ✅ Transient failure handling
+- ✅ **Progress tracking** ⭐ NEW
+  - ✅ Operation progress tracking
+  - ✅ Batch-level progress updates
+  - ✅ `get_operation_status` intent
+- ✅ **Resume capability** ⭐ NEW
+  - ✅ Resume from last successful batch
+  - ✅ Skip already-processed batches
+
+**Phase 4: File Lifecycle & Advanced Features** ⭐ NEW
+- ✅ **File lifecycle** ⭐ NEW
+  - ✅ `archive_file` - Soft delete
+  - ✅ `purge_file` - Permanent delete
+  - ✅ `restore_file` - Restore archived files
+- ✅ **Validation & preprocessing** ⭐ NEW
+  - ✅ `validate_file` - File format/contents validation
+  - ✅ `preprocess_file` - File normalization/cleaning
+- ✅ **Search & query** ⭐ NEW
+  - ✅ `search_files` - Search by name/content
+  - ✅ `query_files` - Query with filters
+- ✅ **Metadata management** ⭐ NEW
+  - ✅ `update_file_metadata` - Update metadata fields
+
+**Core Functionality (Existing)**
+- ✅ File parsing intent
+- ✅ Parsing results (all file types)
+- ✅ Preview generation
+- ✅ **Lineage tracking (parsed_results table)**
+- ✅ **Embedding tracking (embeddings table)**
+- ✅ Error handling
+- ✅ Cleanup and isolation
+
+**See:** [Comprehensive Testing Plan Phases 1-4 Update](./comprehensive_testing_plan_phases_1_4_update.md) for detailed test cases
 
 ---
 

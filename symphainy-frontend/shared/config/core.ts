@@ -55,8 +55,10 @@ export class UnifiedConfigManager {
         heartbeatInterval: 30000,
       },
       session: {
-        tokenKey: 'guideSessionToken',
-        stateKey: 'pillarStates',
+        // Note: Session tokens now managed by PlatformStateProvider
+        // Auth tokens stored in sessionStorage (see AuthProvider)
+        tokenKey: 'auth_token', // Updated to match new AuthProvider
+        stateKey: 'platform_state', // Updated to match PlatformStateProvider
         expirationTime: 24 * 60 * 60 * 1000, // 24 hours
         refreshThreshold: 5 * 60 * 1000, // 5 minutes
       },

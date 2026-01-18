@@ -9,6 +9,7 @@ HOW (Infrastructure Implementation): I coordinate between Redis and ArangoDB ada
 """
 
 import json
+import asyncio
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
@@ -158,25 +159,41 @@ class StateManagementAbstraction(StateManagementProtocol):
         Returns:
             Optional[Dict[str, Any]]: State data if found, None otherwise
         """
+        # Timeout for individual backend operations (2 seconds each)
+        BACKEND_TIMEOUT = 2.0
+        
         try:
-            # Try Redis first (hot state)
+            # Try Redis first (hot state) with timeout
             if self.redis_adapter:
                 redis_key = f"{self.redis_prefix}{state_id}"
-                redis_result = await self.redis_adapter.get_json(redis_key)
-                if redis_result:
-                    return redis_result.get("state_data")
+                try:
+                    redis_result = await asyncio.wait_for(
+                        self.redis_adapter.get_json(redis_key),
+                        timeout=BACKEND_TIMEOUT
+                    )
+                    if redis_result:
+                        return redis_result.get("state_data")
+                except asyncio.TimeoutError:
+                    self.logger.warning(f"Redis retrieval timeout for {state_id}")
+                except Exception as e:
+                    self.logger.debug(f"Redis retrieval failed for {state_id}: {e}")
             
-            # Try ArangoDB second (durable state)
+            # Try ArangoDB second (durable state) with timeout
             if self.arango_adapter:
                 try:
                     collection_name = "state_data"
-                    document = await self.arango_adapter.get_document(collection_name, state_id)
+                    document = await asyncio.wait_for(
+                        self.arango_adapter.get_document(collection_name, state_id),
+                        timeout=BACKEND_TIMEOUT
+                    )
                     if document:
                         # Remove ArangoDB internal fields
                         document.pop("_key", None)
                         document.pop("_id", None)
                         document.pop("_rev", None)
                         return document.get("state_data")
+                except asyncio.TimeoutError:
+                    self.logger.warning(f"ArangoDB retrieval timeout for {state_id}")
                 except Exception as e:
                     self.logger.debug(f"ArangoDB retrieval failed for {state_id}: {e}")
             

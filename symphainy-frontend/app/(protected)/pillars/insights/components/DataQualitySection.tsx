@@ -14,7 +14,8 @@ import { Progress } from '@/components/ui/progress';
 import { AlertCircle, CheckCircle, XCircle, AlertTriangle, TrendingUp, FileText, Sparkles } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { InsightsFileSelector } from './InsightsFileSelector';
-import { useInsightsAPIManager, QualityAssessmentResponse } from '@/shared/managers/InsightsAPIManager';
+import { useInsightsAPIManager } from '@/shared/hooks/useInsightsAPIManager';
+import { QualityAssessmentResponse } from '@/shared/managers/InsightsAPIManager';
 import { usePlatformState } from '@/shared/state/PlatformStateProvider';
 import { useContentAPIManager } from '@/shared/managers/ContentAPIManager';
 

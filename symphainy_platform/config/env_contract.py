@@ -204,7 +204,7 @@ def get_env_contract() -> EnvContract:
         OTEL_EXPORTER_OTLP_ENDPOINT=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317"),
         LOG_LEVEL=os.getenv("LOG_LEVEL", "INFO"),
         SUPABASE_URL=os.getenv("SUPABASE_URL"),
-        SUPABASE_ANON_KEY=os.getenv("SUPABASE_ANON_KEY"),
+        SUPABASE_ANON_KEY=os.getenv("SUPABASE_PUBLISHABLE_KEY") or os.getenv("SUPABASE_ANON_KEY") or os.getenv("SUPABASE_KEY"),
         SUPABASE_SERVICE_KEY=os.getenv("SUPABASE_SERVICE_KEY"),
         SUPABASE_JWKS_URL=os.getenv("SUPABASE_JWKS_URL"),
         SUPABASE_JWT_ISSUER=os.getenv("SUPABASE_JWT_ISSUER"),

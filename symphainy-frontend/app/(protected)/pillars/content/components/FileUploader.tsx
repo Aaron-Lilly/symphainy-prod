@@ -265,8 +265,8 @@ export function FileUploader({
         const currentContentState = state.realm.content.files || [];
         setRealmState('content', 'files', [...currentContentState, uploadedFile]);
         
-        // If SOP/Workflow (processing_pillar is journey_pillar), also add to Journey realm
-        if (config?.processingPillar === 'operations_pillar' || config?.processingPillar === 'journey_pillar') {
+        // If SOP/Workflow (processing_pillar is operations_pillar), also add to Journey realm
+        if (config?.processingPillar === 'operations_pillar') {
           const currentJourneyState = state.realm.journey.files || [];
           setRealmState('journey', 'files', [...currentJourneyState, uploadedFile]);
           

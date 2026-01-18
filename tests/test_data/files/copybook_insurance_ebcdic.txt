@@ -1,0 +1,13 @@
+01 POLICY-RECORD-EBCDIC.
+   05 POLICY-NUMBER          PIC X(12).
+   05 INSURED-NAME           PIC X(50).
+   05 DATE-OF-BIRTH          PIC X(10).
+   05 POLICY-TYPE            PIC X(20).
+   05 FACE-AMOUNT             PIC 9(10).
+   05 PREMIUM                PIC 9(8)V99.
+   05 CASH-VALUE             PIC 9(10)V99.
+   05 BENEFICIARY-NAME       PIC X(50).
+   05 STATUS                 PIC X(10).
+   05 EFFECTIVE-DATE         PIC X(10).
+   05 EXPIRATION-DATE        PIC X(10).
+   05 ENCODING                PIC X(8) VALUE 'EBCDIC'.

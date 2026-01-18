@@ -495,7 +495,7 @@ export class InsightsAPIManager {
     platformState: ReturnType<typeof usePlatformState>,
     maxWaitTime: number = 60000, // 60 seconds
     pollInterval: number = 1000 // 1 second
-  ): Promise<ExecutionStatus> {
+  ): Promise<any> {
     const startTime = Date.now();
     
     while (Date.now() - startTime < maxWaitTime) {

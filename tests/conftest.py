@@ -113,6 +113,10 @@ try:
         test_redis,
         test_arango,
         test_consul,
+        test_gcs,
+        test_supabase,
+        test_meilisearch,
+        test_public_works,
         clean_test_db
     )
 except ImportError:

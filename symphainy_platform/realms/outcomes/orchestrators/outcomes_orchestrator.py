@@ -12,6 +12,7 @@ They may NOT spawn long-running sagas, manage retries, or track cross-intent pro
 
 import sys
 from pathlib import Path
+from symphainy_platform.realms.utils.structured_artifacts import create_structured_artifact
 
 # Add project root to path
 project_root = Path(__file__).resolve().parents[5]
@@ -136,7 +137,15 @@ class OutcomesOrchestrator:
         except Exception as e:
             self.logger.warning(f"Failed to generate summary visualization: {e}")
         
-        artifacts = {
+        # Extract semantic payload
+        semantic_payload = {
+            "solution_id": summary_result.get("solution_id"),
+            "session_id": context.session_id,
+            "status": summary_result.get("status")
+        }
+        
+        # Collect renderings
+        renderings = {
             "synthesis": summary_result,
             "content_summary": content_summary,
             "insights_summary": insights_summary,
@@ -144,13 +153,22 @@ class OutcomesOrchestrator:
         }
         
         if visual_result and visual_result.get("success"):
-            artifacts["summary_visual"] = {
+            renderings["summary_visual"] = {
                 "image_base64": visual_result.get("image_base64"),
                 "storage_path": visual_result.get("storage_path")
             }
         
+        # Create structured artifact
+        structured_artifact = create_structured_artifact(
+            result_type="solution",
+            semantic_payload=semantic_payload,
+            renderings=renderings
+        )
+        
         return {
-            "artifacts": artifacts,
+            "artifacts": {
+                "solution": structured_artifact
+            },
             "events": [
                 {
                     "type": "outcome_synthesized",
@@ -207,20 +225,36 @@ class OutcomesOrchestrator:
         except Exception as e:
             self.logger.warning(f"Failed to generate roadmap visualization: {e}")
         
-        artifacts = {
-            "roadmap": roadmap_result,
+        # Extract semantic payload
+        semantic_payload = {
             "roadmap_id": roadmap_result.get("roadmap_id"),
+            "session_id": context.session_id,
+            "status": roadmap_result.get("status")
+        }
+        
+        # Collect renderings
+        renderings = {
+            "roadmap": roadmap_result,
             "strategic_plan": roadmap_result.get("strategic_plan")
         }
         
         if visual_result and visual_result.get("success"):
-            artifacts["roadmap_visual"] = {
+            renderings["roadmap_visual"] = {
                 "image_base64": visual_result.get("image_base64"),
                 "storage_path": visual_result.get("storage_path")
             }
         
+        # Create structured artifact
+        structured_artifact = create_structured_artifact(
+            result_type="roadmap",
+            semantic_payload=semantic_payload,
+            renderings=renderings
+        )
+        
         return {
-            "artifacts": artifacts,
+            "artifacts": {
+                "roadmap": structured_artifact
+            },
             "events": [
                 {
                     "type": "roadmap_generated",
@@ -278,20 +312,36 @@ class OutcomesOrchestrator:
         except Exception as e:
             self.logger.warning(f"Failed to generate POC visualization: {e}")
         
-        artifacts = {
+        # Extract semantic payload
+        semantic_payload = {
+            "poc_id": poc_result.get("proposal_id"),
+            "session_id": context.session_id,
+            "status": poc_result.get("status")
+        }
+        
+        # Collect renderings
+        renderings = {
             "poc_proposal": poc_result,
-            "proposal_id": poc_result.get("proposal_id"),
             "proposal": poc_result.get("proposal")
         }
         
         if visual_result and visual_result.get("success"):
-            artifacts["poc_visual"] = {
+            renderings["poc_visual"] = {
                 "image_base64": visual_result.get("image_base64"),
                 "storage_path": visual_result.get("storage_path")
             }
         
+        # Create structured artifact
+        structured_artifact = create_structured_artifact(
+            result_type="poc",
+            semantic_payload=semantic_payload,
+            renderings=renderings
+        )
+        
         return {
-            "artifacts": artifacts,
+            "artifacts": {
+                "poc": structured_artifact
+            },
             "events": [
                 {
                     "type": "poc_proposal_created",

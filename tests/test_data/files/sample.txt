@@ -1,0 +1,19 @@
+SymphAIny Platform Test Document
+
+This is a sample text file for testing file upload and processing capabilities.
+
+The platform should be able to:
+- Parse text content
+- Extract key information
+- Generate embeddings
+- Track lineage
+
+This document contains multiple paragraphs to test text processing.
+
+Key Features:
+1. File upload and storage
+2. Content parsing
+3. Semantic analysis
+4. Lineage tracking
+
+End of test document.

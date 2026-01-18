@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { AuthCard } from "@/components/ui/auth-card";
 import { Loader2, Eye, EyeOff, Mail, Lock } from "lucide-react";
 import { validateEmail, validatePassword } from "@/lib/api/auth";
-import { useAuth } from "@/shared/agui/AuthProvider";
+import { useAuth } from "@/shared/auth/AuthProvider";
 
 interface LoginFormProps {
   onLoginSuccess?: (user: any, token: string) => void;
@@ -19,7 +19,7 @@ export default function LoginForm({
   onLoginError,
   onSwitchToRegister,
 }: LoginFormProps) {
-  const { login, isLoading, error } = useAuth();
+  const { login, isLoading, error, user, sessionToken } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -55,16 +55,16 @@ export default function LoginForm({
     }
 
     try {
-      const response = await login(email, password);
-
-      if (response.success && response.user && response.token) {
-        onLoginSuccess?.(response.user, response.token);
-      } else {
-        setErrors({ general: response.message || "Login failed" });
-        onLoginError?.(response.message || "Login failed");
-      }
+      await login(email, password);
+      // Login successful - AuthProvider handles state
+      // Wait a moment for state to update, then check
+      setTimeout(() => {
+        if (user && sessionToken) {
+          onLoginSuccess?.(user, sessionToken);
+        }
+      }, 100);
     } catch (error) {
-      const errorMessage = "An unexpected error occurred. Please try again.";
+      const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred. Please try again.";
       setErrors({ general: errorMessage });
       onLoginError?.(errorMessage);
     }

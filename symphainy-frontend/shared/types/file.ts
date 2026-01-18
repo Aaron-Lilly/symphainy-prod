@@ -35,7 +35,7 @@ export interface FileTypeConfig {
   extensions: string[];
   mimeTypes: string[];
   requiresCopybook?: boolean;
-  processingPillar?: "content_pillar" | "operations_pillar";
+  processingPillar?: "content_pillar" | "operations_pillar" | "journey_pillar";
   description?: string;
   icon?: string;
 }

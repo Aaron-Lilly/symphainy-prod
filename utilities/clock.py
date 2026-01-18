@@ -56,6 +56,44 @@ class Clock:
         """
         return self.now().isoformat()
     
+    def parse_iso(self, iso_string: str) -> datetime:
+        """
+        Parse ISO 8601 string to datetime.
+        
+        Args:
+            iso_string: ISO 8601 formatted datetime string
+        
+        Returns:
+            Parsed datetime object
+        
+        Raises:
+            ValueError: If string cannot be parsed
+        """
+        # Handle common ISO formats
+        # Remove 'Z' suffix and replace with '+00:00' for UTC
+        normalized = iso_string.replace('Z', '+00:00')
+        
+        # Try parsing with fromisoformat (Python 3.7+)
+        try:
+            return datetime.fromisoformat(normalized)
+        except ValueError:
+            # Fallback: try parsing with strptime for common formats
+            formats = [
+                "%Y-%m-%dT%H:%M:%S.%f%z",
+                "%Y-%m-%dT%H:%M:%S%z",
+                "%Y-%m-%dT%H:%M:%S.%f",
+                "%Y-%m-%dT%H:%M:%S",
+            ]
+            
+            for fmt in formats:
+                try:
+                    return datetime.strptime(iso_string, fmt)
+                except ValueError:
+                    continue
+            
+            # If all parsing fails, raise error
+            raise ValueError(f"Unable to parse ISO string: {iso_string}")
+    
     def set_override(self, override_time: Optional[datetime]):
         """
         Set time override (for testing/replay).

@@ -17,7 +17,8 @@ import { AlertCircle, Sparkles, Target, Database, FileText } from 'lucide-react'
 import { InsightsFileSelector } from './InsightsFileSelector';
 import { InsightsSummaryDisplay } from './InsightsSummaryDisplay';
 import { AARAnalysisSection } from './AARAnalysisSection';
-import { useInsightsAPIManager, AnalysisResponse } from '@/shared/managers/InsightsAPIManager';
+import { useInsightsAPIManager } from '@/shared/hooks/useInsightsAPIManager';
+import { AnalysisResponse } from '@/shared/managers/InsightsAPIManager';
 import { usePlatformState } from '@/shared/state/PlatformStateProvider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
@@ -287,7 +288,9 @@ export function BusinessAnalysisSection({
         <div className="space-y-6">
           {/* Summary Display */}
           <InsightsSummaryDisplay
-            summary={analysisResult.analysis.summary}
+            summary={typeof analysisResult.analysis.summary === 'string' 
+              ? { textual: analysisResult.analysis.summary }
+              : analysisResult.analysis.summary}
             loading={loading}
             defaultTab="text"
           />

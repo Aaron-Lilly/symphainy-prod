@@ -1,219 +1,203 @@
-# Cursor Rules for Symphainy Platform
+# Symphainy Platform - Cursor Rules
 
-## 🚨 Critical Rules (Non-Negotiable)
-
-### Breaking Changes Only
-- **No backwards compatibility.** This is a new platform (v2.0).
-- Archive old implementations, rebuild cleanly.
-- No migration paths, no compatibility layers.
-
-### Working Code Only
-- **No stubs, placeholders, or cheats.**
-- All code must work. No `pass`, `raise NotImplementedError`, `# TODO` (unless abstract method).
-- No hard-coded values that should be configurable.
-- No mock data in production code.
-
-### Tests Must Be Real
-- **No tests pass if code has cheats.**
-- Tests must verify real functionality.
-- Tests must fail if code has stubs/cheats.
-- Integration tests test real integrations.
-
-### Public Works Pattern
-- **All infrastructure via Public Works abstractions.**
-- Use `StateManagementAbstraction`, not direct Redis calls.
-- Use `FileStorageAbstraction`, not direct GCS calls.
-- Use adapters via abstractions, not directly.
-
-### Architecture Guide Wins
-- **If code conflicts with architecture guide, architecture guide is correct.**
-- Code must follow architecture guide.
-- If unsure, ask (don't guess).
+**Status:** Canonical (Locked — January 2026)  
+**Applies to:** All code, tests, and documentation
 
 ---
 
-## Platform Architecture
+## Architecture Principles
 
-Symphainy is a **governed execution platform** that runs **Solutions** safely.
+### Platform Philosophy
+> **Symphainy is a governed execution platform.**
+> It runs **Solutions** safely — and those Solutions safely operate, connect to, and reason over external systems.
 
 ### Core Principles
+1. **Runtime owns execution** - Nothing executes without Runtime's knowledge
+2. **Intent-based architecture** - All operations expressed as intents
+3. **Public Works pattern** - All infrastructure via abstractions
+4. **Multi-tenant safety** - Built-in tenant isolation
+5. **Working code only** - No stubs, placeholders, or cheats
 
-1. **Platform-First, Not MVP-First**: Build the execution spine first, express use cases on top
-2. **Execution Ownership**: Runtime owns execution, Curator owns capability registration, Realms compose logic, Agents reason
-3. **Capability by Design, Enabled by Policy**: WAL, Saga, Zero Trust, multi-tenancy exist structurally from day one
-4. **Breaking Changes Only**: No backwards compatibility. This is v2.0.
-5. **Working Code Only**: No stubs, cheats, or placeholders.
+---
 
-### Architecture Layers
+## Code Patterns
 
+### Role = What, Service = How
+- **Roles** define WHAT is being done (e.g., "I orchestrate file ingestion")
+- **Services** define HOW it's done (e.g., "I coordinate upload, parsing, and storage")
+- **Agents** add autonomy for agency and predictability
+
+### Intent-Based Execution
+All operations flow through Runtime as intents:
+```python
+intent = IntentFactory.create_intent(
+    intent_type="ingest_file",
+    tenant_id=tenant_id,
+    session_id=session_id,
+    solution_id=solution_id,
+    parameters={...}
+)
+result = await execution_manager.execute(intent)
 ```
-Runtime Execution Engine (Validation & State)
-  ↓
-Civic Systems (Behavior & Governance)
-  ↓
-Domain Services (Domain Execution)
-  ↓
-Public Works (Foundations)
+
+### Public Works Pattern
+All infrastructure access via abstractions:
+```python
+# ✅ CORRECT - Use abstraction
+file_storage = public_works.get_file_storage_abstraction()
+await file_storage.upload_file(...)
+
+# ❌ WRONG - Direct adapter access
+await gcs_adapter.upload(...)  # Anti-pattern!
 ```
 
-### Directory Structure
+### Runtime Participation Contract
+All realm orchestrators must:
+1. Declare supported intents
+2. Handle intents with execution context
+3. Return artifacts and events
+4. Use Public Works abstractions (no direct infrastructure)
+
+---
+
+## File Structure
 
 ```
 symphainy_platform/
-  runtime/          # Runtime Execution Engine - execution control, WAL, Saga, state
-  civic_systems/    # Civic Systems - Smart City, Experience, Agentic, Platform SDK
-  realms/           # Domain Services - Content, Insights, Operations, Outcomes
-  foundations/      # Public Works - infrastructure abstractions and adapters
-    public_works/   # Infrastructure abstractions (swappable)
-      protocols/    # Contracts (Layer 2)
-      abstractions/ # Business logic (Layer 1)
-      adapters/     # Technology bindings (Layer 0)
+├── runtime/              # Runtime Plane - execution authority
+├── civic_systems/       # Civic Systems - governance
+│   ├── experience/      # Experience Plane
+│   ├── agentic/         # Agent Foundation
+│   └── platform_sdk/   # Platform SDK
+├── realms/              # Realm Plane - domain services
+│   ├── content/         # Content Realm
+│   ├── insights/        # Insights Realm
+│   ├── journey/         # Journey Realm
+│   └── outcomes/        # Outcomes Realm
+└── foundations/         # Foundations - infrastructure
+    └── public_works/     # Public Works abstractions
 ```
 
-**Note:** Package is named `symphainy_platform` (not `platform`) to avoid conflict with Python's built-in `platform` module.
+---
+
+## Anti-Patterns (FORBIDDEN)
+
+### ❌ Direct Infrastructure Access
+```python
+# WRONG - Direct adapter access in business logic
+await redis_client.set(key, value)
+
+# CORRECT - Use abstraction
+await state_abstraction.store_state(key, value)
+```
+
+### ❌ Stubs and Placeholders
+```python
+# WRONG - Stub implementation
+async def process_file(self):
+    pass  # TODO: implement
+
+# CORRECT - Working implementation
+async def process_file(self):
+    # Real implementation that works
+    result = await self._process_file_internal()
+    return result
+```
+
+### ❌ Execution Outside Runtime
+```python
+# WRONG - Direct execution in realm
+await self.database.execute(query)
+
+# CORRECT - Return intent for Runtime execution
+return {
+    "artifacts": {"query": query},
+    "events": [{"type": "query_prepared"}]
+}
+```
+
+### ❌ Orchestration in Realms
+```python
+# WRONG - Orchestration logic in realm
+async def handle_intent(self, intent, context):
+    result1 = await self.step1()
+    result2 = await self.step2(result1)
+    return result2
+
+# CORRECT - Use Runtime sagas for orchestration
+async def handle_intent(self, intent, context):
+    # Return artifacts, let Runtime orchestrate
+    return {"artifacts": {...}, "events": [...]}
+```
 
 ---
 
-## Key Patterns
+## Testing Requirements
 
-### Runtime Execution Engine
-- **Sessions**: First-class, tenant-scoped, required for all intents
-- **State Surface**: Hot state (Redis) + Cold state (ArangoDB/Supabase)
-- **WAL**: Redis Streams (append-only log for audit, replay, recovery)
-- **Saga**: Async workflow coordination with compensation
-- **Data Brain**: Runtime-native data cognition (references, not data)
-- **Intent Ingestion**: Experience → Runtime → Realms
+### Test Principles
+1. **Tests must fail if code has cheats** - No tests that pass with stubs
+2. **Use real infrastructure** - Integration tests use docker-compose
+3. **Test architecture compliance** - Verify Public Works pattern usage
+4. **No skipped tests** - Unless explicitly documented why
 
-### Public Works Pattern
-- **Protocols**: Define contracts (Layer 2)
-- **Abstractions**: Business logic (Layer 1)
-- **Adapters**: Technology bindings (Layer 0)
-- **Swappability**: Swap adapters without changing business logic
-
-### Domain Services (Realms)
-- **Runtime Participation Contract**: `handle_intent(intent, runtime_context) → { artifacts, events }`
-- **No Direct State**: Use State Surface
-- **No Orchestration**: Use Runtime sagas
-- **No Direct Infrastructure**: Use Public Works abstractions
-
-### Agents
-- **GroundedReasoningAgentBase**: Fact gathering → Reasoning → Validation
-- **No State Storage**: Agents request state from State Surface
-- **No Side Effects**: Agents reason, Runtime executes
-- **Tool Invocation**: Via Runtime, not direct
-
-### Experience Plane
-- **Submit Intents**: Experience submits, never runs logic
-- **Stream State**: Experience streams state from Runtime
-- **Separate Service**: Experience is a separate service, not mounted on Runtime
+### Test Structure
+```
+tests/
+├── unit/              # Fast, isolated tests (mocked)
+├── integration/       # Real infrastructure tests
+└── e2e/              # Full platform tests
+```
 
 ---
 
-## Code Style
+## Documentation Standards
 
-- **Python 3.10+**: Use type hints, async/await
-- **Protocols for Contracts**: Use `typing.Protocol` for contracts
-- **Dataclasses for Data**: Use `@dataclass` for structured data
-- **Async First**: All I/O operations are async
-- **Type Safety**: Use type hints everywhere, validate with mypy
+### Required Documentation
+1. **Architecture decisions** → `docs/architecture/decisions/ADR_*.md`
+2. **Pattern usage** → `docs/architecture/patterns/*.md`
+3. **Implementation status** → `docs/current_state/`
+4. **API contracts** → `docs/execution/api_contracts_*.md`
 
----
-
-## Testing
-
-- **pytest**: Test framework
-- **Markers**: `@pytest.mark.unit`, `@pytest.mark.integration`, `@pytest.mark.e2e`
-- **Fixtures**: Use `conftest.py` for shared fixtures
-- **Test Structure**: `tests/unit/`, `tests/integration/`, `tests/e2e/`
-- **No Cheats**: Tests must fail if code has stubs/cheats
+### Documentation Principles
+- **Current state over history** - Document what exists, not what changed
+- **Single source of truth** - One authoritative document per topic
+- **No duplicates** - Consolidate, don't proliferate
 
 ---
 
-## Anti-Patterns (Forbidden)
+## Key Documents
 
-### Code Anti-Patterns
-- ❌ **Stubs:** `pass`, `raise NotImplementedError`, `# TODO` (unless abstract method)
-- ❌ **Cheats:** Hard-coded values, mock data in production code
-- ❌ **Placeholders:** Unresolved placeholders that persist
-- ❌ **Direct Infrastructure:** Direct Redis/DB calls in business logic
-- ❌ **Architectural Violations:** Code that doesn't match architecture guide
-- ❌ **Backwards Compatibility:** Supporting old patterns
-
-### Test Anti-Patterns
-- ❌ **Tests That Pass with Cheats:** Tests that pass when code has stubs
-- ❌ **Mock Everything:** Tests that mock all dependencies (no real integration)
-- ❌ **Skipped Tests:** Tests marked as skipped without good reason
-
-### Process Anti-Patterns
-- ❌ **Pragmatic Deviations:** "Just this once" architectural violations
-- ❌ **Temporary Solutions:** Solutions that become permanent
-- ❌ **Backwards Compatibility:** Supporting old patterns "just in case"
-
----
-
-## When Adding New Code
-
-1. **Check Architecture**: Does it belong in Runtime, Civic Systems, Realms, or Public Works?
-2. **Use Contracts**: Implement Protocol-based contracts
-3. **Use Public Works**: All infrastructure via Public Works abstractions
-4. **Write Working Code**: No stubs, no cheats, no placeholders
-5. **Write Tests**: Add unit/integration tests (tests must fail if code has cheats)
-6. **Document**: Add docstrings explaining WHAT and HOW
-
----
-
-## Import Paths
-
-**Important:** Package is named `symphainy_platform` (not `platform`) to avoid conflict with Python's built-in `platform` module.
-
-- ✅ Correct: `from symphainy_platform.runtime import Session`
-- ❌ Wrong: `from platform.runtime import Session` (conflicts with built-in)
+- **Architecture:** `docs/architecture/north_star.md` (authoritative)
+- **Platform Rules:** `docs/PLATFORM_RULES.md` (development standards)
+- **Platform Overview:** `docs/PLATFORM_OVERVIEW.md` (executive overview)
+- **Developer Guide:** `docs/00_START_HERE.md` (developer entry point)
+- **Capabilities:** `docs/capabilities/00_CAPABILITIES_INDEX.md` (what platform can do)
 
 ---
 
 ## Common Tasks
 
-### Adding Infrastructure (Public Works)
+### Adding a New Intent
+1. Add intent type to `runtime/intent_model.py`
+2. Implement handler in realm orchestrator
+3. Register intent in realm's `declare_intents()`
+4. Add tests (must fail if implementation has stubs)
+5. Document in `docs/capabilities/`
+
+### Adding a New Realm
+1. Create realm directory in `realms/`
+2. Implement `RealmBase` with `handle_intent()`
+3. Declare supported intents
+4. Use Public Works abstractions
+5. Register with Runtime
+6. Add tests and documentation
+
+### Adding Infrastructure
 1. Create adapter in `foundations/public_works/adapters/`
 2. Create abstraction in `foundations/public_works/abstractions/`
 3. Create protocol in `foundations/public_works/protocols/`
 4. Register in `foundations/public_works/foundation_service.py`
 5. Write tests (must fail if adapter has stubs)
-
-### Adding a Domain Service (Realm)
-1. Create service in `realms/{realm_name}/`
-2. Implement Runtime Participation Contract
-3. Use Public Works abstractions (no direct infrastructure)
-4. Register with Curator
-5. Write tests (must fail if service has stubs)
-
-### Adding Runtime Component
-1. Create component in `runtime/`
-2. Follow architecture guide strictly
-3. Use Public Works abstractions
-4. Integrate with WAL, Saga, State Surface
-5. Write tests (must fail if component has stubs)
-
----
-
-## Questions to Ask
-
-- **Where does this belong?** Runtime, Civic Systems, Realms, or Public Works?
-- **Who owns execution?** Runtime owns execution, not realms/agents
-- **Who owns state?** State Surface owns state, not services/agents
-- **Is this infrastructure?** If yes, it belongs in Public Works
-- **Does this have stubs/cheats?** If yes, fix it (no stubs allowed)
-- **Does this match architecture guide?** If no, fix it
-
----
-
-## References
-
-- **Architecture Guide**: `docs/architecture/north_star.md`
-- **Platform Rules**: `docs/PLATFORM_RULES.md`
-- **Execution Plans**: `docs/execution/00_EXECUTION_INDEX.md`
-- **Roadmap**: `docs/roadmap/00_ROADMAP_INDEX.md`
-- **Start Here**: `docs/00_START_HERE.md`
 
 ---
 
@@ -227,3 +211,5 @@ symphainy_platform/
 > No tests that pass with stubs.
 >
 > **Working code only.**
+
+If code conflicts with architecture guide, **architecture guide wins**.

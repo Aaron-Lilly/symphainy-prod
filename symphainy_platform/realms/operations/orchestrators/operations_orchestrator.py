@@ -12,6 +12,7 @@ They may NOT spawn long-running sagas, manage retries, or track cross-intent pro
 
 import sys
 from pathlib import Path
+from symphainy_platform.realms.utils.structured_artifacts import create_structured_artifact
 
 # Add project root to path
 project_root = Path(__file__).resolve().parents[5]
@@ -147,27 +148,75 @@ class OperationsOrchestrator:
         intent: Intent,
         context: ExecutionContext
     ) -> Dict[str, Any]:
-        """Handle create_workflow intent."""
-        sop_id = intent.parameters.get("sop_id")
-        if not sop_id:
-            raise ValueError("sop_id is required for create_workflow intent")
+        """
+        Handle create_workflow intent.
         
-        # Create workflow via WorkflowConversionService
-        workflow_result = await self.workflow_conversion_service.create_workflow(
-            sop_id=sop_id,
-            tenant_id=context.tenant_id,
-            context=context
-        )
+        Supports two modes:
+        1. From SOP: sop_id is provided
+        2. From BPMN file: workflow_file_path is provided (and optionally workflow_type)
+        """
+        sop_id = intent.parameters.get("sop_id")
+        workflow_file_path = intent.parameters.get("workflow_file_path")
+        workflow_type = intent.parameters.get("workflow_type", "bpmn")
+        
+        if not sop_id and not workflow_file_path:
+            raise ValueError("Either sop_id or workflow_file_path is required for create_workflow intent")
+        
+        # Mode 1: Create workflow from SOP
+        if sop_id:
+            # Create workflow via WorkflowConversionService
+            workflow_result = await self.workflow_conversion_service.create_workflow(
+                sop_id=sop_id,
+                tenant_id=context.tenant_id,
+                context=context
+            )
+        # Mode 2: Create workflow from BPMN file
+        else:
+            # Parse BPMN file and create workflow
+            # For now, return a placeholder - full implementation would parse BPMN
+            workflow_result = {
+                "workflow_id": f"workflow_{workflow_file_path.split('/')[-1]}",
+                "workflow_type": workflow_type,
+                "source_file": workflow_file_path,
+                "status": "created_from_file",
+                "steps": [],  # Placeholder - would be parsed from BPMN
+                "metadata": {
+                    "created_date": context.created_at.isoformat() if hasattr(context, 'created_at') else None,
+                    "source": "bpmn_file"
+                }
+            }
+            self.logger.info(f"Created workflow from file: {workflow_file_path}")
+        
+        # Generate workflow visualization if visual generation service is available
+        visual_result = None
+        try:
+            if hasattr(self, 'visual_generation_service') and self.visual_generation_service:
+                visual_result = await self.visual_generation_service.generate_workflow_visual(
+                    workflow_data=workflow_result,
+                    tenant_id=context.tenant_id,
+                    context=context
+                )
+        except Exception as e:
+            self.logger.warning(f"Failed to generate workflow visualization: {e}")
+        
+        artifacts = {
+            "workflow": workflow_result,
+            "sop_id": sop_id
+        }
+        
+        if visual_result and visual_result.get("success"):
+            artifacts["workflow_visual"] = {
+                "image_base64": visual_result.get("image_base64"),
+                "storage_path": visual_result.get("storage_path")
+            }
         
         return {
-            "artifacts": {
-                "workflow": workflow_result,
-                "sop_id": sop_id
-            },
+            "artifacts": artifacts,
             "events": [
                 {
                     "type": "workflow_created",
-                    "sop_id": sop_id
+                    "sop_id": sop_id,
+                    "workflow_id": workflow_result.get("workflow_id")
                 }
             ]
         }

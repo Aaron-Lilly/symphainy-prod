@@ -21,14 +21,18 @@ for _ in range(10):  # Max 10 levels up
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from utilities import get_logger
+from .middleware.auth_middleware import AuthenticationMiddleware
 from .api.sessions import router as sessions_router
 from .api.intents import router as intents_router
 from .api.websocket import router as websocket_router
 from .api.guide_agent import router as guide_agent_router
+from .api.auth import router as auth_router
+from .api.runtime_agent_websocket import router as runtime_agent_websocket_router
 
 
 logger = get_logger("ExperienceService")
@@ -47,20 +51,32 @@ def create_app() -> FastAPI:
         version="2.0.0"
     )
     
+    # Authentication middleware (must be added before CORS)
+    app.add_middleware(AuthenticationMiddleware)
+    
     # CORS for frontend
+    # Get allowed origins from environment variable, default to localhost for development
+    allowed_origins_str = os.getenv(
+        "CORS_ALLOWED_ORIGINS",
+        "http://localhost:3000,http://localhost:3001,http://localhost:8000"
+    )
+    allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",") if origin.strip()]
+    
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # Configure for production
+        allow_origins=allowed_origins,  # Specific origins only (not wildcard)
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
     )
     
     # Include routers
+    app.include_router(auth_router)
     app.include_router(sessions_router)
     app.include_router(intents_router)
     app.include_router(websocket_router)
     app.include_router(guide_agent_router)
+    app.include_router(runtime_agent_websocket_router)  # Experience Plane owns /api/runtime/agent
     
     # Include Admin Dashboard routers
     from symphainy_platform.civic_systems.experience.admin_dashboard.api import (

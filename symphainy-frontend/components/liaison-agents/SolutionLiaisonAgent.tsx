@@ -26,7 +26,9 @@ import {
   Eye
 } from 'lucide-react';
 
-import { useAuth } from '@/shared/agui/AuthProvider';
+import { useAuth } from '@/shared/auth/AuthProvider';
+import { usePlatformState } from '@/shared/state/PlatformStateProvider';
+import { useUnifiedAgentChat } from '@/shared/hooks/useUnifiedAgentChat';
 
 // ============================================================================
 // COMPONENT INTERFACES
@@ -57,11 +59,30 @@ export const SolutionLiaisonAgent: React.FC<SolutionLiaisonAgentProps> = ({
   className = ''
 }) => {
   const { user } = useAuth();
+  const { state } = usePlatformState();
+  
+  // Use real-time chat hook for liaison agent
+  const {
+    messages,
+    isConnected,
+    isLoading: isChatLoading,
+    error: chatError,
+    sendMessage,
+    switchAgent
+  } = useUnifiedAgentChat({
+    sessionToken: state.session.sessionId || undefined,
+    autoConnect: true,
+    initialAgent: 'liaison',
+    initialPillar: 'business_outcomes'
+  });
   
   const [currentGuidance, setCurrentGuidance] = useState<SolutionGuidance | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [conversationHistory, setConversationHistory] = useState<any[]>([]);
   const [userMessage, setUserMessage] = useState('');
+  
+  // Switch to liaison agent on mount
+  useEffect(() => {
+    switchAgent('liaison', 'business_outcomes');
+  }, [switchAgent]);
 
   // ============================================================================
   // GUIDANCE LOGIC
@@ -116,109 +137,41 @@ export const SolutionLiaisonAgent: React.FC<SolutionLiaisonAgentProps> = ({
   // ============================================================================
 
   const handleSuggestionClick = async (suggestion: string) => {
-    setIsAnalyzing(true);
-    
-    // Add user message to conversation
-    const userMsg = {
-      id: Date.now().toString(),
-      type: 'user',
-      content: suggestion,
-      timestamp: new Date()
-    };
-    setConversationHistory(prev => [...prev, userMsg]);
-
-    // Simulate AI response
-    setTimeout(() => {
-      const aiResponse = {
-        id: (Date.now() + 1).toString(),
-        type: 'agent',
-        content: getSuggestionResponse(suggestion),
-        timestamp: new Date()
-      };
-      setConversationHistory(prev => [...prev, aiResponse]);
-      setIsAnalyzing(false);
-    }, 1000);
+    // Send suggestion as message to real-time chat
+    try {
+      await sendMessage(suggestion, 'liaison', 'business_outcomes');
+    } catch (error) {
+      console.error('Failed to send suggestion:', error);
+    }
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userMessage.trim()) return;
+    if (!userMessage.trim() || isChatLoading) return;
 
     const message = userMessage.trim();
     setUserMessage('');
 
-    // Add user message
-    const userMsg = {
-      id: Date.now().toString(),
-      type: 'user',
-      content: message,
-      timestamp: new Date()
-    };
-    setConversationHistory(prev => [...prev, userMsg]);
-
-    // Generate AI response
-    setIsAnalyzing(true);
-    setTimeout(() => {
-      const aiResponse = {
-        id: (Date.now() + 1).toString(),
-        type: 'agent',
-        content: generateSolutionResponse(message),
-        timestamp: new Date()
-      };
-      setConversationHistory(prev => [...prev, aiResponse]);
-      setIsAnalyzing(false);
-    }, 1500);
+    // Send message via real-time chat
+    try {
+      await sendMessage(message, 'liaison', 'business_outcomes');
+    } catch (error) {
+      console.error('Failed to send message:', error);
+    }
   };
 
   // ============================================================================
   // HELPER FUNCTIONS
   // ============================================================================
 
-  const getSuggestionResponse = (suggestion: string): string => {
-    if (suggestion.includes('transform') || suggestion.includes('call center')) {
-      return 'Excellent! Call center transformation is a great use case. I can help you create an AI-powered solution that improves customer service, reduces wait times, and provides intelligent routing. Would you like to start with an MVP or create a POC first?';
-    } else if (suggestion.includes('integrate') || suggestion.includes('legacy')) {
-      return 'Legacy data integration is a common challenge. I can help you create a solution that connects your existing systems with modern APIs, ensuring data consistency and real-time synchronization. This typically works well as a POC to validate the integration approach.';
-    } else if (suggestion.includes('marketing') || suggestion.includes('campaign')) {
-      return 'AI-powered marketing campaigns are very effective! I can help you create personalized campaigns, automated content generation, and intelligent audience targeting. This works great as an MVP to test market response.';
-    } else if (suggestion.includes('validate') || suggestion.includes('concept')) {
-      return 'Concept validation is perfect for a POC approach. I can help you create a proof-of-concept that demonstrates the value proposition and validates the technical feasibility before full implementation.';
-    } else if (suggestion.includes('MVP')) {
-      return 'MVP (Minimum Viable Product) is perfect for getting started quickly. It provides core functionality to validate your business concept and gather user feedback. Typically takes 2-4 weeks to implement.';
-    } else if (suggestion.includes('POC')) {
-      return 'POC (Proof of Concept) is ideal for validating specific ideas or technologies. It demonstrates feasibility and value to stakeholders. Typically takes 4-8 weeks to implement.';
-    } else if (suggestion.includes('demonstration') || suggestion.includes('demo')) {
-      return 'A demonstration is perfect for showcasing capabilities and generating interest. It\'s quick to build (1-2 weeks) and great for presentations and stakeholder engagement.';
-    }
-    return 'I understand you want help with solution discovery. Let me guide you through the process to find the right approach for your business needs.';
-  };
-
-  const generateSolutionResponse = (message: string): string => {
-    const lowerMessage = message.toLowerCase();
-    
-    if (lowerMessage.includes('mvp') || lowerMessage.includes('minimum viable')) {
-      return 'MVP solutions are perfect for validating business concepts quickly. They provide core functionality without complex features, allowing you to test market demand and gather user feedback. I can help you define the MVP scope and implementation approach.';
-    } else if (lowerMessage.includes('poc') || lowerMessage.includes('proof of concept')) {
-      return 'POC solutions are ideal for validating specific ideas or technologies. They demonstrate feasibility and business value to stakeholders, helping with decision-making and risk mitigation. I can guide you through the POC development process.';
-    } else if (lowerMessage.includes('demo') || lowerMessage.includes('demonstration')) {
-      return 'Demo solutions are perfect for showcasing capabilities and generating interest. They\'re quick to build and great for presentations, stakeholder engagement, and concept validation. I can help you create an effective demonstration.';
-    } else if (lowerMessage.includes('business outcome') || lowerMessage.includes('goal')) {
-      return 'A clear business outcome is the foundation of any successful solution. I can help you define specific, measurable goals that align with your business objectives. What specific problem are you trying to solve?';
-    } else if (lowerMessage.includes('solution') || lowerMessage.includes('approach')) {
-      return 'I can help you choose the right solution approach based on your business outcome. Whether you need an MVP, POC, demo, or full production solution, I\'ll guide you through the decision process.';
-    } else if (lowerMessage.includes('orchestrate') || lowerMessage.includes('implement')) {
-      return 'Solution orchestration involves analyzing your requirements, selecting the right approach, and coordinating the implementation process. I can help you orchestrate your solution from start to finish.';
-    }
-    
-    return 'I\'m here to help with solution discovery! You can ask me about business outcomes, solution approaches (MVP, POC, Demo), or any other solution-related questions.';
-  };
+  // Helper functions removed - now handled by real-time agent
 
   // ============================================================================
   // RENDER HELPERS
   // ============================================================================
 
   const renderMessage = (message: any) => {
-    const isUser = message.type === 'user';
+    const isUser = message.role === 'user';
     
     return (
       <div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-3`}>
@@ -297,11 +250,20 @@ export const SolutionLiaisonAgent: React.FC<SolutionLiaisonAgentProps> = ({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Connection Status */}
+          {!isConnected && (
+            <Alert>
+              <AlertDescription className="text-xs">
+                {chatError ? `Connection error: ${chatError}` : 'Connecting to Outcomes Liaison Agent...'}
+              </AlertDescription>
+            </Alert>
+          )}
+          
           {/* Conversation History */}
-          {conversationHistory.length > 0 && (
+          {messages.length > 0 && (
             <div className="max-h-60 overflow-y-auto space-y-2">
-              {conversationHistory.map(renderMessage)}
-              {isAnalyzing && (
+              {messages.map(renderMessage)}
+              {isChatLoading && (
                 <div className="flex justify-start">
                   <div className="flex items-center space-x-2 bg-gray-100 rounded-lg px-3 py-2">
                     <Loader2 className="w-3 h-3 animate-spin text-gray-400" />
@@ -309,6 +271,12 @@ export const SolutionLiaisonAgent: React.FC<SolutionLiaisonAgentProps> = ({
                   </div>
                 </div>
               )}
+            </div>
+          )}
+          
+          {messages.length === 0 && isConnected && (
+            <div className="text-center text-sm text-gray-500 py-4">
+              Ask me about business outcomes, solution discovery, MVPs, POCs, or strategic planning!
             </div>
           )}
 
@@ -324,9 +292,9 @@ export const SolutionLiaisonAgent: React.FC<SolutionLiaisonAgentProps> = ({
             <Button
               type="submit"
               size="sm"
-              disabled={!userMessage.trim() || isAnalyzing}
+              disabled={!userMessage.trim() || isChatLoading || !isConnected}
             >
-              {isAnalyzing ? (
+              {isChatLoading ? (
                 <Loader2 className="w-3 h-3 animate-spin" />
               ) : (
                 <SendHorizontal className="w-3 h-3" />

@@ -296,21 +296,17 @@ export function FileDashboard({
       
       setLoadingStats(true);
       try {
-        // Use ContentAPIManager for file statistics
-        // Note: getFileStatistics may need to be updated to use new API
-        const stats = await contentAPIManager.getFileStatistics();
-        
-        if (result.success) {
-          setStats({
-            total: result.statistics.total,
-            uploaded: result.statistics.uploaded,
-            parsed: result.statistics.parsed,
-            embedded: result.statistics.embedded || 0, // New field
-            validated: files.filter(f => f.status === FileStatus.Validated).length, // Fallback to files array
-            rejected: files.filter(f => f.rejection_reason && f.rejection_reason.length > 0).length, // Fallback
-            deleted: files.filter(f => f.deleted).length, // Fallback
-          });
-        }
+        // Calculate statistics from files array
+        const parsedFiles = state.realm.content.parsedFiles || [];
+        setStats({
+          total: files.length,
+          uploaded: files.filter(f => f.status === FileStatus.Uploaded || f.status === FileStatus.Parsed || f.status === FileStatus.Validated).length,
+          parsed: parsedFiles.length,
+          embedded: parsedFiles.filter(f => (f as any).embeddings && (f as any).embeddings.length > 0).length,
+          validated: files.filter(f => f.status === FileStatus.Validated).length,
+          rejected: files.filter(f => f.rejection_reason && f.rejection_reason.length > 0).length,
+          deleted: files.filter(f => f.deleted).length,
+        });
       } catch (error) {
         console.error('Failed to fetch file statistics:', error);
         // Fallback to calculating from files array

@@ -30,9 +30,9 @@ import {
   XCircle,
   Download
 } from 'lucide-react';
-import { useAuth } from '@/shared/agui/AuthProvider';
-import { useGlobalSession } from '@/shared/agui/GlobalSessionProvider';
-import { ContentAPIManager } from '@/shared/managers/ContentAPIManager';
+import { useAuth } from '@/shared/auth/AuthProvider';
+import { usePlatformState } from '@/shared/state/PlatformStateProvider';
+import { useContentAPIManager } from '@/shared/hooks/useContentAPIManager';
 import { FileMetadata, FileStatus, FileType } from '@/shared/types/file';
 import { toast } from 'sonner';
 import { StructuredDataTab } from '@/components/content/tabs/StructuredDataTab';
@@ -170,7 +170,8 @@ export function ParsePreviewNew({
   className
 }: ParsePreviewNewProps) {
   const { isAuthenticated } = useAuth();
-  const { guideSessionToken, getPillarState, setPillarState } = useGlobalSession();
+  const { state, getRealmState } = usePlatformState();
+  const contentAPIManager = useContentAPIManager();
   
   const [selectedFileUuid, setSelectedFileUuid] = useState<string | null>(null);
   const [parseState, setParseState] = useState<ParseState>("idle");
@@ -179,19 +180,15 @@ export function ParsePreviewNew({
   const [showDetailsModal, setShowDetailsModal] = useState(false);
   const [activeTab, setActiveTab] = useState("preview");
 
-  // Get files from all pillar states
-  const parsingState = getPillarState("parsing") || { files: [] };
-  const dataState = getPillarState("data") || { files: [] };
-  const contentState = getPillarState("content") || { files: [] };
-  const insightsState = getPillarState("insights") || { files: [] };
-  const operationsState = getPillarState("operations") || { files: [] };
+  // Get files from realm states
+  const contentFiles = state.realm.content.files || [];
+  const journeyFiles = state.realm.journey.files || [];
+  const insightsFiles = state.realm.insights.files || [];
 
   const filesToParse = combineAndDeduplicateFiles([
-    parsingState,
-    dataState,
-    contentState,
-    insightsState,
-    operationsState,
+    { files: contentFiles },
+    { files: journeyFiles },
+    { files: insightsFiles },
   ]);
 
   const selectedFile = filesToParse.find((f) => f.uuid === selectedFileUuid) || propSelectedFile;
@@ -245,22 +242,20 @@ export function ParsePreviewNew({
     setParseResult(null);
 
     try {
-      const sessionToken = guideSessionToken || 'debug-token';
-      const apiManager = new ContentAPIManager(sessionToken);
-      
       const fileId = selectedFile.file_id || selectedFile.uuid;
-      const result = await apiManager.processFile(fileId);
+      const fileReference = (selectedFile as any).file_reference || (selectedFile.metadata as any)?.file_reference || `file:${state.session.tenantId}:${state.session.sessionId}:${fileId}`;
+      const result = await contentAPIManager.parseFile(fileId, fileReference);
 
-      if (result.success && result.result) {
+      if (result.success && result.parsed_file_id) {
         const parsedData: ParseResult = {
           file_id: fileId,
-          format: result.result.parsed_data?.format || 'json_structured',
-          chunks: result.result.parsed_data?.chunks,
-          structured_data: result.result.parsed_data?.structured_data,
-          metadata: result.result.metadata,
-          parsed_data: result.result.parsed_data,
-          preview_grid: result.result.parsed_data?.preview_grid,
-          text: result.result.parsed_data?.text,
+          format: result.parsed_content?.format || 'json_structured',
+          chunks: result.parsed_content?.chunks,
+          structured_data: result.parsed_content?.structured_data,
+          metadata: result.parsed_content?.metadata,
+          parsed_data: result.parsed_content,
+          preview_grid: result.parsed_content?.preview_grid,
+          text: result.parsed_content?.text,
         };
         
         setParseResult(parsedData);
@@ -297,7 +292,7 @@ export function ParsePreviewNew({
         onParseError(errorMessage);
       }
     }
-  }, [selectedFile, guideSessionToken, onParseComplete, onParseError]);
+  }, [selectedFile, state.session.sessionId, contentAPIManager, onParseComplete, onParseError]);
 
   const resetParse = useCallback(() => {
     setParseState("idle");

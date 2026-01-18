@@ -178,8 +178,8 @@ export function FileParser({
         copybookReference
       );
 
-      if (result.success && result.result) {
-        const parsedFileId = result.result.parsed_file_id;
+      if (result.success && result.parsed_file_id) {
+        const parsedFileId = result.parsed_file_id;
         
         if (parsedFileId) {
           // File was parsed and stored successfully
@@ -199,7 +199,7 @@ export function FileParser({
           }));
           
           if (onParseComplete) {
-            onParseComplete(selectedFile, result.result);
+            onParseComplete(selectedFile, result);
           }
         } else {
           // No parsed_file_id - storage failed

@@ -112,6 +112,28 @@ class RealmBase(ABC):
         if intent.intent_type not in supported_intents:
             return False, f"Intent type {intent.intent_type} not supported by realm {self.realm_name}"
         return True, None
+    
+    def register_intents(self, intent_registry: Any):
+        """
+        Register all intents declared by this realm with the IntentRegistry.
+        
+        Args:
+            intent_registry: IntentRegistry instance to register intents with
+        """
+        from symphainy_platform.runtime.intent_registry import IntentRegistry
+        
+        if not isinstance(intent_registry, IntentRegistry):
+            raise TypeError(f"intent_registry must be an IntentRegistry instance, got {type(intent_registry)}")
+        
+        declared_intents = self.declare_intents()
+        for intent_type in declared_intents:
+            intent_registry.register_intent(
+                intent_type=intent_type,
+                handler_name=self.realm_name,
+                handler_function=self.handle_intent
+            )
+        
+        self.logger.info(f"Registered {len(declared_intents)} intents for realm {self.realm_name}")
 
 
 def intent_handler(intent_type: str):

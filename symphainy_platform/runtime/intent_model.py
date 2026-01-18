@@ -64,6 +64,7 @@ class Intent:
     parameters: Dict[str, Any] = field(default_factory=dict)
     metadata: Dict[str, Any] = field(default_factory=dict)
     created_at: datetime = field(default_factory=lambda: get_clock().now_utc())
+    idempotency_key: Optional[str] = None  # For preventing duplicate operations
     
     def validate(self) -> tuple[bool, Optional[str]]:
         """

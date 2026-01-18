@@ -16,7 +16,8 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertCircle, Eye, BookOpen, Sparkles, RefreshCw } from 'lucide-react';
 import { InsightsFileSelector } from './InsightsFileSelector';
-import { useInsightsAPIManager, InterpretationResponse } from '@/shared/managers/InsightsAPIManager';
+import { useInsightsAPIManager } from '@/shared/hooks/useInsightsAPIManager';
+import { InterpretationResponse } from '@/shared/managers/InsightsAPIManager';
 import { usePlatformState } from '@/shared/state/PlatformStateProvider';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 

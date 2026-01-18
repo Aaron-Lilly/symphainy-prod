@@ -10,7 +10,7 @@ import {
   validatePassword,
   validateName,
 } from "@/lib/api/auth";
-import { useAuth } from "@/shared/agui/AuthProvider";
+import { useAuth } from "@/shared/auth/AuthProvider";
 
 interface RegisterFormProps {
   onRegisterSuccess?: (user: any, token: string) => void;
@@ -23,7 +23,7 @@ export default function RegisterForm({
   onRegisterError,
   onSwitchToLogin,
 }: RegisterFormProps) {
-  const { register, isLoading, error } = useAuth();
+  const { register, isLoading, error, user, sessionToken } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -78,16 +78,16 @@ export default function RegisterForm({
     }
 
     try {
-      const response = await register(name.trim(), email, password);
-
-      if (response.success && response.user && response.token) {
-        onRegisterSuccess?.(response.user, response.token);
-      } else {
-        setErrors({ general: response.message || "Registration failed" });
-        onRegisterError?.(response.message || "Registration failed");
-      }
+      await register(name.trim(), email, password);
+      // Registration successful - AuthProvider handles state
+      // Wait a moment for state to update, then check
+      setTimeout(() => {
+        if (user && sessionToken) {
+          onRegisterSuccess?.(user, sessionToken);
+        }
+      }, 100);
     } catch (error) {
-      const errorMessage = "An unexpected error occurred. Please try again.";
+      const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred. Please try again.";
       setErrors({ general: errorMessage });
       onRegisterError?.(errorMessage);
     }

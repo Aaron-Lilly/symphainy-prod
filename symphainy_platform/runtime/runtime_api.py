@@ -86,7 +86,8 @@ class RuntimeAPI:
     def __init__(
         self,
         execution_lifecycle_manager: ExecutionLifecycleManager,
-        state_surface: StateSurface
+        state_surface: StateSurface,
+        artifact_storage: Optional[Any] = None  # ArtifactStorageAbstraction
     ):
         """
         Initialize Runtime API.
@@ -94,9 +95,11 @@ class RuntimeAPI:
         Args:
             execution_lifecycle_manager: Execution lifecycle manager
             state_surface: State surface for execution state
+            artifact_storage: Optional artifact storage abstraction
         """
         self.execution_lifecycle_manager = execution_lifecycle_manager
         self.state_surface = state_surface
+        self.artifact_storage = artifact_storage
         self.logger = get_logger(self.__class__.__name__)
     
     async def create_session(
@@ -203,7 +206,9 @@ class RuntimeAPI:
     async def get_execution_status(
         self,
         execution_id: str,
-        tenant_id: str
+        tenant_id: str,
+        include_artifacts: bool = False,
+        include_visuals: bool = False
     ) -> ExecutionStatusResponse:
         """
         Get execution status.
@@ -211,6 +216,8 @@ class RuntimeAPI:
         Args:
             execution_id: Execution identifier
             tenant_id: Tenant identifier
+            include_artifacts: If True, retrieve full artifact data (not just references)
+            include_visuals: If True and include_artifacts=True, include full visual images
         
         Returns:
             Execution status response
@@ -225,11 +232,39 @@ class RuntimeAPI:
             if not execution_state:
                 raise HTTPException(status_code=404, detail="Execution not found")
             
+            artifacts = execution_state.get("artifacts", {})
+            
+            # If requested, retrieve full artifacts from storage
+            if include_artifacts and self.artifact_storage and artifacts:
+                retrieved_artifacts = {}
+                for key, value in artifacts.items():
+                    # Skip artifact_id and storage_path references
+                    if key.endswith("_artifact_id"):
+                        artifact_id = value
+                        artifact_key = key.replace("_artifact_id", "")
+                        
+                        # Retrieve full artifact
+                        artifact = await self.artifact_storage.get_artifact(
+                            artifact_id=artifact_id,
+                            tenant_id=tenant_id,
+                            include_visuals=include_visuals
+                        )
+                        
+                        if artifact:
+                            retrieved_artifacts[artifact_key] = artifact
+                            # Keep the artifact_id reference for convenience
+                            retrieved_artifacts[f"{artifact_key}_artifact_id"] = artifact_id
+                    elif not key.endswith("_storage_path"):
+                        # Keep non-reference artifacts as-is
+                        retrieved_artifacts[key] = value
+                
+                artifacts = retrieved_artifacts
+            
             return ExecutionStatusResponse(
                 execution_id=execution_id,
                 status=execution_state.get("status", "unknown"),
                 intent_id=execution_state.get("intent_id", ""),
-                artifacts=execution_state.get("artifacts"),
+                artifacts=artifacts,
                 events=execution_state.get("events"),
                 error=execution_state.get("error")
             )
@@ -239,6 +274,61 @@ class RuntimeAPI:
         except Exception as e:
             self.logger.error(f"Failed to get execution status: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+
+    
+    async def get_artifact(
+        self,
+        artifact_id: str,
+        tenant_id: str,
+        include_visuals: bool = False
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get artifact by ID.
+        
+        Args:
+            artifact_id: Artifact ID
+            tenant_id: Tenant ID
+            include_visuals: If True, include full visual images
+        
+        Returns:
+            Optional[Dict]: Artifact data or None if not found
+        """
+        if not self.artifact_storage:
+            self.logger.warning("Artifact storage not available")
+            return None
+        
+        return await self.artifact_storage.get_artifact(
+            artifact_id=artifact_id,
+            tenant_id=tenant_id,
+            include_visuals=include_visuals
+        )
+
+    
+    async def get_visual(
+        self,
+        visual_path: str,
+        tenant_id: str
+    ) -> Optional[bytes]:
+        """
+        Get visual image by storage path.
+        
+        Args:
+            visual_path: GCS storage path of the visual
+            tenant_id: Tenant ID
+        
+        Returns:
+            Optional[bytes]: Visual image bytes or None if not found
+        """
+        if not self.artifact_storage:
+            self.logger.warning("Artifact storage not available")
+            return None
+        
+        return await self.artifact_storage.get_visual(
+            visual_path=visual_path,
+            tenant_id=tenant_id
+        )
 
 
 def create_runtime_app(
@@ -285,14 +375,53 @@ def create_runtime_app(
         return session_state
     
     @app.get("/api/execution/{execution_id}/status", response_model=ExecutionStatusResponse)
-    async def get_execution_status(
+    async def get_execution_status_endpoint(
         execution_id: str,
-        tenant_id: str
+        tenant_id: str,
+        include_artifacts: bool = False,
+        include_visuals: bool = False
     ):
         """Get execution status."""
-        return await runtime_api.get_execution_status(execution_id, tenant_id)
+        return await runtime_api.get_execution_status(
+            execution_id,
+            tenant_id,
+            include_artifacts=include_artifacts,
+            include_visuals=include_visuals
+        )
     
     
+
+    @app.get("/api/artifacts/{artifact_id}")
+    async def get_artifact_endpoint(
+        artifact_id: str,
+        tenant_id: str,
+        include_visuals: bool = False
+    ):
+        """Get artifact by ID."""
+        from fastapi import HTTPException
+        artifact = await runtime_api.get_artifact(artifact_id, tenant_id, include_visuals)
+        if not artifact:
+            raise HTTPException(status_code=404, detail="Artifact not found")
+        return artifact
+    
+    @app.get("/api/artifacts/visual/{visual_path:path}")
+    async def get_visual_endpoint(
+        visual_path: str,
+        tenant_id: str
+    ):
+        """Get visual image by storage path."""
+        from fastapi import HTTPException, Response
+        visual_bytes = await runtime_api.get_visual(visual_path, tenant_id)
+        if not visual_bytes:
+            raise HTTPException(status_code=404, detail="Visual not found")
+        return Response(content=visual_bytes, media_type="image/png")
+
+
+        visual_bytes = await runtime_api.get_visual(visual_path, tenant_id)
+        if not visual_bytes:
+            raise HTTPException(status_code=404, detail="Visual not found")
+        return Response(content=visual_bytes, media_type="image/png")
+
     @app.get("/health")
     async def health():
         """Health check endpoint."""

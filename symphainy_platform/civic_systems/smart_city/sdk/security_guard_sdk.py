@@ -152,6 +152,81 @@ class SecurityGuardSDK:
             self.logger.error(f"Authentication coordination failed: {e}", exc_info=True)
             return None
     
+    async def register_user(
+        self,
+        credentials: Dict[str, Any]
+    ) -> Optional[AuthenticationResult]:
+        """
+        Coordinate user registration (SDK - prepares execution contract).
+        
+        Returns execution-ready contract that Runtime will validate via primitives.
+        
+        Args:
+            credentials: Registration credentials (email, password, name, etc.)
+        
+        Returns:
+            AuthenticationResult with execution contract, or None if failed
+        """
+        try:
+            # 1. Call auth abstraction (pure infrastructure)
+            auth_data = await self.auth_abstraction.register_user(credentials)
+            
+            if not auth_data or not auth_data.get("success"):
+                self.logger.warning(f"Registration failed: {auth_data.get('error', 'Unknown error')}")
+                return None
+            
+            user_id = auth_data.get("user_id")
+            email = auth_data.get("email", "")
+            
+            # 2. Get tenant context (pure infrastructure)
+            # For new users, tenant may not exist yet - try to get it
+            tenant_info = await self.tenant_abstraction.get_user_tenant_info(user_id)
+            
+            if not tenant_info:
+                # For new users, create default tenant context
+                # In production, tenant creation would be handled by Runtime
+                tenant_id = f"tenant_{user_id}"  # Default tenant
+                roles = ["user"]
+                permissions = ["read", "write"]
+                self.logger.info(f"New user {user_id} - using default tenant context")
+            else:
+                tenant_id = tenant_info.get("tenant_id") or tenant_info.get("primary_tenant_id")
+                roles = tenant_info.get("roles", ["user"])
+                permissions = tenant_info.get("permissions", ["read", "write"])
+            
+            # 3. Resolve policies (preparation, not validation)
+            policies = []
+            if self.policy_resolver:
+                try:
+                    policies = await self.policy_resolver.get_policies(tenant_id)
+                except Exception as e:
+                    self.logger.warning(f"Policy resolution failed (non-fatal): {e}")
+            
+            # 4. Prepare execution contract (for Runtime validation)
+            execution_contract = {
+                "action": "register_user",
+                "tenant_id": tenant_id,
+                "user_id": user_id,
+                "email": email,
+                "roles": roles,
+                "permissions": permissions,
+                "policies": policies,  # Prepared for Runtime validation
+                "timestamp": self.clock.now_iso()
+            }
+            
+            return AuthenticationResult(
+                user_id=user_id,
+                tenant_id=tenant_id,
+                email=email,
+                permissions=permissions,
+                roles=roles,
+                execution_contract=execution_contract
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Registration coordination failed: {e}", exc_info=True)
+            return None
+    
     async def validate_token(
         self,
         token: str

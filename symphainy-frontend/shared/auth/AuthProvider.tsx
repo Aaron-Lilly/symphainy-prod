@@ -76,14 +76,20 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Restore session from localStorage on mount
+  // Restore session from sessionStorage on mount
+  // Using sessionStorage instead of localStorage for better security (cleared on tab close)
   useEffect(() => {
     const restoreSession = async () => {
       try {
-        const storedUser = localStorage.getItem("user_data");
-        const storedTenantId = localStorage.getItem("tenant_id");
-        const storedUserId = localStorage.getItem("user_id");
-        const storedSessionId = localStorage.getItem("session_id");
+        if (typeof window === "undefined") {
+          setIsLoading(false);
+          return;
+        }
+
+        const storedUser = sessionStorage.getItem("user_data");
+        const storedTenantId = sessionStorage.getItem("tenant_id");
+        const storedUserId = sessionStorage.getItem("user_id");
+        const storedSessionId = sessionStorage.getItem("session_id");
 
         if (storedUser && storedTenantId && storedUserId && storedSessionId) {
           const userData = JSON.parse(storedUser);
@@ -116,40 +122,72 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     setError(null);
 
     try {
-      // TODO: Call Experience Plane API for authentication
-      // For now, we'll use a placeholder that creates a session
-      // In full implementation, this would call:
+      // Call Experience Plane API for authentication
       // POST /api/auth/login → Security Guard SDK → Runtime
+      const { getApiEndpointUrl } = require('@/shared/config/api-config');
+      const loginUrl = getApiEndpointUrl('/api/auth/login');
       
-      // Placeholder: Create session after "authentication"
-      // In production, this would be:
-      // 1. POST /api/auth/login with credentials
-      // 2. Receive auth token and user data
-      // 3. Create session via Experience Plane
+      const response = await fetch(loginUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Login failed' }));
+        throw new Error(errorData.message || errorData.error || `Login failed: ${response.statusText}`);
+      }
+
+      const data = await response.json();
       
-      // For MVP, we'll simulate authentication and create session
-      const tenantId = "default_tenant"; // In production, get from auth response
-      const userId = `user_${Date.now()}`; // In production, get from auth response
-      
+      // Handle different response formats
+      const authData = data.data || data;
+      const accessToken = authData.access_token || authData.token;
+      const userId = authData.user_id || authData.id;
+      const tenantId = authData.tenant_id || "default_tenant";
+      const userEmail = authData.email || email;
+      const userName = authData.name || authData.full_name || email.split("@")[0];
+      const roles = authData.roles || ["user"];
+      const permissions = authData.permissions || ["read", "write"];
+
+      if (!accessToken || !userId) {
+        throw new Error("Invalid authentication response: missing token or user ID");
+      }
+
+      // Create session via Experience Plane after successful authentication
       const sessionId = await createSession(tenantId, userId, {
-        email,
+        email: userEmail,
         authenticated_at: new Date().toISOString(),
       });
 
       // Store user data
       const userData: User = {
         id: userId,
-        email,
-        name: email.split("@")[0], // Placeholder
+        email: userEmail,
+        name: userName,
+        avatar_url: authData.avatar_url,
         tenant_id: tenantId,
-        permissions: ["user"], // Placeholder
+        permissions: permissions,
       };
 
       setUser(userData);
       setIsAuthenticated(true);
       
-      localStorage.setItem("user_data", JSON.stringify(userData));
-      localStorage.setItem("auth_token", sessionId); // Use sessionId as token for now
+      // Store in sessionStorage (better security - cleared on tab close)
+      // TODO: Production - migrate to HttpOnly cookies (see docs/execution/auth_security_migration_plan.md)
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("user_data", JSON.stringify(userData));
+        sessionStorage.setItem("auth_token", accessToken);
+        sessionStorage.setItem("session_id", sessionId);
+        sessionStorage.setItem("tenant_id", tenantId);
+        sessionStorage.setItem("user_id", userId);
+        
+        if (authData.refresh_token) {
+          sessionStorage.setItem("refresh_token", authData.refresh_token);
+        }
+      }
       
       setIsLoading(false);
     } catch (err) {
@@ -170,35 +208,73 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     setError(null);
 
     try {
-      // TODO: Call Experience Plane API for registration
-      // For now, we'll use a placeholder that creates a session
-      // In full implementation, this would call:
+      // Call Experience Plane API for registration
       // POST /api/auth/register → Security Guard SDK → Runtime
+      const { getApiEndpointUrl } = require('@/shared/config/api-config');
+      const registerUrl = getApiEndpointUrl('/api/auth/register');
       
-      // Placeholder: Create session after "registration"
-      const tenantId = "default_tenant"; // In production, get from registration response
-      const userId = `user_${Date.now()}`; // In production, get from registration response
+      const response = await fetch(registerUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name, email, password }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ message: 'Registration failed' }));
+        throw new Error(errorData.message || errorData.error || `Registration failed: ${response.statusText}`);
+      }
+
+      const data = await response.json();
       
+      // Handle different response formats
+      const authData = data.data || data;
+      const accessToken = authData.access_token || authData.token;
+      const userId = authData.user_id || authData.id;
+      const tenantId = authData.tenant_id || "default_tenant";
+      const userEmail = authData.email || email;
+      const userName = authData.name || authData.full_name || name;
+      const roles = authData.roles || ["user"];
+      const permissions = authData.permissions || ["read", "write"];
+
+      if (!accessToken || !userId) {
+        throw new Error("Invalid registration response: missing token or user ID");
+      }
+
+      // Create session via Experience Plane after successful registration
       const sessionId = await createSession(tenantId, userId, {
-        email,
-        name,
+        email: userEmail,
+        name: userName,
         registered_at: new Date().toISOString(),
       });
 
       // Store user data
       const userData: User = {
         id: userId,
-        email,
-        name,
+        email: userEmail,
+        name: userName,
+        avatar_url: authData.avatar_url,
         tenant_id: tenantId,
-        permissions: ["user"], // Placeholder
+        permissions: permissions,
       };
 
       setUser(userData);
       setIsAuthenticated(true);
       
-      localStorage.setItem("user_data", JSON.stringify(userData));
-      localStorage.setItem("auth_token", sessionId); // Use sessionId as token for now
+      // Store in sessionStorage (better security - cleared on tab close)
+      // TODO: Production - migrate to HttpOnly cookies (see docs/execution/auth_security_migration_plan.md)
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("user_data", JSON.stringify(userData));
+        sessionStorage.setItem("auth_token", accessToken);
+        sessionStorage.setItem("session_id", sessionId);
+        sessionStorage.setItem("tenant_id", tenantId);
+        sessionStorage.setItem("user_id", userId);
+        
+        if (authData.refresh_token) {
+          sessionStorage.setItem("refresh_token", authData.refresh_token);
+        }
+      }
       
       setIsLoading(false);
     } catch (err) {
@@ -222,12 +298,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
       setUser(null);
       setIsAuthenticated(false);
       
-      // Clear localStorage
-      localStorage.removeItem("user_data");
-      localStorage.removeItem("auth_token");
-      localStorage.removeItem("session_id");
-      localStorage.removeItem("tenant_id");
-      localStorage.removeItem("user_id");
+      // Clear sessionStorage
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem("user_data");
+        sessionStorage.removeItem("auth_token");
+        sessionStorage.removeItem("session_id");
+        sessionStorage.removeItem("tenant_id");
+        sessionStorage.removeItem("user_id");
+        sessionStorage.removeItem("refresh_token");
+      }
       
       setIsLoading(false);
     } catch (err) {

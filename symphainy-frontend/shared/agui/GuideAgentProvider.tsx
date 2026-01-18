@@ -8,8 +8,8 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { useAuth } from './AuthProvider';
-import { useGlobalSession } from './GlobalSessionProvider';
+import { useAuth } from '../auth/AuthProvider';
+import { usePlatformState } from '../state/PlatformStateProvider';
 import { RuntimeClient, RuntimeEventType } from '@/shared/services/RuntimeClient';
 import { getRuntimeWebSocketUrl, getApiUrl } from '@/shared/config/api-config';
 
@@ -123,10 +123,11 @@ const GuideAgentContext = createContext<GuideAgentContextType | undefined>(undef
 
 export const GuideAgentProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { isAuthenticated, user } = useAuth();
-  const { guideSessionToken } = useGlobalSession();
+  const { state: platformState } = usePlatformState();
+  const sessionToken = platformState.session.sessionId;
   const [runtimeClient, setRuntimeClient] = useState<RuntimeClient | null>(null);
 
-  const [state, setState] = useState<GuideAgentState>({
+  const [agentState, setAgentState] = useState<GuideAgentState>({
     isInitialized: false,
     isConnected: false,
     currentGuidance: null,
@@ -138,19 +139,19 @@ export const GuideAgentProvider: React.FC<{ children: ReactNode }> = ({ children
 
   // Initialize Guide Agent
   const initializeGuideAgent = async () => {
-    if (!isAuthenticated || !guideSessionToken) {
+    if (!isAuthenticated || !sessionToken) {
       return;
     }
 
     try {
-      setState(prev => ({ ...prev, isLoading: true, error: null }));
+      setAgentState(prev => ({ ...prev, isLoading: true, error: null }));
 
       // Create Runtime Client if not exists
       if (!runtimeClient) {
         const baseUrl = getApiUrl();
         const client = new RuntimeClient({
           baseUrl,
-          sessionToken: guideSessionToken,
+          sessionToken: sessionToken,
           autoReconnect: true,
         });
         setRuntimeClient(client);
@@ -172,7 +173,7 @@ export const GuideAgentProvider: React.FC<{ children: ReactNode }> = ({ children
             }
           };
 
-          setState(prev => ({
+          setAgentState(prev => ({
             ...prev,
             currentGuidance: guidanceResponse,
             isConnected: true,
@@ -194,7 +195,7 @@ export const GuideAgentProvider: React.FC<{ children: ReactNode }> = ({ children
             }
           };
 
-          setState(prev => ({
+          setAgentState(prev => ({
             ...prev,
             conversationHistory: [...prev.conversationHistory, agentMessage]
           }));
@@ -202,7 +203,7 @@ export const GuideAgentProvider: React.FC<{ children: ReactNode }> = ({ children
 
         // Subscribe to EXECUTION_FAILED events (errors)
         client.on(RuntimeEventType.EXECUTION_FAILED, (data: any) => {
-          setState(prev => ({
+          setAgentState(prev => ({
             ...prev,
             error: data.error || data.message || 'Error from Guide Agent',
             isLoading: false,
@@ -211,7 +212,7 @@ export const GuideAgentProvider: React.FC<{ children: ReactNode }> = ({ children
 
         // Set up connection handler
         client.onConnect(() => {
-          setState(prev => ({
+          setAgentState(prev => ({
             ...prev,
             isInitialized: true,
             isConnected: true,
@@ -222,7 +223,7 @@ export const GuideAgentProvider: React.FC<{ children: ReactNode }> = ({ children
 
         // Set up error handler
         client.onError((err: Error) => {
-          setState(prev => ({
+          setAgentState(prev => ({
             ...prev,
             error: err.message || "Failed to initialize Guide Agent",
             isLoading: false,
@@ -236,7 +237,7 @@ export const GuideAgentProvider: React.FC<{ children: ReactNode }> = ({ children
 
     } catch (error: any) {
       console.error("Failed to initialize Guide Agent:", error);
-      setState(prev => ({
+      setAgentState(prev => ({
         ...prev,
         error: error.message || "Failed to initialize Guide Agent",
         isLoading: false,
@@ -247,12 +248,12 @@ export const GuideAgentProvider: React.FC<{ children: ReactNode }> = ({ children
 
   // Send message to Guide Agent
   const sendMessage = async (message: string): Promise<GuidanceResponse> => {
-    if (!runtimeClient || !guideSessionToken) {
+    if (!runtimeClient || !sessionToken) {
       throw new Error("Guide Agent not initialized");
     }
 
     try {
-      setState(prev => ({ ...prev, isLoading: true, error: null }));
+      setAgentState(prev => ({ ...prev, isLoading: true, error: null }));
 
       // Add user message to conversation history
       const userMessage: ConversationMessage = {
@@ -262,7 +263,7 @@ export const GuideAgentProvider: React.FC<{ children: ReactNode }> = ({ children
         timestamp: new Date(),
       };
 
-      setState(prev => ({
+      setAgentState(prev => ({
         ...prev,
         conversationHistory: [...prev.conversationHistory, userMessage]
       }));
@@ -272,9 +273,9 @@ export const GuideAgentProvider: React.FC<{ children: ReactNode }> = ({ children
       }
 
       // Generate conversation ID if not set
-      const activeConversationId = state.conversationId || `guide_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      if (!state.conversationId) {
-        setState(prev => ({ ...prev, conversationId: activeConversationId }));
+      const activeConversationId = agentState.conversationId || `guide_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      if (!agentState.conversationId) {
+        setAgentState(prev => ({ ...prev, conversationId: activeConversationId }));
       }
 
       // Send intent to Runtime Foundation
@@ -295,12 +296,12 @@ export const GuideAgentProvider: React.FC<{ children: ReactNode }> = ({ children
 
         // Listen for the response (this will be handled by the event handler above)
         const checkForResponse = () => {
-          if (state.currentGuidance) {
+          if (agentState.currentGuidance) {
             clearTimeout(timeout);
-            resolve(state.currentGuidance);
-          } else if (state.error) {
+            resolve(agentState.currentGuidance);
+          } else if (agentState.error) {
             clearTimeout(timeout);
-            reject(new Error(state.error));
+            reject(new Error(agentState.error));
           } else {
             setTimeout(checkForResponse, 100);
           }
@@ -310,7 +311,7 @@ export const GuideAgentProvider: React.FC<{ children: ReactNode }> = ({ children
       });
 
     } catch (error: any) {
-      setState(prev => ({
+      setAgentState(prev => ({
         ...prev,
         error: error.message || "Failed to send message to Guide Agent",
         isLoading: false,
@@ -327,14 +328,14 @@ export const GuideAgentProvider: React.FC<{ children: ReactNode }> = ({ children
   // Create solution (calls backend Solution Manager via Solution-Driven Architecture)
   const createSolution = async (request: SolutionRequest): Promise<SolutionResponse> => {
     try {
-      setState(prev => ({ ...prev, isLoading: true, error: null }));
+      setAgentState(prev => ({ ...prev, isLoading: true, error: null }));
 
       // Call Solution Manager API endpoint (Solution-Driven Architecture)
       const response = await fetch('/api/v1/solution/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          ...(guideSessionToken && { 'Authorization': `Bearer ${guideSessionToken}` }),
+          ...(sessionToken && { 'Authorization': `Bearer ${sessionToken}` }),
         },
         body: JSON.stringify({
           solution_type: request.solution_intent || 'mvp',
@@ -371,13 +372,13 @@ export const GuideAgentProvider: React.FC<{ children: ReactNode }> = ({ children
       };
       
       if (solutionResponse.success) {
-        setState(prev => ({
+        setAgentState(prev => ({
           ...prev,
           isLoading: false,
           error: null,
         }));
       } else {
-        setState(prev => ({
+        setAgentState(prev => ({
           ...prev,
           error: solutionResponse.error || "Failed to create solution",
           isLoading: false,
@@ -387,7 +388,7 @@ export const GuideAgentProvider: React.FC<{ children: ReactNode }> = ({ children
       return solutionResponse;
 
     } catch (error: any) {
-      setState(prev => ({
+      setAgentState(prev => ({
         ...prev,
         error: error.message || "Failed to create solution",
         isLoading: false,
@@ -398,7 +399,7 @@ export const GuideAgentProvider: React.FC<{ children: ReactNode }> = ({ children
 
   // Clear conversation history
   const clearConversation = () => {
-    setState(prev => ({
+    setAgentState(prev => ({
       ...prev,
       conversationHistory: [],
       currentGuidance: null,
@@ -408,11 +409,11 @@ export const GuideAgentProvider: React.FC<{ children: ReactNode }> = ({ children
 
   // Initialize RuntimeClient
   useEffect(() => {
-    if (typeof window !== 'undefined' && isAuthenticated && guideSessionToken) {
+    if (typeof window !== 'undefined' && isAuthenticated && sessionToken) {
       const baseUrl = getApiUrl();
       const client = new RuntimeClient({
         baseUrl,
-        sessionToken: guideSessionToken,
+        sessionToken: sessionToken,
         autoReconnect: true,
       });
       setRuntimeClient(client);
@@ -422,17 +423,17 @@ export const GuideAgentProvider: React.FC<{ children: ReactNode }> = ({ children
         client.disconnect();
       };
     }
-  }, [isAuthenticated, guideSessionToken]);
+  }, [isAuthenticated, sessionToken]);
 
   // Initialize when authenticated and WebSocket client is ready
   useEffect(() => {
-    if (isAuthenticated && guideSessionToken && runtimeClient && !state.isInitialized) {
+    if (isAuthenticated && sessionToken && runtimeClient && !agentState.isInitialized) {
       initializeGuideAgent();
     }
-  }, [isAuthenticated, guideSessionToken, runtimeClient, state.isInitialized]);
+  }, [isAuthenticated, sessionToken, runtimeClient, agentState.isInitialized]);
 
   const contextValue: GuideAgentContextType = {
-    state,
+    state: agentState,
     sendMessage,
     clearConversation,
     getGuidance,

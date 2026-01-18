@@ -100,6 +100,40 @@ class AuthenticationProtocol(Protocol):
             Optional[Dict[str, Any]]: Raw refresh data or None if failed
         """
         ...
+    
+    async def register_user(
+        self,
+        credentials: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Register new user.
+        
+        Returns raw data only - no business logic, no SecurityContext.
+        Platform SDK will translate this to SecurityContext.
+        
+        Args:
+            credentials: Registration credentials (email, password, user_metadata, etc.)
+        
+        Returns:
+            Optional[Dict[str, Any]]: Raw registration data or None if failed
+            Structure:
+            {
+                "success": bool,
+                "user_id": str,
+                "email": str,
+                "access_token": str,
+                "refresh_token": str,
+                "expires_in": int,
+                "expires_at": int,
+                "raw_user_data": Dict[str, Any],
+                "raw_session_data": Dict[str, Any],
+                "raw_user_metadata": Dict[str, Any],
+                "raw_app_metadata": Dict[str, Any],
+                "raw_provider_data": Dict[str, Any],
+                "error": Optional[str]
+            }
+        """
+        ...
 
 
 class AuthorizationProtocol(Protocol):

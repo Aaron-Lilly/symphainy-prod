@@ -216,7 +216,7 @@ export class ExperiencePlaneClient {
     onUpdate: (status: ExecutionStatus) => void,
     onError?: (error: Error) => void
   ): () => void {
-    const wsClient = this.getWebSocketClientInstance();
+    const wsClient = this.getWebSocketClient();
     
     // Connect if not already connected
     if (!wsClient.isConnected()) {
@@ -238,6 +238,7 @@ export class ExperiencePlaneClient {
           status: response.data.status || 'running',
           intent_id: response.data.intent_id || '',
           tenant_id: response.data.tenant_id || '',
+          session_id: response.data.session_id || '',
           started_at: response.data.started_at,
           completed_at: response.data.completed_at,
           error: response.data.error,
@@ -271,7 +272,7 @@ export class ExperiencePlaneClient {
     conversationId?: string,
     metadata?: Record<string, any>
   ): Promise<void> {
-    const wsClient = this.getWebSocketClientInstance();
+    const wsClient = this.getWebSocketClient();
     
     // Connect if not already connected
     if (!wsClient.isConnected()) {
@@ -285,7 +286,7 @@ export class ExperiencePlaneClient {
    * Get WebSocket client (for advanced usage)
    */
   getWebSocket(): UnifiedWebSocketClient {
-    return this.getWebSocketClientInstance();
+    return this.getWebSocketClient();
   }
 
   /**

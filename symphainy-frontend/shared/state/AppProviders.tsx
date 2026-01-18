@@ -15,10 +15,8 @@
 
 import React from "react";
 import { PlatformStateProvider } from "./PlatformStateProvider";
-import { AuthProvider } from "../agui/AuthProvider";
+import { AuthProvider } from "../auth/AuthProvider";
 import { GuideAgentProvider } from "../agui/GuideAgentProvider";
-import { UserContextProviderComponent } from "../../lib/contexts/UserContextProvider";
-import { ExperienceLayerProvider } from "../../lib/contexts/ExperienceLayerProvider";
 
 export default function AppProviders({
   children,
@@ -28,13 +26,9 @@ export default function AppProviders({
   return (
     <PlatformStateProvider>
       <AuthProvider>
-        <UserContextProviderComponent>
-          <ExperienceLayerProvider>
-            <GuideAgentProvider>
-              {children}
-            </GuideAgentProvider>
-          </ExperienceLayerProvider>
-        </UserContextProviderComponent>
+        <GuideAgentProvider>
+          {children}
+        </GuideAgentProvider>
       </AuthProvider>
     </PlatformStateProvider>
   );

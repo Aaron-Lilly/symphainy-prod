@@ -74,12 +74,12 @@ export function useAgentManager(
         { WebSocketManager },
         { AgentRouter },
         { ContentAPIManager },
-        { OperationsAPIManager }
+        { JourneyAPIManager }
       ] = await Promise.all([
         import('../managers/WebSocketManager'),
         import('../managers/AgentRouter'),
         import('../managers/ContentAPIManager'),
-        import('../managers/OperationsAPIManager')
+        import('../managers/JourneyAPIManager')
       ]);
 
       // Create WebSocket manager
@@ -94,8 +94,10 @@ export function useAgentManager(
       });
 
       // Create API managers
-      const contentAPIManager = new ContentAPIManager(sessionToken);
-      const operationsAPIManager = new OperationsAPIManager(sessionToken);
+      // Note: These managers now require ExperiencePlaneClient and getPlatformState
+      // This hook should be refactored to use the hook pattern (useContentAPIManager, etc.)
+      const contentAPIManager = new ContentAPIManager();
+      const operationsAPIManager = new JourneyAPIManager();
 
       // Set up connection monitoring
       const unsubscribe = wsManager.onConnectionChange((connected) => {

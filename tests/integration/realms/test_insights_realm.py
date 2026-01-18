@@ -24,6 +24,7 @@ from symphainy_platform.runtime.wal import WriteAheadLog
 from symphainy_platform.runtime.intent_registry import IntentRegistry
 from symphainy_platform.runtime.execution_lifecycle_manager import ExecutionLifecycleManager
 from tests.infrastructure.test_fixtures import test_redis, test_arango, test_public_works, clean_test_db
+from tests.infrastructure.test_data_fixtures import seeded_insights_data, test_data_seeder
 from utilities import get_logger
 
 logger = get_logger("TestInsightsRealm")
@@ -102,9 +103,10 @@ class TestInsightsRealm:
     @pytest.mark.asyncio
     async def test_phase1_data_quality_intent(
         self,
-        insights_realm_setup
+        insights_realm_setup,
+        seeded_insights_data
     ):
-        """Test Phase 1: Data Quality assessment intent."""
+        """Test Phase 1: Data Quality assessment intent with seeded data."""
         intent_registry = insights_realm_setup["intent_registry"]
         state_surface = insights_realm_setup["state_surface"]
         wal = insights_realm_setup["wal"]
@@ -124,16 +126,19 @@ class TestInsightsRealm:
                     handler_function=realm.handle_intent
                 )
             
-            # Create assess_data_quality intent
-            # Note: Requires source_file_id and parsed_file_id parameters
+            # Use seeded test data
+            source_file_id = seeded_insights_data["source_file_id"]
+            parsed_file_id = seeded_insights_data["parsed_file_id"]
+            
+            # Create assess_data_quality intent with real file IDs
             intent = IntentFactory.create_intent(
                 intent_type="assess_data_quality",
-                tenant_id="tenant_insights",
-                session_id="session_insights",
+                tenant_id="insights_test_tenant",
+                session_id="insights_test_session",
                 solution_id="solution_insights",
                 parameters={
-                    "source_file_id": "test_file_123",  # Required parameter
-                    "parsed_file_id": "test_parsed_123"  # Required parameter
+                    "source_file_id": source_file_id,
+                    "parsed_file_id": parsed_file_id
                 }
             )
             
@@ -161,17 +166,19 @@ class TestInsightsRealm:
     @pytest.mark.asyncio
     async def test_phase2_self_discovery_intent(
         self,
-        insights_realm_setup
+        insights_realm_setup,
+        seeded_insights_data
     ):
-        """Test Phase 2: Semantic Self Discovery intent."""
+        """Test Phase 2: Semantic Self Discovery intent with seeded data."""
         intent_registry = insights_realm_setup["intent_registry"]
         state_surface = insights_realm_setup["state_surface"]
         wal = insights_realm_setup["wal"]
+        public_works = insights_realm_setup["public_works"]
         
         try:
             from symphainy_platform.realms.insights.insights_realm import InsightsRealm
             
-            realm = InsightsRealm()
+            realm = InsightsRealm(public_works=public_works)
             
             # Register realm intents
             for intent_type in realm.declare_intents():
@@ -181,15 +188,19 @@ class TestInsightsRealm:
                     handler_function=realm.handle_intent
                 )
             
-            # Create interpret_data_self_discovery intent
+            # Use seeded test data
+            file_id = seeded_insights_data["file_id"]
+            parsed_result_id = seeded_insights_data["parsed_file_id"]
+            
+            # Create interpret_data_self_discovery intent with real IDs
             intent = IntentFactory.create_intent(
                 intent_type="interpret_data_self_discovery",
-                tenant_id="tenant_insights",
-                session_id="session_insights",
+                tenant_id="insights_test_tenant",
+                session_id="insights_test_session",
                 solution_id="solution_insights",
                 parameters={
-                    "file_id": "test_file_123",
-                    "parsed_result_id": "test_parsed_123"
+                    "file_id": file_id,
+                    "parsed_result_id": parsed_result_id
                 }
             )
             
@@ -214,17 +225,19 @@ class TestInsightsRealm:
     @pytest.mark.asyncio
     async def test_phase2_guided_discovery_intent(
         self,
-        insights_realm_setup
+        insights_realm_setup,
+        seeded_insights_data
     ):
-        """Test Phase 2: Guided Discovery intent."""
+        """Test Phase 2: Guided Discovery intent with seeded data."""
         intent_registry = insights_realm_setup["intent_registry"]
         state_surface = insights_realm_setup["state_surface"]
         wal = insights_realm_setup["wal"]
+        public_works = insights_realm_setup["public_works"]
         
         try:
             from symphainy_platform.realms.insights.insights_realm import InsightsRealm
             
-            realm = InsightsRealm()
+            realm = InsightsRealm(public_works=public_works)
             
             # Register realm intents
             for intent_type in realm.declare_intents():
@@ -234,16 +247,20 @@ class TestInsightsRealm:
                     handler_function=realm.handle_intent
                 )
             
-            # Create interpret_data_guided intent
+            # Use seeded test data
+            file_id = seeded_insights_data["file_id"]
+            parsed_result_id = seeded_insights_data["parsed_file_id"]
+            
+            # Create interpret_data_guided intent with real IDs
             intent = IntentFactory.create_intent(
                 intent_type="interpret_data_guided",
-                tenant_id="tenant_insights",
-                session_id="session_insights",
+                tenant_id="insights_test_tenant",
+                session_id="insights_test_session",
                 solution_id="solution_insights",
                 parameters={
-                    "file_id": "test_file_123",
-                    "parsed_result_id": "test_parsed_123",
-                    "guide_id": "test_guide_123"  # Can be default guide or user-uploaded
+                    "file_id": file_id,
+                    "parsed_result_id": parsed_result_id,
+                    "guide_id": "default_guide"  # Can be default guide or user-uploaded
                 }
             )
             

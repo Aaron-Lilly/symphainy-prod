@@ -76,10 +76,14 @@ export default function InsightsPage() {
   };
 
   // Handler for lineage visualization completion
-  const handleVisualizationComplete = (visualization: LineageVisualizationResponse) => {
-    setLineageVisualization(visualization);
-    if (visualization.file_id) {
-      setCurrentAnalysisId(visualization.file_id);
+  const handleVisualizationComplete = (visualization: LineageVisualizationResponse | any) => {
+    // Convert LineageVisualization to LineageVisualizationResponse if needed
+    const response: LineageVisualizationResponse = visualization.success !== undefined 
+      ? visualization 
+      : { success: true, visualization };
+    setLineageVisualization(response);
+    if (response.file_id || (response.visualization as any)?.file_id) {
+      setCurrentAnalysisId(response.file_id || (response.visualization as any)?.file_id);
     }
   };
 

@@ -27,7 +27,9 @@ import {
   Target
 } from 'lucide-react';
 
-import { useAuth } from '@/shared/agui/AuthProvider';
+import { useAuth } from '@/shared/auth/AuthProvider';
+import { usePlatformState } from '@/shared/state/PlatformStateProvider';
+import { useUnifiedAgentChat } from '@/shared/hooks/useUnifiedAgentChat';
 
 // ============================================================================
 // COMPONENT INTERFACES
@@ -64,12 +66,30 @@ export const InsightsLiaisonAgent: React.FC<InsightsLiaisonAgentProps> = ({
   className = ''
 }) => {
   const { user } = useAuth();
+  const { state } = usePlatformState();
   
+  // Use real-time chat hook for liaison agent
+  const {
+    messages,
+    isConnected,
+    isLoading: isChatLoading,
+    error: chatError,
+    sendMessage,
+    switchAgent
+  } = useUnifiedAgentChat({
+    sessionToken: state.session.sessionId || undefined,
+    autoConnect: true,
+    initialAgent: 'liaison',
+    initialPillar: 'insights'
+  });
   
   const [currentGuidance, setCurrentGuidance] = useState<InsightsGuidance | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [conversationHistory, setConversationHistory] = useState<any[]>([]);
   const [userMessage, setUserMessage] = useState('');
+  
+  // Switch to liaison agent on mount
+  useEffect(() => {
+    switchAgent('liaison', 'insights');
+  }, [switchAgent]);
 
   // ============================================================================
   // GUIDANCE LOGIC
@@ -148,105 +168,41 @@ export const InsightsLiaisonAgent: React.FC<InsightsLiaisonAgentProps> = ({
   // ============================================================================
 
   const handleSuggestionClick = async (suggestion: string) => {
-    setIsAnalyzing(true);
-    
-    // Add user message to conversation
-    const userMsg = {
-      id: Date.now().toString(),
-      type: 'user',
-      content: suggestion,
-      timestamp: new Date()
-    };
-    setConversationHistory(prev => [...prev, userMsg]);
-
-    // Simulate AI response
-    setTimeout(() => {
-      const aiResponse = {
-        id: (Date.now() + 1).toString(),
-        type: 'agent',
-        content: getSuggestionResponse(suggestion),
-        timestamp: new Date()
-      };
-      setConversationHistory(prev => [...prev, aiResponse]);
-      setIsAnalyzing(false);
-    }, 1000);
+    // Send suggestion as message to real-time chat
+    try {
+      await sendMessage(suggestion, 'liaison', 'insights');
+    } catch (error) {
+      console.error('Failed to send suggestion:', error);
+    }
   };
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!userMessage.trim()) return;
+    if (!userMessage.trim() || isChatLoading) return;
 
     const message = userMessage.trim();
     setUserMessage('');
 
-    // Add user message
-    const userMsg = {
-      id: Date.now().toString(),
-      type: 'user',
-      content: message,
-      timestamp: new Date()
-    };
-    setConversationHistory(prev => [...prev, userMsg]);
-
-    // Generate AI response
-    setIsAnalyzing(true);
-    setTimeout(() => {
-      const aiResponse = {
-        id: (Date.now() + 1).toString(),
-        type: 'agent',
-        content: generateInsightsResponse(message),
-        timestamp: new Date()
-      };
-      setConversationHistory(prev => [...prev, aiResponse]);
-      setIsAnalyzing(false);
-    }, 1500);
+    // Send message via real-time chat
+    try {
+      await sendMessage(message, 'liaison', 'insights');
+    } catch (error) {
+      console.error('Failed to send message:', error);
+    }
   };
 
   // ============================================================================
   // HELPER FUNCTIONS
   // ============================================================================
 
-  const getSuggestionResponse = (suggestion: string): string => {
-    if (suggestion.includes('Select files') || suggestion.includes('Choose')) {
-      return 'I can help you select the right files for analysis. Look for files that contain relevant business data, such as reports, spreadsheets, or documents with key metrics.';
-    } else if (suggestion.includes('analysis') || suggestion.includes('Analyze')) {
-      return 'Analysis will examine your data for patterns, trends, and insights. I recommend starting with a comprehensive analysis to get the full picture, then drilling down into specific areas.';
-    } else if (suggestion.includes('visualization') || suggestion.includes('charts')) {
-      return 'Visualizations help you understand your data better. I can help you choose the right chart types based on your data and create interactive dashboards for deeper exploration.';
-    } else if (suggestion.includes('summary') || suggestion.includes('recommendations')) {
-      return 'The insights summary will synthesize all your analysis into actionable recommendations. This creates a clear path forward for implementing the insights in your operations.';
-    } else if (suggestion.includes('Proceed') || suggestion.includes('operations')) {
-      return 'Great! Your insights are ready for the Operations Pillar. The analysis results and recommendations will be used to create workflows and SOPs for implementation.';
-    }
-    return 'I understand you want help with insights analysis. Let me guide you through the next steps.';
-  };
-
-  const generateInsightsResponse = (message: string): string => {
-    const lowerMessage = message.toLowerCase();
-    
-    if (lowerMessage.includes('analysis') || lowerMessage.includes('analyze')) {
-      return 'I can help you choose the right analysis approach. Comprehensive analysis gives you the full picture, quick analysis provides an overview, and detailed analysis dives deep into specific areas.';
-    } else if (lowerMessage.includes('visualization') || lowerMessage.includes('chart')) {
-      return 'For visualizations, I recommend starting with bar charts for comparisons, line charts for trends, and pie charts for proportions. Interactive dashboards let you explore the data dynamically.';
-    } else if (lowerMessage.includes('insight') || lowerMessage.includes('pattern')) {
-      return 'Insights are the key findings from your data analysis. Look for trends, anomalies, correlations, and opportunities. I can help you interpret what the data is telling you.';
-    } else if (lowerMessage.includes('recommendation') || lowerMessage.includes('action')) {
-      return 'Recommendations are actionable steps based on your insights. They should be specific, measurable, and tied to business outcomes. I can help you prioritize and implement them.';
-    } else if (lowerMessage.includes('metric') || lowerMessage.includes('kpi')) {
-      return 'Key metrics and KPIs are essential for measuring business performance. I can help you identify the most important metrics for your business and track them over time.';
-    } else if (lowerMessage.includes('trend') || lowerMessage.includes('forecast')) {
-      return 'Trend analysis helps you understand how your business is changing over time. I can help you identify patterns and make predictions about future performance.';
-    }
-    
-    return 'I\'m here to help with insights analysis! You can ask me about data analysis, visualizations, business insights, recommendations, or any other insights-related questions.';
-  };
+  // Helper functions removed - now handled by real-time agent
 
   // ============================================================================
   // RENDER HELPERS
   // ============================================================================
 
   const renderMessage = (message: any) => {
-    const isUser = message.type === 'user';
+    const isUser = message.role === 'user';
     
     return (
       <div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-3`}>
@@ -325,11 +281,20 @@ export const InsightsLiaisonAgent: React.FC<InsightsLiaisonAgentProps> = ({
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {/* Connection Status */}
+          {!isConnected && (
+            <Alert>
+              <AlertDescription className="text-xs">
+                {chatError ? `Connection error: ${chatError}` : 'Connecting to Insights Liaison Agent...'}
+              </AlertDescription>
+            </Alert>
+          )}
+          
           {/* Conversation History */}
-          {conversationHistory.length > 0 && (
+          {messages.length > 0 && (
             <div className="max-h-60 overflow-y-auto space-y-2">
-              {conversationHistory.map(renderMessage)}
-              {isAnalyzing && (
+              {messages.map(renderMessage)}
+              {isChatLoading && (
                 <div className="flex justify-start">
                   <div className="flex items-center space-x-2 bg-gray-100 rounded-lg px-3 py-2">
                     <Loader2 className="w-3 h-3 animate-spin text-gray-400" />
@@ -337,6 +302,12 @@ export const InsightsLiaisonAgent: React.FC<InsightsLiaisonAgentProps> = ({
                   </div>
                 </div>
               )}
+            </div>
+          )}
+          
+          {messages.length === 0 && isConnected && (
+            <div className="text-center text-sm text-gray-500 py-4">
+              Ask me about data analysis, visualizations, business insights, or recommendations!
             </div>
           )}
 
@@ -352,9 +323,9 @@ export const InsightsLiaisonAgent: React.FC<InsightsLiaisonAgentProps> = ({
             <Button
               type="submit"
               size="sm"
-              disabled={!userMessage.trim() || isAnalyzing}
+              disabled={!userMessage.trim() || isChatLoading || !isConnected}
             >
-              {isAnalyzing ? (
+              {isChatLoading ? (
                 <Loader2 className="w-3 h-3 animate-spin" />
               ) : (
                 <SendHorizontal className="w-3 h-3" />
