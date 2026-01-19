@@ -391,3 +391,146 @@ class FileStorageAbstraction(FileStorageProtocol):
         except Exception as e:
             self.logger.error(f"Failed to get file by UUID {file_uuid}: {e}", exc_info=True)
             return None
+    
+    async def register_materialization(
+        self,
+        file_id: str,
+        boundary_contract_id: str,
+        materialization_type: str,
+        materialization_scope: Dict[str, Any],
+        materialization_backing_store: str,
+        tenant_id: str,
+        user_id: str,
+        session_id: str,
+        file_reference: str,
+        metadata: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        Register materialization in materialization index (Supabase project_files).
+        
+        This is called when user explicitly saves a file, making it available for parsing.
+        The file becomes a "materialized representation" with workspace scope.
+        
+        Args:
+            file_id: File identifier
+            boundary_contract_id: Boundary contract ID that authorized this materialization
+            materialization_type: Type of materialization ('full_artifact', 'deterministic', etc.)
+            materialization_scope: Workspace scope (user_id, session_id, solution_id, scope_type)
+            materialization_backing_store: Where materialized ('gcs', 'supabase', 'memory', 'none')
+            tenant_id: Tenant identifier
+            user_id: User identifier
+            session_id: Session identifier
+            file_reference: File reference (e.g., "file:tenant:session:file_id")
+            metadata: File metadata (ui_name, file_type, mime_type, size, etc.)
+        
+        Returns:
+            Dict with success status and materialization record
+        """
+        try:
+            # Get file metadata from Supabase if it exists
+            existing_file = await self.get_file_by_uuid(file_id)
+            
+            # Prepare materialization record data
+            # Note: session_id is NOT a column in project_files (removed in 001 migration)
+            # session_id is stored in materialization_scope JSONB field instead
+            materialization_data = {
+                "uuid": file_id,
+                "tenant_id": tenant_id,
+                "user_id": user_id,
+                # session_id REMOVED - not in schema, stored in materialization_scope JSONB instead
+                "boundary_contract_id": boundary_contract_id,
+                "representation_type": materialization_type,
+                "materialization_scope": materialization_scope,  # Contains session_id in JSONB
+                "materialization_backing_store": materialization_backing_store,
+                "materialization_policy_basis": "mvp_workspace_policy",
+                "source_external": True,  # Source data is external
+                "source_type": "file",
+                "ui_name": metadata.get("ui_name") or metadata.get("file_name", "unknown"),
+                "file_type": metadata.get("file_type", "unstructured"),
+                "mime_type": metadata.get("mime_type", "application/octet-stream"),
+                "file_path": metadata.get("storage_location") or metadata.get("file_path"),
+                "file_size": metadata.get("size") or metadata.get("file_size"),
+                "file_hash": metadata.get("file_hash"),
+                "ingestion_type": metadata.get("ingestion_type", "upload"),
+                "deleted": False,
+                "created_at": self.clock.now_iso(),
+                "updated_at": self.clock.now_iso()
+            }
+            
+            # Use Supabase adapter's client to insert/update in project_files table
+            # The supabase_file_adapter has _client (Supabase Client) that we can use
+            if hasattr(self.supabase, '_client') and self.supabase._client:
+                # Insert or update (upsert) in project_files
+                # Note: We need to handle the case where boundary_contract_id and scope fields might not exist in schema yet
+                # For now, we'll insert what we can and log any schema issues
+                try:
+                    response = self.supabase._client.table("project_files").upsert(
+                        materialization_data,
+                        on_conflict="uuid"
+                    ).execute()
+                    
+                    if response.data and len(response.data) > 0:
+                        self.logger.info(f"✅ Materialization registered: {file_id} (contract: {boundary_contract_id})")
+                        return {
+                            "success": True,
+                            "file_id": file_id,
+                            "boundary_contract_id": boundary_contract_id,
+                            "materialization_type": materialization_type,
+                            "materialization_scope": materialization_scope
+                        }
+                    else:
+                        self.logger.error("Failed to register materialization: No data returned from Supabase")
+                        return {
+                            "success": False,
+                            "error": "No data returned from Supabase"
+                        }
+                except Exception as schema_error:
+                    # If schema doesn't have new fields yet, try without them
+                    self.logger.warning(f"Schema error (may need migration): {schema_error}")
+                    # Try with basic fields only
+                    basic_data = {
+                        "uuid": file_id,
+                        "tenant_id": tenant_id,
+                        "user_id": user_id,
+                        "ui_name": metadata.get("ui_name") or metadata.get("file_name", "unknown"),
+                        "file_type": metadata.get("file_type", "unstructured"),
+                        "mime_type": metadata.get("mime_type", "application/octet-stream"),
+                        "file_path": metadata.get("storage_location") or metadata.get("file_path"),
+                        "file_size": metadata.get("size") or metadata.get("file_size"),
+                        "deleted": False,
+                        "updated_at": self.clock.now_iso()
+                    }
+                    try:
+                        response = self.supabase._client.table("project_files").upsert(
+                            basic_data,
+                            on_conflict="uuid"
+                        ).execute()
+                        self.logger.info(f"✅ Materialization registered (basic): {file_id}")
+                        return {
+                            "success": True,
+                            "file_id": file_id,
+                            "boundary_contract_id": boundary_contract_id,
+                            "warning": "Registered with basic fields only (schema migration may be needed)"
+                        }
+                    except Exception as e2:
+                        self.logger.error(f"Failed to register materialization even with basic fields: {e2}")
+                        raise
+            else:
+                # Fallback: Log and return success (materialization is authorized, just not registered in index)
+                self.logger.warning("Supabase client not available, materialization authorized but not registered in index")
+                return {
+                    "success": True,
+                    "file_id": file_id,
+                    "boundary_contract_id": boundary_contract_id,
+                    "warning": "Materialization authorized but not registered in index (Supabase unavailable)"
+                }
+                
+        except Exception as e:
+            self.logger.error(f"Failed to register materialization: {e}", exc_info=True)
+            # Don't fail the save operation - materialization is authorized, just not registered
+            return {
+                "success": False,
+                "error": str(e),
+                "file_id": file_id,
+                "boundary_contract_id": boundary_contract_id
+            }

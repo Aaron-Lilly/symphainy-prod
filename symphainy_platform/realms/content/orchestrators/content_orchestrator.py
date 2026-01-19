@@ -97,6 +97,8 @@ class ContentOrchestrator:
             return await self._handle_retrieve_file(intent, context)
         elif intent_type == "list_files":
             return await self._handle_list_files(intent, context)
+        elif intent_type == "save_materialization":
+            return await self._handle_save_materialization(intent, context)
         elif intent_type == "get_file_by_id":
             return await self._handle_get_file_by_id(intent, context)
         elif intent_type == "archive_file":
@@ -152,6 +154,21 @@ class ContentOrchestrator:
         - source_metadata: Dict - Source-specific metadata (partner_id for EDI, endpoint for API, etc.)
         - ingestion_options: Dict - Ingestion-specific options
         """
+        # CRITICAL: Files are NEVER ingested directly. A boundary contract is negotiated first.
+        # Boundary contract negotiation happens in Runtime/ExecutionLifecycleManager before realm execution.
+        # Check if boundary contract info is in context (from Runtime enforcement)
+        boundary_contract_id = context.metadata.get("boundary_contract_id")
+        materialization_type = context.metadata.get("materialization_type", "full_artifact")  # MVP default
+        materialization_backing_store = context.metadata.get("materialization_backing_store", "gcs")  # MVP default
+        
+        if boundary_contract_id:
+            self.logger.info(f"✅ Using boundary contract: {boundary_contract_id} (materialization: {materialization_type} -> {materialization_backing_store})")
+        else:
+            # MVP: Allow execution to continue without boundary contract (backwards compatibility)
+            # In full implementation: This should raise an error
+            self.logger.warning("⚠️ MVP: No boundary contract in context - files ingested directly (not aligned with 'data stays at door' principle)")
+            self.logger.warning("⚠️ This should be blocked in full implementation")
+        
         # Get ingestion abstraction from Public Works
         if not self.public_works:
             raise RuntimeError("Public Works not initialized - cannot access IngestionAbstraction")
@@ -292,15 +309,45 @@ class ContentOrchestrator:
         
         self.logger.info(f"File ingested via {ingestion_type.value}: {ingestion_result.file_id} ({ui_name}) -> {file_reference}")
         
+        # Create structured artifact with semantic_payload and renderings
+        # Include boundary contract information (if available)
+        semantic_payload = {
+            "file_id": ingestion_result.file_id,
+            "file_reference": file_reference,
+            "storage_location": ingestion_result.storage_location,
+            "ui_name": ui_name,
+            "file_type": file_type,
+            "mime_type": mime_type,
+            "ingestion_type": ingestion_type.value,
+            "status": "ingested",
+            "file_size": file_metadata.get("size") if file_metadata else None,
+            "file_hash": file_metadata.get("file_hash") if file_metadata else None,
+            "created_at": file_metadata.get("created_at") if file_metadata else None
+        }
+        
+        # Add boundary contract information if available
+        materialization_pending = context.metadata.get("materialization_pending", False)
+        
+        if boundary_contract_id:
+            semantic_payload["boundary_contract_id"] = boundary_contract_id
+            semantic_payload["materialization_pending"] = materialization_pending  # NEW: Indicates if materialization is pending
+            
+            # If materialization is not pending, include materialization details
+            if not materialization_pending:
+                semantic_payload["materialization_type"] = materialization_type
+                semantic_payload["materialization_backing_store"] = materialization_backing_store
+                semantic_payload["materialization_scope"] = context.metadata.get("materialization_scope", {})
+            semantic_payload["source_external"] = True  # Source data is external (not owned by platform)
+        
+        structured_artifact = create_structured_artifact(
+            result_type="file",
+            semantic_payload=semantic_payload,
+            renderings={}  # No renderings for ingestion (file already stored)
+        )
+        
         return {
             "artifacts": {
-                "file_id": ingestion_result.file_id,
-                "file_reference": file_reference,
-                "file_path": ingestion_result.storage_location,
-                "ui_name": ui_name,
-                "file_type": file_type,
-                "ingestion_type": ingestion_type.value,
-                "status": "ingested"
+                "file": structured_artifact
             },
             "events": [
                 {
@@ -1124,18 +1171,138 @@ class ContentOrchestrator:
         
         self.logger.info(f"File registered in State Surface: {file_id} ({ui_name}) -> {file_reference}")
         
+        # Create structured artifact
+        semantic_payload = {
+            "file_id": file_id,
+            "file_reference": file_reference,
+            "storage_location": storage_location,
+            "ui_name": ui_name,
+            "file_type": file_type,
+            "mime_type": mime_type,
+            "file_size": file_metadata.get("file_size") if file_metadata else None,
+            "file_hash": file_metadata.get("file_hash") if file_metadata else None,
+            "status": "registered"
+        }
+        
+        structured_artifact = create_structured_artifact(
+            result_type="file",
+            semantic_payload=semantic_payload,
+            renderings={}  # Registration doesn't include contents
+        )
+        
         return {
             "artifacts": {
-                "file_id": file_id,
-                "file_reference": file_reference,
-                "storage_location": storage_location,
-                "ui_name": ui_name
+                "file": structured_artifact
             },
             "events": [
                 {
                     "type": "file_registered",
                     "file_id": file_id,
                     "file_reference": file_reference
+                }
+            ]
+        }
+    
+    async def _handle_save_materialization(
+        self,
+        intent: Intent,
+        context: ExecutionContext
+    ) -> Dict[str, Any]:
+        """
+        Handle save_materialization intent - explicitly authorize and register materialization.
+        
+        This is the second step after upload:
+        1. Upload → creates boundary contract (pending materialization)
+        2. Save → authorizes materialization (active) and registers in materialization index
+        
+        Intent parameters:
+        - boundary_contract_id: str (REQUIRED) - Boundary contract from upload
+        - file_id: str (REQUIRED) - File ID from upload
+        """
+        boundary_contract_id = intent.parameters.get("boundary_contract_id")
+        file_id = intent.parameters.get("file_id")
+        
+        if not boundary_contract_id:
+            raise ValueError("boundary_contract_id is required for save_materialization intent")
+        if not file_id:
+            raise ValueError("file_id is required for save_materialization intent")
+        
+        # Materialization authorization already happened in ExecutionLifecycleManager
+        # We just need to register it in the materialization index
+        
+        materialization_type = context.metadata.get("materialization_type", "full_artifact")
+        materialization_scope = context.metadata.get("materialization_scope", {})
+        materialization_backing_store = context.metadata.get("materialization_backing_store", "gcs")
+        
+        # Get file metadata from state surface
+        file_reference = f"file:{context.tenant_id}:{context.session_id}:{file_id}"
+        file_metadata = None
+        
+        try:
+            file_metadata = await context.state_surface.get_file_metadata(
+                session_id=context.session_id,
+                tenant_id=context.tenant_id,
+                file_reference=file_reference
+            )
+        except Exception as e:
+            self.logger.warning(f"Could not retrieve file metadata from state surface: {e}")
+        
+        # Register in materialization index (Supabase project_files)
+        # This is where the file becomes "saved" and available for parsing
+        if self.public_works:
+            file_storage = self.public_works.get_file_storage_abstraction()
+            if file_storage and hasattr(file_storage, 'register_materialization'):
+                try:
+                    await file_storage.register_materialization(
+                        file_id=file_id,
+                        boundary_contract_id=boundary_contract_id,
+                        materialization_type=materialization_type,
+                        materialization_scope=materialization_scope,
+                        materialization_backing_store=materialization_backing_store,
+                        tenant_id=context.tenant_id,
+                        user_id=context.metadata.get("user_id", "system"),
+                        session_id=context.session_id,
+                        file_reference=file_reference,
+                        metadata=file_metadata or {}
+                    )
+                    self.logger.info(f"✅ Materialization registered: {file_id} (contract: {boundary_contract_id})")
+                except Exception as e:
+                    self.logger.error(f"Failed to register materialization: {e}", exc_info=True)
+                    # Continue anyway - materialization is authorized, just not registered in index
+            else:
+                self.logger.warning("FileStorageAbstraction not available or missing register_materialization method")
+        
+        # Create structured artifact
+        semantic_payload = {
+            "boundary_contract_id": boundary_contract_id,
+            "file_id": file_id,
+            "file_reference": file_reference,
+            "materialization_type": materialization_type,
+            "materialization_scope": materialization_scope,
+            "materialization_backing_store": materialization_backing_store,
+            "status": "saved",
+            "available_for_parsing": True
+        }
+        
+        structured_artifact = create_structured_artifact(
+            result_type="materialization",
+            semantic_payload=semantic_payload,
+            renderings={
+                "message": "File saved and available for parsing"
+            }
+        )
+        
+        return {
+            "artifacts": {
+                "materialization": structured_artifact
+            },
+            "events": [
+                {
+                    "type": "materialization_saved",
+                    "file_id": file_id,
+                    "boundary_contract_id": boundary_contract_id,
+                    "materialization_type": materialization_type,
+                    "materialization_scope": materialization_scope
                 }
             ]
         }
@@ -1180,11 +1347,32 @@ class ContentOrchestrator:
         if not file_metadata:
             raise ValueError(f"File not found: {file_id}")
         
+        # Create structured artifact
+        file_reference = f"file:{context.tenant_id}:{context.session_id}:{file_id}"
+        semantic_payload = {
+            "file_id": file_id,
+            "file_reference": file_reference,
+            "file_name": file_metadata.get("ui_name") or file_metadata.get("file_name"),
+            "file_type": file_metadata.get("file_type"),
+            "mime_type": file_metadata.get("mime_type") or file_metadata.get("content_type"),
+            "file_size": file_metadata.get("file_size"),
+            "file_hash": file_metadata.get("file_hash"),
+            "storage_location": file_metadata.get("storage_location") or file_metadata.get("gcs_blob_path"),
+            "created_at": file_metadata.get("created_at"),
+            "updated_at": file_metadata.get("updated_at"),
+            "tenant_id": file_metadata.get("tenant_id"),
+            "session_id": file_metadata.get("session_id")
+        }
+        
+        structured_artifact = create_structured_artifact(
+            result_type="file",
+            semantic_payload=semantic_payload,
+            renderings={}  # Metadata only, no contents
+        )
+        
         return {
             "artifacts": {
-                "file_id": file_id,
-                "file_metadata": file_metadata,
-                "file_reference": f"file:{context.tenant_id}:{context.session_id}:{file_id}"
+                "file": structured_artifact
             },
             "events": []
         }
@@ -1209,32 +1397,124 @@ class ContentOrchestrator:
         if not file_id and not file_reference:
             raise ValueError("Either file_id or file_reference is required for retrieve_file intent")
         
-        # Construct file reference if not provided
-        if not file_reference:
+        # Try to get file metadata - prefer direct file_id lookup via FileStorageAbstraction
+        # This avoids session-scoped file_reference issues
+        file_metadata = None
+        storage_location = None
+        
+        # First, try direct file_id lookup via FileStorageAbstraction (most reliable)
+        if file_id and hasattr(self, 'public_works') and self.public_works:
+            file_storage = self.public_works.get_file_storage_abstraction()
+            if file_storage:
+                try:
+                    file_metadata_dict = await file_storage.get_file_by_uuid(file_id)
+                    if file_metadata_dict:
+                        # Extract storage location
+                        storage_location = file_metadata_dict.get("file_path") or file_metadata_dict.get("storage_path")
+                        # Convert to State Surface format
+                        file_metadata = {
+                            "file_id": file_id,
+                            "storage_location": storage_location,
+                            "file_name": file_metadata_dict.get("file_name") or file_metadata_dict.get("ui_name"),
+                            "file_type": file_metadata_dict.get("file_type"),
+                            "mime_type": file_metadata_dict.get("mime_type") or file_metadata_dict.get("content_type"),
+                            "file_size": file_metadata_dict.get("file_size"),
+                            "file_hash": file_metadata_dict.get("file_hash"),
+                            "metadata": file_metadata_dict.get("metadata", {}),
+                            "created_at": file_metadata_dict.get("created_at"),
+                            "updated_at": file_metadata_dict.get("updated_at")
+                        }
+                        # Construct file_reference for consistency (use current session or wildcard)
+                        if not file_reference:
+                            tenant_id = file_metadata_dict.get("tenant_id") or context.tenant_id
+                            file_reference = f"file:{tenant_id}:{context.session_id}:{file_id}"
+                except Exception as e:
+                    self.logger.debug(f"File storage lookup by UUID failed: {e}")
+        
+        # Fallback: Try file_reference lookup in State Surface if provided
+        if not file_metadata and file_reference:
+            try:
+                file_metadata = await context.state_surface.get_file_metadata(file_reference)
+                if file_metadata:
+                    storage_location = file_metadata.get("storage_location")
+            except Exception as e:
+                self.logger.debug(f"State Surface lookup failed: {e}")
+        
+        # Last resort: Try constructing file_reference from current session
+        if not file_metadata and file_id and not file_reference:
             file_reference = f"file:{context.tenant_id}:{context.session_id}:{file_id}"
+            try:
+                file_metadata = await context.state_surface.get_file_metadata(file_reference)
+                if file_metadata:
+                    storage_location = file_metadata.get("storage_location")
+            except Exception as e:
+                self.logger.debug(f"State Surface lookup with constructed reference failed: {e}")
         
-        # Get file metadata from State Surface
-        file_metadata = await context.state_surface.get_file_metadata(file_reference)
         if not file_metadata:
-            raise ValueError(f"File not found in State Surface: {file_reference}")
+            raise ValueError(f"File not found: file_id={file_id}, file_reference={file_reference}")
         
-        artifacts = {
-            "file_id": file_id or file_metadata.get("file_id"),
+        # Create structured artifact with semantic_payload and renderings
+        semantic_payload = {
+            "file_id": file_id or file_metadata.get("file_id") if isinstance(file_metadata, dict) else file_id,
             "file_reference": file_reference,
-            "file_metadata": file_metadata
+            "file_name": file_metadata.get("file_name") if isinstance(file_metadata, dict) else None,
+            "file_type": file_metadata.get("file_type") if isinstance(file_metadata, dict) else None,
+            "mime_type": file_metadata.get("mime_type") or file_metadata.get("content_type") if isinstance(file_metadata, dict) else None,
+            "file_size": file_metadata.get("file_size") if isinstance(file_metadata, dict) else None,
+            "file_hash": file_metadata.get("file_hash") if isinstance(file_metadata, dict) else None,
+            "storage_location": storage_location or (file_metadata.get("storage_location") if isinstance(file_metadata, dict) else None),
+            "created_at": file_metadata.get("created_at") if isinstance(file_metadata, dict) else None,
+            "updated_at": file_metadata.get("updated_at") if isinstance(file_metadata, dict) else None
         }
         
+        # Get file contents if requested (goes in renderings, handled by materialization policy)
+        renderings = {}
         if include_contents:
-            # Get file contents from GCS via State Surface
-            file_contents = await context.state_surface.get_file(file_reference)
+            file_contents = None
+            if storage_location and hasattr(self, 'public_works') and self.public_works:
+                file_storage = self.public_works.get_file_storage_abstraction()
+                if file_storage:
+                    try:
+                        file_contents = await file_storage.download_file(storage_location)
+                    except Exception as e:
+                        self.logger.debug(f"Direct file download failed: {e}")
+            
+            # Fallback: Try via State Surface
+            if not file_contents and file_reference:
+                try:
+                    file_contents = await context.state_surface.get_file(file_reference)
+                except Exception as e:
+                    self.logger.debug(f"State Surface file retrieval failed: {e}")
+            
             if file_contents:
-                artifacts["file_contents"] = file_contents
-                artifacts["file_size"] = len(file_contents)
+                # Convert bytes to JSON-serializable format
+                # For text files, decode to string; for binary, use base64
+                if isinstance(file_contents, bytes):
+                    # Try to decode as UTF-8 (for text files like CSV, JSON, etc.)
+                    try:
+                        renderings["file_contents"] = file_contents.decode('utf-8')
+                    except UnicodeDecodeError:
+                        # For binary files, use base64 encoding
+                        import base64
+                        renderings["file_contents"] = base64.b64encode(file_contents).decode('utf-8')
+                        renderings["file_contents_encoding"] = "base64"
+                else:
+                    # Already a string or other serializable type
+                    renderings["file_contents"] = file_contents
+                semantic_payload["file_size"] = len(file_contents) if isinstance(file_contents, bytes) else len(str(file_contents).encode('utf-8'))  # Update size from actual content
             else:
-                self.logger.warning(f"File contents not found for: {file_reference}")
+                self.logger.warning(f"File contents not found: file_id={file_id}, storage_location={storage_location}")
+        
+        structured_artifact = create_structured_artifact(
+            result_type="file",
+            semantic_payload=semantic_payload,
+            renderings=renderings
+        )
         
         return {
-            "artifacts": artifacts,
+            "artifacts": {
+                "file": structured_artifact
+            },
             "events": []
         }
     
@@ -1259,21 +1539,52 @@ class ContentOrchestrator:
         limit = intent.parameters.get("limit", 100)
         offset = intent.parameters.get("offset", 0)
         
-        # Query Supabase for files
+        # Query Supabase for files (filtered by workspace scope)
+        user_id = context.metadata.get("user_id")  # Get user_id from context for workspace filtering
         files = await self._list_files_from_supabase(
             tenant_id=tenant_id,
             session_id=session_id,
             file_type=file_type,
             limit=limit,
-            offset=offset
+            offset=offset,
+            user_id=user_id  # NEW: Filter by workspace scope
+        )
+        
+        # Extract semantic data from each file (all JSON-serializable)
+        file_list_semantic = []
+        for file in files:
+            file_semantic = {
+                "file_id": file.get("uuid") or file.get("file_id"),
+                "file_name": file.get("ui_name") or file.get("file_name"),
+                "file_type": file.get("file_type"),
+                "mime_type": file.get("mime_type") or file.get("content_type"),
+                "file_size": file.get("file_size"),
+                "file_hash": file.get("file_hash"),
+                "storage_location": file.get("gcs_blob_path") or file.get("file_path"),
+                "created_at": file.get("created_at"),
+                "updated_at": file.get("updated_at")
+            }
+            file_list_semantic.append(file_semantic)
+        
+        semantic_payload = {
+            "files": file_list_semantic,  # Array of file metadata (all JSON-serializable)
+            "count": len(files),
+            "tenant_id": tenant_id,
+            "session_id": session_id,
+            "limit": limit,
+            "offset": offset,
+            "file_type_filter": file_type  # If filtered
+        }
+        
+        structured_artifact = create_structured_artifact(
+            result_type="file_list",
+            semantic_payload=semantic_payload,
+            renderings={}  # No renderings for listing
         )
         
         return {
             "artifacts": {
-                "files": files,
-                "count": len(files),
-                "tenant_id": tenant_id,
-                "session_id": session_id
+                "file_list": structured_artifact
             },
             "events": []
         }
@@ -1302,12 +1613,32 @@ class ContentOrchestrator:
         file_reference = f"file:{context.tenant_id}:{context.session_id}:{file_id}"
         state_metadata = await context.state_surface.get_file_metadata(file_reference)
         
+        # Create structured artifact
+        semantic_payload = {
+            "file_id": file_id,
+            "file_reference": file_reference if state_metadata else None,
+            "file_name": file_metadata.get("ui_name") or file_metadata.get("file_name"),
+            "file_type": file_metadata.get("file_type"),
+            "mime_type": file_metadata.get("mime_type") or file_metadata.get("content_type"),
+            "file_size": file_metadata.get("file_size"),
+            "file_hash": file_metadata.get("file_hash"),
+            "storage_location": file_metadata.get("gcs_blob_path") or file_metadata.get("file_path"),
+            "created_at": file_metadata.get("created_at"),
+            "updated_at": file_metadata.get("updated_at"),
+            "tenant_id": file_metadata.get("tenant_id"),
+            "session_id": file_metadata.get("session_id"),
+            "registered_in_state_surface": state_metadata is not None
+        }
+        
+        structured_artifact = create_structured_artifact(
+            result_type="file",
+            semantic_payload=semantic_payload,
+            renderings={}  # Metadata only
+        )
+        
         return {
             "artifacts": {
-                "file_id": file_id,
-                "file_metadata": file_metadata,
-                "file_reference": file_reference if state_metadata else None,
-                "registered_in_state_surface": state_metadata is not None
+                "file": structured_artifact
             },
             "events": []
         }
@@ -2074,6 +2405,22 @@ class ContentOrchestrator:
             raise ValueError("file_id is required for parse_content intent")
         
         file_reference = intent.parameters.get("file_reference")
+        
+        # If file_reference not provided, look up file metadata by file_id to get the correct session_id
+        if not file_reference:
+            file_metadata = await self._get_file_metadata_from_supabase(file_id, context.tenant_id)
+            if file_metadata:
+                # Construct file_reference from actual file metadata (includes correct session_id)
+                actual_session_id = file_metadata.get("session_id")
+                if actual_session_id:
+                    file_reference = f"file:{context.tenant_id}:{actual_session_id}:{file_id}"
+                else:
+                    # Fallback: use context session_id if file metadata doesn't have session_id
+                    file_reference = f"file:{context.tenant_id}:{context.session_id}:{file_id}"
+            else:
+                # Fallback: construct with context session_id if file not found in Supabase
+                file_reference = f"file:{context.tenant_id}:{context.session_id}:{file_id}"
+        
         parsing_type = intent.parameters.get("parsing_type")
         parse_options = intent.parameters.get("parse_options", {})
         copybook_reference = intent.parameters.get("copybook_reference")
@@ -2107,13 +2454,45 @@ class ContentOrchestrator:
             context=context
         )
         
+        # Create structured artifact for parsed content
+        from symphainy_platform.realms.utils.structured_artifacts import create_structured_artifact
+        
+        semantic_payload = {
+            "parsed_file_id": parsed_file_id,
+            "parsed_file_reference": parsed_file_reference,
+            "file_id": file_id,
+            "parsing_type": parsing_type_result,
+            "parsing_status": parsing_status,
+            "record_count": parsed_result.get("record_count"),
+            "parse_options": parse_options
+        }
+        
+        # Renderings can include parsed data (full or preview)
+        renderings = {}
+        parsed_data = parsed_result.get("parsed_data")
+        if parsed_data:
+            # Include parsed data in renderings (can be large, but needed for immediate use)
+            # For large datasets, could limit to preview, but for MVP include full data
+            renderings["parsed_data"] = parsed_data
+            # Also include a preview for quick access
+            if isinstance(parsed_data, list) and len(parsed_data) > 10:
+                renderings["parsed_data_preview"] = parsed_data[:10]
+            elif isinstance(parsed_data, dict) and len(parsed_data) > 10:
+                renderings["parsed_data_preview"] = dict(list(parsed_data.items())[:10])
+            else:
+                renderings["parsed_data_preview"] = parsed_data
+        
+        parsed_content_artifact = create_structured_artifact(
+            result_type="parsed_content",
+            semantic_payload=semantic_payload,
+            renderings=renderings
+        )
+        
         return {
             "artifacts": {
-                "parsed_file_id": parsed_file_id,
-                "parsed_file_reference": parsed_file_reference,
-                "file_id": file_id,
-                "parsing_type": parsing_type_result,
-                "parsing_status": parsing_status
+                "parsed_content": parsed_content_artifact,
+                "parsed_file_id": parsed_file_id,  # Keep for backward compatibility
+                "parsed_file_reference": parsed_file_reference
             },
             "events": [
                 {

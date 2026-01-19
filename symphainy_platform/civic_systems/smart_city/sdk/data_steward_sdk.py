@@ -11,10 +11,14 @@ project_root = Path(__file__).resolve().parents[5]
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from typing import Dict, Any, Optional
-from dataclasses import dataclass
+from typing import Dict, Any, Optional, List
 
 from utilities import get_logger, get_clock
+from symphainy_platform.civic_systems.smart_city.primitives.data_steward_primitives import (
+    DataStewardPrimitives,
+    DataAccessRequest,
+    MaterializationAuthorization
+)
 
 
 @dataclass
@@ -111,3 +115,81 @@ class DataStewardSDK:
             "is_allowed": True,
             "execution_contract": execution_contract
         }
+    
+    async def request_data_access(
+        self,
+        intent: Dict[str, Any],
+        context: Dict[str, Any],
+        external_source_type: str,
+        external_source_identifier: str,
+        external_source_metadata: Optional[Dict[str, Any]] = None
+    ) -> DataAccessRequest:
+        """
+        Request data access - negotiate boundary contract.
+        
+        This is the FIRST step before any data materialization.
+        Files are NEVER ingested directly. A contract is negotiated first.
+        
+        Args:
+            intent: Intent that triggered the request
+            context: Execution context (tenant_id, user_id, session_id, etc.)
+            external_source_type: Type of external source ('file', 'api', 'database', etc.)
+            external_source_identifier: Identifier for external source (file path, API endpoint, etc.)
+            external_source_metadata: Additional source metadata
+        
+        Returns:
+            DataAccessRequest with access_granted and contract_id
+        """
+        if not self.data_steward_primitives:
+            # Fallback: Allow access without contract (MVP compatibility)
+            self.logger.warning("Data Steward primitives not available, allowing access without contract")
+            return DataAccessRequest(
+                access_granted=True,
+                access_reason="MVP fallback - primitives not available"
+            )
+        
+        return await self.data_steward_primitives.request_data_access(
+            intent=intent,
+            context=context,
+            external_source_type=external_source_type,
+            external_source_identifier=external_source_identifier,
+            external_source_metadata=external_source_metadata
+        )
+    
+    async def authorize_materialization(
+        self,
+        contract_id: str,
+        tenant_id: str,
+        requested_type: Optional[str] = None
+    ) -> MaterializationAuthorization:
+        """
+        Authorize materialization - decide what form and where.
+        
+        This is the SECOND step after access is granted.
+        Answers: Can we persist it? In what form? For how long? Where?
+        
+        Args:
+            contract_id: Boundary contract ID from request_data_access()
+            tenant_id: Tenant identifier
+            requested_type: Requested materialization type (optional)
+        
+        Returns:
+            MaterializationAuthorization with materialization decision
+        """
+        if not self.data_steward_primitives:
+            # Fallback: Allow full artifact materialization (MVP compatibility)
+            self.logger.warning("Data Steward primitives not available, allowing full artifact materialization")
+            return MaterializationAuthorization(
+                materialization_allowed=True,
+                materialization_type="full_artifact",
+                materialization_backing_store="gcs",
+                policy_basis="mvp_fallback",
+                reason="MVP fallback - primitives not available"
+            )
+        
+        return await self.data_steward_primitives.authorize_materialization(
+            contract_id=contract_id,
+            tenant_id=tenant_id,
+            requested_type=requested_type,
+            materialization_policy=self.materialization_policy
+        )

@@ -126,10 +126,9 @@ async def initialize_runtime():
         )
         logger.info("✅ Transactional Outbox initialized")
         
-        # Materialization Policy & Artifact Storage
-        from symphainy_platform.runtime.policies.materialization_policy_abstraction import (
-            MaterializationPolicyAbstraction,
-            MVP_POLICY_OVERRIDE
+        # Materialization Policy Store & Artifact Storage
+        from symphainy_platform.civic_systems.smart_city.primitives.materialization_policy_primitives import (
+            MaterializationPolicyStore
         )
         
         # Get Artifact Storage Abstraction from Public Works
@@ -139,31 +138,59 @@ async def initialize_runtime():
         else:
             logger.warning("⚠️ Artifact Storage Abstraction not available")
         
-        # Try to load materialization policy from config file, fallback to MVP override
+        # Initialize Materialization Policy Store (loads from config file)
         import yaml
         import os
-        solution_config = None
-        # Use absolute path based on project root for container reliability
-        config_path = project_root / "config" / "mvp_materialization_policy.yaml"
+        config_path = str(project_root / "config" / "mvp_materialization_policy.yaml")
+        materialization_policy_store = MaterializationPolicyStore(config_path=config_path)
+        logger.info(f"✅ Materialization Policy Store initialized (config: {config_path})")
         
-        if config_path.exists():
-            try:
-                with open(str(config_path), 'r') as f:
-                    solution_config = yaml.safe_load(f)
-                logger.info(f"✅ Loaded materialization policy from {config_path}")
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to load materialization policy from {config_path}: {e}, using defaults")
-                solution_config = {"materialization_policy": MVP_POLICY_OVERRIDE}
-        else:
-            logger.info(f"ℹ️ Materialization policy config not found at {config_path}, using hardcoded MVP override")
-            solution_config = {"materialization_policy": MVP_POLICY_OVERRIDE}
-        
-        # Create Materialization Policy Abstraction
-        materialization_policy = MaterializationPolicyAbstraction(
-            default_policy=None,  # Use default
-            solution_config=solution_config
+        # Initialize Data Steward (Smart City) - Boundary Contract Management
+        from symphainy_platform.civic_systems.smart_city.primitives.data_steward_primitives import (
+            DataStewardPrimitives,
+            BoundaryContractStore
         )
-        logger.info("✅ Materialization Policy Abstraction initialized")
+        from symphainy_platform.civic_systems.smart_city.sdk.data_steward_sdk import DataStewardSDK
+        
+        # Create Boundary Contract Store (uses Supabase adapter)
+        boundary_contract_store = None
+        if public_works and public_works.supabase_adapter:
+            boundary_contract_store = BoundaryContractStore(
+                supabase_adapter=public_works.supabase_adapter
+            )
+            logger.info("✅ Boundary Contract Store initialized")
+        else:
+            logger.warning("⚠️ Boundary Contract Store not available (Supabase adapter missing)")
+        
+        # Initialize Data Steward Primitives
+        data_steward_primitives = DataStewardPrimitives(
+            policy_store=None,  # Future: Add policy store
+            boundary_contract_store=boundary_contract_store
+        )
+        logger.info("✅ Data Steward Primitives initialized")
+        
+        # Initialize Data Steward SDK
+        data_steward_sdk = DataStewardSDK(
+            data_governance_abstraction=None,  # Future: Add data governance abstraction
+            policy_resolver=None,  # Future: Add policy resolver
+            data_steward_primitives=data_steward_primitives,
+            materialization_policy=materialization_policy_store
+        )
+        logger.info("✅ Data Steward SDK initialized")
+        
+        # Load solution config for execution contracts
+        solution_config = None
+        if os.path.exists(config_path):
+            try:
+                with open(config_path, 'r') as f:
+                    solution_config = yaml.safe_load(f)
+                logger.info(f"✅ Loaded solution config from {config_path}")
+            except Exception as e:
+                logger.warning(f"⚠️ Failed to load solution config from {config_path}: {e}")
+                solution_config = {}
+        else:
+            logger.info(f"ℹ️ Solution config not found at {config_path}, using defaults")
+            solution_config = {}
         
         # Execution Lifecycle Manager
         execution_lifecycle_manager = ExecutionLifecycleManager(
@@ -171,9 +198,10 @@ async def initialize_runtime():
             state_surface=state_surface,
             wal=wal,
             transactional_outbox=transactional_outbox,
-            materialization_policy=materialization_policy,
-            artifact_storage=public_works.get_artifact_storage_abstraction(),
-            solution_config=solution_config
+            materialization_policy_store=materialization_policy_store,
+            artifact_storage=artifact_storage,
+            solution_config=solution_config,
+            data_steward_sdk=data_steward_sdk
         )
         logger.info("✅ Execution Lifecycle Manager initialized")
         
@@ -223,6 +251,9 @@ async def initialize_runtime():
             "wal": wal,
             "transactional_outbox": transactional_outbox,
             "execution_lifecycle_manager": execution_lifecycle_manager,
+            "data_steward_sdk": data_steward_sdk,
+            "data_steward_primitives": data_steward_primitives,
+            "boundary_contract_store": boundary_contract_store,
         })
         
         logger.info("✅ Runtime Service initialized successfully")
@@ -250,10 +281,14 @@ async def lifespan(app: FastAPI):
         # Store runtime API instance in app state
         from symphainy_platform.runtime.runtime_api import RuntimeAPI
         
+        # Get file storage abstraction for unified artifact retrieval
+        file_storage = components["public_works"].get_file_storage_abstraction()
+        
         runtime_api = RuntimeAPI(
             execution_lifecycle_manager=components["execution_lifecycle_manager"],
             state_surface=components["state_surface"],
-            artifact_storage=components["public_works"].get_artifact_storage_abstraction()
+            artifact_storage=components["public_works"].get_artifact_storage_abstraction(),
+            file_storage=file_storage
         )
         
         app.state.runtime_api = runtime_api
@@ -299,6 +334,31 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    
+    # Add request logging middleware to debug tenant_id issue
+    @app.middleware("http")
+    async def log_request_body(request, call_next):
+        """Log raw request body for /api/intent/submit to debug tenant_id."""
+        if request.url.path == "/api/intent/submit":
+            body = await request.body()
+            from utilities import get_logger
+            logger = get_logger("RequestMiddleware")
+            try:
+                import json
+                body_json = json.loads(body.decode()) if body else {}
+                logger.info(f"🔵 RAW REQUEST BODY: {json.dumps(body_json, indent=2)}")
+                logger.info(f"🔵 tenant_id in body: {body_json.get('tenant_id', 'MISSING')}")
+            except Exception as e:
+                logger.warning(f"Could not parse request body: {e}")
+            
+            # Recreate request with body (FastAPI needs it)
+            from starlette.requests import Request
+            async def receive():
+                return {"type": "http.request", "body": body}
+            request._receive = receive
+        
+        response = await call_next(request)
+        return response
     
     # Initialize OpenTelemetry SDK
     try:
@@ -348,6 +408,10 @@ def create_app() -> FastAPI:
     @app.post("/api/intent/submit", response_model=IntentSubmitResponse)
     async def submit_intent(request: IntentSubmitRequest):
         """Submit intent for execution."""
+        # Log raw request for debugging
+        from utilities import get_logger
+        logger = get_logger("FastAPI")
+        logger.info(f"🔵 FASTAPI RECEIVED: tenant_id={request.tenant_id}, intent_type={request.intent_type}")
         return await app.state.runtime_api.submit_intent(request)
     
     @app.get("/api/execution/{execution_id}/status", response_model=ExecutionStatusResponse)
@@ -364,9 +428,21 @@ def create_app() -> FastAPI:
         tenant_id: str,
         include_visuals: bool = False
     ):
-        """Get artifact by ID."""
+        """
+        Get artifact by ID (unified retrieval).
+        
+        Supports:
+        - Structured artifacts (workflow, sop, solution, etc.)
+        - File artifacts (files ingested via Content Realm)
+        - Composite artifacts with visuals
+        """
         from fastapi import HTTPException
-        artifact = await app.state.runtime_api.get_artifact(artifact_id, tenant_id, include_visuals)
+        artifact = await app.state.runtime_api.get_artifact(
+            artifact_id=artifact_id,
+            tenant_id=tenant_id,
+            include_visuals=include_visuals,
+            materialization_policy=None  # MVP: all persisted
+        )
         if not artifact:
             raise HTTPException(status_code=404, detail="Artifact not found")
         return artifact
@@ -382,6 +458,67 @@ def create_app() -> FastAPI:
         if not visual_bytes:
             raise HTTPException(status_code=404, detail="Visual not found")
         return Response(content=visual_bytes, media_type="image/png")
+    
+    @app.post("/api/content/save_materialization")
+    async def save_materialization(
+        boundary_contract_id: str,
+        file_id: str,
+        tenant_id: str,
+        user_id: str = Header(..., alias="x-user-id"),
+        session_id: str = Header(..., alias="x-session-id")
+    ):
+        """
+        Explicitly save (materialize) a file that was uploaded.
+        
+        This is the second step after upload:
+        1. Upload → creates boundary contract (pending materialization)
+        2. Save → authorizes materialization (active) and registers in materialization index
+        
+        Files must be saved before they are available for parsing (MVP requirement).
+        """
+        from fastapi import HTTPException
+        from symphainy_platform.runtime.intent_model import Intent, IntentFactory
+        from symphainy_platform.runtime.execution_context import ExecutionContext
+        
+        try:
+            # Create save_materialization intent
+            intent = Intent(
+                intent_type="save_materialization",
+                tenant_id=tenant_id,
+                parameters={
+                    "boundary_contract_id": boundary_contract_id,
+                    "file_id": file_id
+                }
+            )
+            
+            # Create execution context
+            context = ExecutionContext(
+                tenant_id=tenant_id,
+                session_id=session_id,
+                metadata={"user_id": user_id}
+            )
+            
+            # Execute via ExecutionLifecycleManager
+            execution_lifecycle_manager = app.state.execution_lifecycle_manager
+            result = await execution_lifecycle_manager.execute(intent)
+            
+            if not result.success:
+                raise HTTPException(status_code=400, detail=result.error or "Failed to save materialization")
+            
+            return {
+                "success": True,
+                "file_id": file_id,
+                "boundary_contract_id": boundary_contract_id,
+                "execution_id": result.execution_id,
+                "artifacts": result.artifacts,
+                "message": "File saved and available for parsing"
+            }
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to save materialization: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
     
     @app.get("/api/realms")
     async def get_realms():

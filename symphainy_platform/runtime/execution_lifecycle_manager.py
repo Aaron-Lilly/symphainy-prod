@@ -67,9 +67,10 @@ class ExecutionLifecycleManager:
         state_surface: StateSurface,
         wal: WriteAheadLog,
         transactional_outbox: Optional[Any] = None,  # Will be TransactionalOutbox
-        materialization_policy: Optional[Any] = None,  # MaterializationPolicyAbstraction
+        materialization_policy_store: Optional[Any] = None,  # MaterializationPolicyStore
         artifact_storage: Optional[Any] = None,  # ArtifactStorageAbstraction
-        solution_config: Optional[Dict[str, Any]] = None
+        solution_config: Optional[Dict[str, Any]] = None,
+        data_steward_sdk: Optional[Any] = None  # DataStewardSDK for boundary contract enforcement
     ):
         """
         Initialize execution lifecycle manager.
@@ -79,17 +80,19 @@ class ExecutionLifecycleManager:
             state_surface: State surface for execution state
             wal: Write-ahead log for audit
             transactional_outbox: Optional transactional outbox for event publishing
-            materialization_policy: Optional materialization policy abstraction
+            materialization_policy_store: Optional materialization policy store (from Smart City)
             artifact_storage: Optional artifact storage abstraction
             solution_config: Optional solution-specific configuration
+            data_steward_sdk: Optional Data Steward SDK for boundary contract enforcement
         """
         self.intent_registry = intent_registry
         self.state_surface = state_surface
         self.wal = wal
         self.transactional_outbox = transactional_outbox
-        self.materialization_policy = materialization_policy
+        self.materialization_policy_store = materialization_policy_store
         self.artifact_storage = artifact_storage
         self.solution_config = solution_config or {}
+        self.data_steward_sdk = data_steward_sdk
         self.logger = get_logger(self.__class__.__name__)
         self.clock = get_clock()
     
@@ -210,15 +213,83 @@ class ExecutionLifecycleManager:
             if not handler.handler_function:
                 raise ValueError(f"Handler function not available for: {handler.handler_name}")
             
+            # CRITICAL: Enforce boundary contracts before realm execution
+            # Files are NEVER ingested directly. A boundary contract is negotiated first.
+            boundary_contract_id = None
+            if intent.intent_type in ["ingest_file", "register_file"] and self.data_steward_sdk:
+                try:
+                    # Step 1: Request data access (negotiate boundary contract)
+                    external_source_type = "file"
+                    external_source_identifier = f"upload:{intent.intent_id}:{intent.parameters.get('ui_name', 'unknown')}"
+                    external_source_metadata = {
+                        "ui_name": intent.parameters.get("ui_name"),
+                        "file_type": intent.parameters.get("file_type", "unstructured"),
+                        "mime_type": intent.parameters.get("mime_type"),
+                        "ingestion_type": intent.parameters.get("ingestion_type", "upload")
+                    }
+                    
+                    access_request = await self.data_steward_sdk.request_data_access(
+                        intent={
+                            "intent_id": intent.intent_id,
+                            "intent_type": intent.intent_type,
+                            "tenant_id": intent.tenant_id,
+                            "parameters": intent.parameters
+                        },
+                        context={
+                            "tenant_id": intent.tenant_id,
+                            "user_id": context.metadata.get("user_id", "system"),
+                            "session_id": context.session_id
+                        },
+                        external_source_type=external_source_type,
+                        external_source_identifier=external_source_identifier,
+                        external_source_metadata=external_source_metadata
+                    )
+                    
+                    if not access_request.access_granted:
+                        raise ValueError(f"Data access denied: {access_request.access_reason}")
+                    
+                    boundary_contract_id = access_request.contract_id
+                    self.logger.info(f"✅ Boundary contract negotiated: {boundary_contract_id}")
+                    
+                    # Step 2: Authorize materialization
+                    materialization_auth = await self.data_steward_sdk.authorize_materialization(
+                        contract_id=boundary_contract_id,
+                        tenant_id=intent.tenant_id
+                    )
+                    
+                    if not materialization_auth.materialization_allowed:
+                        raise ValueError(f"Materialization not authorized: {materialization_auth.reason}")
+                    
+                    self.logger.info(f"✅ Materialization authorized: {materialization_auth.materialization_type} -> {materialization_auth.materialization_backing_store}")
+                    
+                    # Store boundary contract info in context for realm use
+                    context.metadata["boundary_contract_id"] = boundary_contract_id
+                    context.metadata["materialization_type"] = materialization_auth.materialization_type
+                    context.metadata["materialization_backing_store"] = materialization_auth.materialization_backing_store
+                    
+                except Exception as e:
+                    self.logger.error(f"Boundary contract enforcement failed: {e}", exc_info=True)
+                    # MVP: Allow execution to continue (backwards compatibility)
+                    # In full implementation: This should block execution
+                    self.logger.warning("⚠️ MVP: Allowing execution to continue despite boundary contract failure (backwards compatibility)")
+            
             # Update execution state
+            execution_state_updates = {
+                "status": "executing",
+                "handler": handler.handler_name,
+                "updated_at": self.clock.now_iso(),
+            }
+            
+            # Include boundary contract info if available
+            if boundary_contract_id:
+                execution_state_updates["boundary_contract_id"] = boundary_contract_id
+            if context.metadata.get("materialization_pending") is not None:
+                execution_state_updates["materialization_pending"] = context.metadata.get("materialization_pending")
+            
             await self.state_surface.set_execution_state(
                 execution_id,
                 intent.tenant_id,
-                {
-                    "status": "executing",
-                    "handler": handler.handler_name,
-                    "updated_at": self.clock.now_iso(),
-                }
+                execution_state_updates
             )
             
             # Call realm's handle_intent method with tracing
@@ -249,6 +320,18 @@ class ExecutionLifecycleManager:
                     # Fallback: assume result is artifacts dict
                     artifacts = handler_result if isinstance(handler_result, dict) else {}
                     events = []
+                
+                # CRITICAL DEBUG: Log artifact structure IMMEDIATELY after extraction
+                self.logger.info(f"DEBUG_HANDLER_RESULT: type={type(handler_result)}, is_dict={isinstance(handler_result, dict)}")
+                if isinstance(handler_result, dict):
+                    self.logger.info(f"DEBUG_HANDLER_RESULT: keys={list(handler_result.keys())}")
+                self.logger.info(f"DEBUG_ARTIFACTS_EXTRACTED: count={len(artifacts) if artifacts else 0}, keys={list(artifacts.keys()) if artifacts else []}")
+                if artifacts:
+                    for key, value in list(artifacts.items())[:2]:
+                        if isinstance(value, dict):
+                            self.logger.info(f"DEBUG_ARTIFACT_{key}: has_result_type={'result_type' in value}, top_keys={list(value.keys())[:5]}")
+                        else:
+                            self.logger.info(f"DEBUG_ARTIFACT_{key}: type={type(value).__name__}")
             except Exception as e:
                 handler_span = trace.get_current_span() if OTEL_AVAILABLE and trace else None
                 if handler_span and hasattr(handler_span, 'record_exception'):
@@ -263,6 +346,21 @@ class ExecutionLifecycleManager:
             
             # Stage 5: Handle Artifacts & Evaluate Materialization Policy
             self.logger.info(f"Handling artifacts from execution: {execution_id}")
+            # CRITICAL: Log artifacts dict OUTSIDE try block to ensure it's logged
+            self.logger.info(f"DEBUG_AFTER_TRY: artifacts exists={artifacts is not None}, count={len(artifacts) if artifacts else 0}, keys={list(artifacts.keys())[:5] if artifacts else []}")
+            if artifacts:
+                for key, value in list(artifacts.items())[:2]:
+                    if isinstance(value, dict):
+                        self.logger.info(f"DEBUG_AFTER_TRY_ARTIFACT_{key}: has_result_type={'result_type' in value}, keys={list(value.keys())[:5]}")
+                    else:
+                        self.logger.info(f"DEBUG_AFTER_TRY_ARTIFACT_{key}: type={type(value).__name__}")
+            self.logger.info(f"🔍 DEBUG: artifacts dict at start of Stage 5: keys={list(artifacts.keys()) if artifacts else 'EMPTY'}, count={len(artifacts) if artifacts else 0}")
+            if artifacts:
+                for key, value in list(artifacts.items())[:3]:
+                    if isinstance(value, dict):
+                        self.logger.info(f"🔍 DEBUG: artifact '{key}': has result_type={'result_type' in value}, keys={list(value.keys())[:10]}")
+                    else:
+                        self.logger.info(f"🔍 DEBUG: artifact '{key}': type={type(value).__name__}")
             
             if OTEL_AVAILABLE and trace and current_span and hasattr(current_span, 'set_attribute'):
                 current_span.set_attribute("artifacts.count", len(artifacts))
@@ -270,8 +368,14 @@ class ExecutionLifecycleManager:
                 current_span.add_event("artifacts.handled")
             
             # Evaluate materialization policy for each artifact BEFORE storing in state
-            if artifacts and self.materialization_policy and self.artifact_storage:
+            if artifacts and self.materialization_policy_store and self.artifact_storage:
                 self.logger.info(f"Evaluating materialization policy for {len(artifacts)} artifacts")
+                
+                # Import MaterializationPolicyPrimitives (Smart City pattern)
+                from symphainy_platform.civic_systems.smart_city.primitives.materialization_policy_primitives import (
+                    MaterializationPolicyPrimitives,
+                    MaterializationDecision
+                )
                 
                 for artifact_key, artifact_data in list(artifacts.items()):
                     # Skip artifact_id references (already processed)
@@ -300,16 +404,23 @@ class ExecutionLifecycleManager:
                         if "semantic_payload" in renderings:
                             del renderings["semantic_payload"]
                     
-                    # Evaluate policy (with error handling)
+                    # Prepare execution contract for policy evaluation
+                    execution_contract = {
+                        "tenant_id": intent.tenant_id,
+                        "solution_id": getattr(intent, 'solution_id', 'default'),
+                        "materialization_policy": self.solution_config.get("materialization_policy", {})
+                    }
+                    
+                    # Evaluate policy using Smart City Primitive (with error handling)
                     try:
-                        from .policies.materialization_policy_protocol import MaterializationDecision
-                        decision = await self.materialization_policy.evaluate_policy(
+                        decision = await MaterializationPolicyPrimitives.evaluate_policy(
                             result_type=result_type,
                             semantic_payload=semantic_payload,
                             renderings=renderings,
                             intent=intent,
                             context=context,
-                            solution_config=self.solution_config
+                            policy_store=self.materialization_policy_store,
+                            execution_contract=execution_contract
                         )
                     except Exception as e:
                         self.logger.error(f"Policy evaluation failed for {artifact_key}: {e}", exc_info=True)
@@ -351,13 +462,44 @@ class ExecutionLifecycleManager:
                         # Discard (ephemeral)
                         self.logger.debug(f"Artifact {artifact_key} discarded (ephemeral)")
             
-            # Artifacts are stored in execution state (includes artifact_id references if persisted)
+            # Artifacts are stored in execution state
+            # Structured artifacts have semantic_payload (JSON-serializable) and renderings (handled by policy)
+            # Store structured artifacts as-is (semantic_payload is JSON-serializable, renderings handled by policy)
+            artifacts_for_state = {}
+            self.logger.info(f"DEBUG_STORAGE_PREP: artifacts_count={len(artifacts)}, keys={list(artifacts.keys())[:10]}")
+            # CRITICAL: Check if artifacts dict has been corrupted with flat keys
+            if "file" not in artifacts and any(k in artifacts for k in ["file_id", "artifact_type", "file_path"]):
+                self.logger.error(f"CRITICAL: artifacts dict appears to have flat keys instead of structured! Keys: {list(artifacts.keys())[:15]}")
+                self.logger.error(f"CRITICAL: This suggests semantic_payload was unwrapped into artifacts dict")
+            for artifact_key, artifact_data in artifacts.items():
+                # Skip artifact_id references (already processed)
+                if artifact_key.endswith("_artifact_id") or artifact_key.endswith("_storage_path"):
+                    artifacts_for_state[artifact_key] = artifact_data
+                    continue
+                
+                # Handle structured artifacts - preserve complete structure
+                if isinstance(artifact_data, dict) and "result_type" in artifact_data:
+                    # Structured format: store complete artifact
+                    artifacts_for_state[artifact_key] = artifact_data
+                    self.logger.info(f"DEBUG_STORAGE_STRUCTURED: {artifact_key} -> result_type={artifact_data.get('result_type')}")
+                else:
+                    # Legacy format - log details
+                    self.logger.warning(f"DEBUG_STORAGE_LEGACY: {artifact_key} -> type={type(artifact_data).__name__}, keys={list(artifact_data.keys())[:8] if isinstance(artifact_data, dict) else 'N/A'}")
+                    artifacts_for_state[artifact_key] = artifact_data
+            
+            self.logger.info(f"DEBUG_STORAGE_FINAL: storing {len(artifacts_for_state)} artifacts, keys={list(artifacts_for_state.keys())[:5]}")
+            # Validate file artifact structure
+            if "file" in artifacts_for_state:
+                file_artifact = artifacts_for_state["file"]
+                if not isinstance(file_artifact, dict) or "result_type" not in file_artifact:
+                    self.logger.error(f"'file' artifact is not structured! type={type(file_artifact)}, keys={list(file_artifact.keys()) if isinstance(file_artifact, dict) else 'N/A'}")
+            
             await self.state_surface.set_execution_state(
                 execution_id,
                 intent.tenant_id,
                 {
                     "status": "artifacts_received",
-                    "artifacts": artifacts,
+                    "artifacts": artifacts_for_state,
                     "updated_at": self.clock.now_iso(),
                 }
             )
@@ -392,12 +534,30 @@ class ExecutionLifecycleManager:
             if OTEL_AVAILABLE and trace and current_span and hasattr(current_span, 'set_status'):
                 current_span.set_status(trace.Status(trace.StatusCode.OK))
             
+            # Store structured artifacts in execution state (preserve format)
+            artifacts_for_completion = {}
+            for artifact_key, artifact_data in artifacts.items():
+                # Skip artifact_id references
+                if artifact_key.endswith("_artifact_id") or artifact_key.endswith("_storage_path"):
+                    artifacts_for_completion[artifact_key] = artifact_data
+                    continue
+                
+                # Handle structured artifacts - preserve complete structure
+                if isinstance(artifact_data, dict) and "result_type" in artifact_data:
+                    # Structured format: store complete artifact (semantic_payload + renderings metadata)
+                    # renderings handled by materialization policy (not stored in execution state)
+                    artifacts_for_completion[artifact_key] = artifact_data
+                else:
+                    # Legacy format (should not happen after refactoring)
+                    self.logger.warning(f"Artifact {artifact_key} is not in structured format - this should not happen after refactoring")
+                    artifacts_for_completion[artifact_key] = artifact_data
+            
             await self.state_surface.set_execution_state(
                 execution_id,
                 intent.tenant_id,
                 {
                     "status": "completed",
-                    "artifacts": artifacts,
+                    "artifacts": artifacts_for_completion,
                     "completed_at": self.clock.now_iso(),
                 }
             )
@@ -549,4 +709,5 @@ class ExecutionLifecycleManager:
                 semantic[field] = artifact_data[field]
         
         return semantic
+    
 
