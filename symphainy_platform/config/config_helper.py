@@ -90,22 +90,16 @@ def get_supabase_url() -> Optional[str]:
 
 def get_supabase_anon_key() -> Optional[str]:
     """
-    Get Supabase anon key with fallback pattern (matches ConfigAdapter).
+    Get Supabase anon key (uses SUPABASE_PUBLISHABLE_KEY).
     
-    Supports:
-    - SUPABASE_PUBLISHABLE_KEY (preferred)
-    - SUPABASE_ANON_KEY (legacy)
-    - SUPABASE_KEY (generic fallback)
+    Uses SUPABASE_PUBLISHABLE_KEY (Supabase new naming convention).
+    Legacy names (SUPABASE_ANON_KEY, SUPABASE_KEY) are deprecated and no longer supported.
     
     Returns:
         Supabase anon key or None
     """
-    # Try environment variables with fallback pattern
-    key = (
-        os.getenv("SUPABASE_PUBLISHABLE_KEY") or
-        os.getenv("SUPABASE_ANON_KEY") or
-        os.getenv("SUPABASE_KEY")
-    )
+    # Try environment variables (new Supabase naming only)
+    key = os.getenv("SUPABASE_PUBLISHABLE_KEY")
     if key:
         return key
     
@@ -114,9 +108,7 @@ def get_supabase_anon_key() -> Optional[str]:
     if env_secrets:
         env_vars = load_env_file(str(env_secrets))
         return (
-            env_vars.get("SUPABASE_PUBLISHABLE_KEY") or
-            env_vars.get("SUPABASE_ANON_KEY") or
-            env_vars.get("SUPABASE_KEY")
+            env_vars.get("SUPABASE_PUBLISHABLE_KEY")
         )
     
     return None
@@ -124,22 +116,16 @@ def get_supabase_anon_key() -> Optional[str]:
 
 def get_supabase_service_key() -> Optional[str]:
     """
-    Get Supabase service key with fallback pattern (matches ConfigAdapter).
+    Get Supabase service key (uses SUPABASE_SECRET_KEY).
     
-    Supports:
-    - SUPABASE_SECRET_KEY (preferred)
-    - SUPABASE_SERVICE_KEY (legacy)
-    - SUPABASE_KEY (generic fallback)
+    Uses SUPABASE_SECRET_KEY (Supabase new naming convention).
+    Legacy names (SUPABASE_SERVICE_KEY, SUPABASE_KEY) are deprecated and no longer supported.
     
     Returns:
         Supabase service key or None
     """
-    # Try environment variables with fallback pattern
-    key = (
-        os.getenv("SUPABASE_SECRET_KEY") or
-        os.getenv("SUPABASE_SERVICE_KEY") or
-        os.getenv("SUPABASE_KEY")
-    )
+    # Try environment variables (new Supabase naming only)
+    key = os.getenv("SUPABASE_SECRET_KEY")
     if key:
         return key
     
@@ -148,9 +134,7 @@ def get_supabase_service_key() -> Optional[str]:
     if env_secrets:
         env_vars = load_env_file(str(env_secrets))
         return (
-            env_vars.get("SUPABASE_SECRET_KEY") or
-            env_vars.get("SUPABASE_SERVICE_KEY") or
-            env_vars.get("SUPABASE_KEY")
+            env_vars.get("SUPABASE_SECRET_KEY")
         )
     
     return None
@@ -197,5 +181,72 @@ def get_gcs_credentials_json() -> Optional[str]:
     if env_secrets:
         env_vars = load_env_file(str(env_secrets))
         return env_vars.get("GCS_CREDENTIALS_JSON")
+    
+    return None
+
+
+def get_openai_api_key() -> Optional[str]:
+    """
+    Get OpenAI API key with fallback to .env.secrets file.
+    
+    Supports both LLM_OPENAI_API_KEY and OPENAI_API_KEY.
+    
+    Returns:
+        OpenAI API key or None
+    """
+    # Try environment variables (both naming conventions)
+    key = os.getenv("LLM_OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
+    if key:
+        return key
+    
+    # Try loading from .env.secrets
+    env_secrets = _find_env_secrets()
+    if env_secrets:
+        env_vars = load_env_file(str(env_secrets))
+        return env_vars.get("LLM_OPENAI_API_KEY") or env_vars.get("OPENAI_API_KEY")
+    
+    return None
+
+
+def get_huggingface_endpoint_url() -> Optional[str]:
+    """
+    Get HuggingFace embeddings endpoint URL with fallback to .env.secrets file.
+    
+    Returns:
+        HuggingFace endpoint URL or None
+    """
+    # Try environment variable
+    url = os.getenv("HUGGINGFACE_EMBEDDINGS_ENDPOINT_URL")
+    if url:
+        return url
+    
+    # Try loading from .env.secrets
+    env_secrets = _find_env_secrets()
+    if env_secrets:
+        env_vars = load_env_file(str(env_secrets))
+        return env_vars.get("HUGGINGFACE_EMBEDDINGS_ENDPOINT_URL")
+    
+    return None
+
+
+def get_huggingface_api_key() -> Optional[str]:
+    """
+    Get HuggingFace API key with fallback to .env.secrets file.
+    
+    Supports both HUGGINGFACE_EMBEDDINGS_API_KEY and HUGGINGFACE_API_KEY.
+    
+    Returns:
+        HuggingFace API key or None
+    """
+    # Try environment variables (both naming conventions)
+    key = os.getenv("HUGGINGFACE_EMBEDDINGS_API_KEY") or os.getenv("HUGGINGFACE_API_KEY")
+    if key:
+        return key
+    
+    # Try loading from .env.secrets
+    env_secrets = _find_env_secrets()
+    if env_secrets:
+        env_vars = load_env_file(str(env_secrets))
+        return env_vars.get("HUGGINGFACE_EMBEDDINGS_API_KEY") or env_vars.get("HUGGINGFACE_API_KEY")
     
     return None

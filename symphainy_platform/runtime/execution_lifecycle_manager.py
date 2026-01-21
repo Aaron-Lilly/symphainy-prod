@@ -95,6 +95,9 @@ class ExecutionLifecycleManager:
         self.data_steward_sdk = data_steward_sdk
         self.logger = get_logger(self.__class__.__name__)
         self.clock = get_clock()
+        
+        # Debug: Log data_steward_sdk state at initialization
+        self.logger.info(f"🔍 ExecutionLifecycleManager.__init__: data_steward_sdk type={type(data_steward_sdk)}, is None={data_steward_sdk is None}")
     
     async def execute(self, intent: Intent) -> ExecutionResult:
         """
@@ -215,17 +218,114 @@ class ExecutionLifecycleManager:
             
             # CRITICAL: Enforce boundary contracts before realm execution
             # Files are NEVER ingested directly. A boundary contract is negotiated first.
+            self.logger.info(f"🔍 BOUNDARY_CONTRACT_CHECK: intent_type={intent.intent_type}, has_data_steward_sdk={hasattr(self, 'data_steward_sdk') and self.data_steward_sdk is not None}")
             boundary_contract_id = None
-            if intent.intent_type in ["ingest_file", "register_file"] and self.data_steward_sdk:
+            
+            # Debug: Always log for ingest_file to verify code path
+            self.logger.info(f"🔍 DEBUG: Processing intent_type={intent.intent_type}, data_steward_sdk={self.data_steward_sdk is not None}")
+            
+            # Debug: Check if we're processing ingest_file
+            if intent.intent_type == "ingest_file":
+                self.logger.info(f"🔍 Processing ingest_file intent - data_steward_sdk available: {self.data_steward_sdk is not None}")
+            
+            # Phase 1: For ingest_file - only request access, don't materialize yet
+            if intent.intent_type == "ingest_file":
+                if not self.data_steward_sdk:
+                    self.logger.warning("⚠️ Data Steward SDK not available - boundary contract enforcement skipped")
+                else:
+                    self.logger.info(f"🔍 Enforcing boundary contract for ingest_file intent (data_steward_sdk available)")
+                if self.data_steward_sdk:
+                    try:
+                        # Step 1: Request data access (negotiate boundary contract, pending materialization)
+                        external_source_type = "file"
+                        external_source_identifier = f"upload:{intent.intent_id}:{intent.parameters.get('ui_name', 'unknown')}"
+                        external_source_metadata = {
+                            "ui_name": intent.parameters.get("ui_name"),
+                            "file_type": intent.parameters.get("file_type", "unstructured"),
+                            "mime_type": intent.parameters.get("mime_type"),
+                            "ingestion_type": intent.parameters.get("ingestion_type", "upload")
+                        }
+                        
+                        access_request = await self.data_steward_sdk.request_data_access(
+                            intent={
+                                "intent_id": intent.intent_id,
+                                "intent_type": intent.intent_type,
+                                "tenant_id": intent.tenant_id,
+                                "parameters": intent.parameters
+                            },
+                            context={
+                                "tenant_id": intent.tenant_id,
+                                "user_id": context.metadata.get("user_id", "system"),
+                                "session_id": context.session_id
+                            },
+                            external_source_type=external_source_type,
+                            external_source_identifier=external_source_identifier,
+                            external_source_metadata=external_source_metadata
+                        )
+                        
+                        if not access_request.access_granted:
+                            raise ValueError(f"Data access denied: {access_request.access_reason}")
+                        
+                        boundary_contract_id = access_request.contract_id
+                        self.logger.info(f"✅ Boundary contract negotiated: {boundary_contract_id} (materialization pending)")
+                        
+                        # Store boundary contract info in context, but mark materialization as pending
+                        context.metadata["boundary_contract_id"] = boundary_contract_id
+                        context.metadata["materialization_pending"] = True  # NEW: Materialization not yet authorized
+                        
+                    except Exception as e:
+                        self.logger.error(f"Boundary contract enforcement failed: {e}", exc_info=True)
+                        # MVP: Allow execution to continue (backwards compatibility)
+                        # In full implementation: This should block execution
+                        self.logger.warning("⚠️ MVP: Allowing execution to continue despite boundary contract failure (backwards compatibility)")
+            
+            # Phase 2: For save_materialization - authorize materialization with workspace scope
+            elif intent.intent_type == "save_materialization" and self.data_steward_sdk:
                 try:
-                    # Step 1: Request data access (negotiate boundary contract)
+                    contract_id = intent.parameters.get("boundary_contract_id")
+                    if not contract_id:
+                        raise ValueError("boundary_contract_id is required for save_materialization intent")
+                    
+                    # Step 2: Authorize materialization with workspace scope
+                    materialization_auth = await self.data_steward_sdk.authorize_materialization(
+                        contract_id=contract_id,
+                        tenant_id=intent.tenant_id,
+                        context={
+                            "tenant_id": intent.tenant_id,
+                            "user_id": context.metadata.get("user_id", "system"),
+                            "session_id": context.session_id,
+                            "solution_id": context.metadata.get("solution_id")
+                        },
+                        materialization_policy=self.materialization_policy_store
+                    )
+                    
+                    if not materialization_auth.materialization_allowed:
+                        raise ValueError(f"Materialization not authorized: {materialization_auth.reason}")
+                    
+                    self.logger.info(f"✅ Materialization authorized: {materialization_auth.materialization_type} -> {materialization_auth.materialization_backing_store} (workspace-scoped)")
+                    
+                    # Store materialization info in context for realm use
+                    context.metadata["boundary_contract_id"] = contract_id
+                    context.metadata["materialization_type"] = materialization_auth.materialization_type
+                    context.metadata["materialization_scope"] = materialization_auth.materialization_scope
+                    context.metadata["materialization_backing_store"] = materialization_auth.materialization_backing_store
+                    context.metadata["materialization_pending"] = False  # Materialization now authorized
+                    
+                except Exception as e:
+                    self.logger.error(f"Materialization authorization failed: {e}", exc_info=True)
+                    raise  # Don't allow save to continue if authorization fails
+            
+            # For register_file (legacy) - keep existing behavior for now
+            elif intent.intent_type == "register_file" and self.data_steward_sdk:
+                try:
+                    # For register_file, we still do both steps (backwards compatibility)
+                    # TODO: Consider making register_file also two-phase in future
                     external_source_type = "file"
-                    external_source_identifier = f"upload:{intent.intent_id}:{intent.parameters.get('ui_name', 'unknown')}"
+                    external_source_identifier = f"register:{intent.parameters.get('file_id', 'unknown')}"
                     external_source_metadata = {
                         "ui_name": intent.parameters.get("ui_name"),
                         "file_type": intent.parameters.get("file_type", "unstructured"),
-                        "mime_type": intent.parameters.get("mime_type"),
-                        "ingestion_type": intent.parameters.get("ingestion_type", "upload")
+                        "mime_type": intent.parameters.get("mime_type")
                     }
                     
                     access_request = await self.data_steward_sdk.request_data_access(
@@ -249,28 +349,31 @@ class ExecutionLifecycleManager:
                         raise ValueError(f"Data access denied: {access_request.access_reason}")
                     
                     boundary_contract_id = access_request.contract_id
-                    self.logger.info(f"✅ Boundary contract negotiated: {boundary_contract_id}")
                     
-                    # Step 2: Authorize materialization
+                    # Authorize materialization immediately for register_file (legacy behavior)
                     materialization_auth = await self.data_steward_sdk.authorize_materialization(
                         contract_id=boundary_contract_id,
-                        tenant_id=intent.tenant_id
+                        tenant_id=intent.tenant_id,
+                        context={
+                            "tenant_id": intent.tenant_id,
+                            "user_id": context.metadata.get("user_id", "system"),
+                            "session_id": context.session_id,
+                            "solution_id": context.metadata.get("solution_id")
+                        },
+                        materialization_policy=self.materialization_policy_store
                     )
                     
                     if not materialization_auth.materialization_allowed:
                         raise ValueError(f"Materialization not authorized: {materialization_auth.reason}")
                     
-                    self.logger.info(f"✅ Materialization authorized: {materialization_auth.materialization_type} -> {materialization_auth.materialization_backing_store}")
-                    
-                    # Store boundary contract info in context for realm use
                     context.metadata["boundary_contract_id"] = boundary_contract_id
                     context.metadata["materialization_type"] = materialization_auth.materialization_type
+                    context.metadata["materialization_scope"] = materialization_auth.materialization_scope
                     context.metadata["materialization_backing_store"] = materialization_auth.materialization_backing_store
+                    context.metadata["materialization_pending"] = False
                     
                 except Exception as e:
                     self.logger.error(f"Boundary contract enforcement failed: {e}", exc_info=True)
-                    # MVP: Allow execution to continue (backwards compatibility)
-                    # In full implementation: This should block execution
                     self.logger.warning("⚠️ MVP: Allowing execution to continue despite boundary contract failure (backwards compatibility)")
             
             # Update execution state
@@ -534,23 +637,38 @@ class ExecutionLifecycleManager:
             if OTEL_AVAILABLE and trace and current_span and hasattr(current_span, 'set_status'):
                 current_span.set_status(trace.Status(trace.StatusCode.OK))
             
-            # Store structured artifacts in execution state (preserve format)
+            # Store artifact references only in execution state (Phase 4.3)
+            # Full artifacts are in Artifact Plane
             artifacts_for_completion = {}
             for artifact_key, artifact_data in artifacts.items():
-                # Skip artifact_id references
+                # Skip artifact_id references (already processed)
                 if artifact_key.endswith("_artifact_id") or artifact_key.endswith("_storage_path"):
                     artifacts_for_completion[artifact_key] = artifact_data
                     continue
                 
-                # Handle structured artifacts - preserve complete structure
-                if isinstance(artifact_data, dict) and "result_type" in artifact_data:
-                    # Structured format: store complete artifact (semantic_payload + renderings metadata)
-                    # renderings handled by materialization policy (not stored in execution state)
-                    artifacts_for_completion[artifact_key] = artifact_data
+                # Extract artifact_id from artifact metadata (if registered in Artifact Plane)
+                artifact_id = None
+                if isinstance(artifact_data, dict):
+                    metadata = artifact_data.get("metadata", {})
+                    artifact_id = metadata.get("artifact_id") or artifact_data.get("artifact_id")
+                
+                # Store only artifact_id reference
+                if artifact_id:
+                    artifacts_for_completion[f"{artifact_key}_artifact_id"] = artifact_id
                 else:
-                    # Legacy format (should not happen after refactoring)
-                    self.logger.warning(f"Artifact {artifact_key} is not in structured format - this should not happen after refactoring")
-                    artifacts_for_completion[artifact_key] = artifact_data
+                    # Backward compatibility: minimal reference
+                    if isinstance(artifact_data, dict) and "result_type" in artifact_data:
+                        minimal_reference = {
+                            "result_type": artifact_data.get("result_type"),
+                            "semantic_payload": {
+                                k: v for k, v in artifact_data.get("semantic_payload", {}).items()
+                                if k.endswith("_id") or k == "id"
+                            }
+                        }
+                        artifacts_for_completion[artifact_key] = minimal_reference
+                    else:
+                        # Legacy format
+                        artifacts_for_completion[artifact_key] = artifact_data
             
             await self.state_surface.set_execution_state(
                 execution_id,

@@ -18,7 +18,7 @@ if str(project_root) not in sys.path:
 import asyncio
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Header
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
@@ -146,37 +146,50 @@ async def initialize_runtime():
         logger.info(f"✅ Materialization Policy Store initialized (config: {config_path})")
         
         # Initialize Data Steward (Smart City) - Boundary Contract Management
-        from symphainy_platform.civic_systems.smart_city.primitives.data_steward_primitives import (
-            DataStewardPrimitives,
-            BoundaryContractStore
-        )
-        from symphainy_platform.civic_systems.smart_city.sdk.data_steward_sdk import DataStewardSDK
-        
-        # Create Boundary Contract Store (uses Supabase adapter)
+        data_steward_sdk = None
+        data_steward_primitives = None
         boundary_contract_store = None
-        if public_works and public_works.supabase_adapter:
-            boundary_contract_store = BoundaryContractStore(
-                supabase_adapter=public_works.supabase_adapter
+        
+        try:
+            logger.info("🔍 Attempting to initialize Data Steward SDK...")
+            from symphainy_platform.civic_systems.smart_city.primitives.data_steward_primitives import (
+                DataStewardPrimitives,
+                BoundaryContractStore
             )
-            logger.info("✅ Boundary Contract Store initialized")
-        else:
-            logger.warning("⚠️ Boundary Contract Store not available (Supabase adapter missing)")
+            from symphainy_platform.civic_systems.smart_city.sdk.data_steward_sdk import DataStewardSDK
+            logger.info("✅ Data Steward imports successful")
+            
+            # Create Boundary Contract Store (uses Supabase adapter)
+            if public_works and public_works.supabase_adapter:
+                boundary_contract_store = BoundaryContractStore(
+                    supabase_adapter=public_works.supabase_adapter
+                )
+                logger.info("✅ Boundary Contract Store initialized")
+            else:
+                logger.warning("⚠️ Boundary Contract Store not available (Supabase adapter missing)")
+            
+            # Initialize Data Steward Primitives
+            data_steward_primitives = DataStewardPrimitives(
+                policy_store=None,  # Future: Add policy store
+                boundary_contract_store=boundary_contract_store
+            )
+            logger.info("✅ Data Steward Primitives initialized")
+            
+            # Initialize Data Steward SDK
+            data_steward_sdk = DataStewardSDK(
+                data_governance_abstraction=None,  # Future: Add data governance abstraction
+                policy_resolver=None,  # Future: Add policy resolver
+                data_steward_primitives=data_steward_primitives,
+                materialization_policy=materialization_policy_store
+            )
+            logger.info(f"✅ Data Steward SDK initialized (type: {type(data_steward_sdk)}, is None: {data_steward_sdk is None})")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize Data Steward SDK: {e}", exc_info=True)
+            logger.warning("⚠️ Continuing without Data Steward SDK (boundary contracts will not be enforced)")
+            data_steward_sdk = None  # Explicitly set to None on failure
         
-        # Initialize Data Steward Primitives
-        data_steward_primitives = DataStewardPrimitives(
-            policy_store=None,  # Future: Add policy store
-            boundary_contract_store=boundary_contract_store
-        )
-        logger.info("✅ Data Steward Primitives initialized")
-        
-        # Initialize Data Steward SDK
-        data_steward_sdk = DataStewardSDK(
-            data_governance_abstraction=None,  # Future: Add data governance abstraction
-            policy_resolver=None,  # Future: Add policy resolver
-            data_steward_primitives=data_steward_primitives,
-            materialization_policy=materialization_policy_store
-        )
-        logger.info("✅ Data Steward SDK initialized")
+        # Log final state of data_steward_sdk before passing to ExecutionLifecycleManager
+        logger.info(f"🔍 DEBUG: data_steward_sdk before ExecutionLifecycleManager: type={type(data_steward_sdk)}, is None={data_steward_sdk is None}")
         
         # Load solution config for execution contracts
         solution_config = None
@@ -193,6 +206,7 @@ async def initialize_runtime():
             solution_config = {}
         
         # Execution Lifecycle Manager
+        logger.info(f"🔍 DEBUG: Creating ExecutionLifecycleManager with data_steward_sdk: type={type(data_steward_sdk)}, is None={data_steward_sdk is None}")
         execution_lifecycle_manager = ExecutionLifecycleManager(
             intent_registry=intent_registry,
             state_surface=state_surface,
@@ -203,7 +217,7 @@ async def initialize_runtime():
             solution_config=solution_config,
             data_steward_sdk=data_steward_sdk
         )
-        logger.info("✅ Execution Lifecycle Manager initialized")
+        logger.info(f"✅ Execution Lifecycle Manager initialized (data_steward_sdk: {execution_lifecycle_manager.data_steward_sdk is not None})")
         
         # Step 3: Register Realms
         logger.info("📋 Step 3: Registering Realms...")
@@ -293,6 +307,7 @@ async def lifespan(app: FastAPI):
         
         app.state.runtime_api = runtime_api
         app.state.realm_registry = components["realm_registry"]
+        app.state.execution_lifecycle_manager = components["execution_lifecycle_manager"]
         
         logger.info("✅ Runtime Service started successfully")
         yield
@@ -477,28 +492,27 @@ def create_app() -> FastAPI:
         Files must be saved before they are available for parsing (MVP requirement).
         """
         from fastapi import HTTPException
-        from symphainy_platform.runtime.intent_model import Intent, IntentFactory
-        from symphainy_platform.runtime.execution_context import ExecutionContext
+        from symphainy_platform.runtime.intent_model import Intent
         
         try:
             # Create save_materialization intent
+            from utilities import generate_event_id
             intent = Intent(
+                intent_id=generate_event_id(),
                 intent_type="save_materialization",
                 tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id="default",  # MVP default
                 parameters={
                     "boundary_contract_id": boundary_contract_id,
                     "file_id": file_id
-                }
+                },
+                metadata={"user_id": user_id}  # Pass user_id in metadata
             )
             
-            # Create execution context
-            context = ExecutionContext(
-                tenant_id=tenant_id,
-                session_id=session_id,
-                metadata={"user_id": user_id}
-            )
-            
-            # Execute via ExecutionLifecycleManager
+            # Execute via ExecutionLifecycleManager (it creates the context internally)
+            if not hasattr(app.state, "execution_lifecycle_manager"):
+                raise HTTPException(status_code=500, detail="ExecutionLifecycleManager not available")
             execution_lifecycle_manager = app.state.execution_lifecycle_manager
             result = await execution_lifecycle_manager.execute(intent)
             

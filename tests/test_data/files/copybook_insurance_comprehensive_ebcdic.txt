@@ -1,0 +1,99 @@
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. INSURANCE-POLICY-RECORDS.
+       ENVIRONMENT DIVISION.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       
+       *> Insurance Policy Record Structure - Comprehensive
+       *> Supports multiple record types: Header, Policy, Claims, Beneficiaries
+       *> Fixed-length records with EBCDIC encoding
+       
+       01 POLICY-HEADER-RECORD.
+           05 RECORD-TYPE           PIC X(01) VALUE 'H'.
+           05 HEADER-SEQUENCE       PIC 9(05).
+           05 FILE-DATE             PIC X(10).
+           05 FILE-TIME             PIC X(08).
+           05 TOTAL-RECORDS          PIC 9(10).
+           05 SOURCE-SYSTEM          PIC X(20).
+           05 FILLER                 PIC X(46).
+       
+       01 POLICY-MASTER-RECORD.
+           05 RECORD-TYPE           PIC X(01) VALUE 'P'.
+           05 POLICY-NUMBER         PIC X(12).
+           05 INSURED-LAST-NAME      PIC X(30).
+           05 INSURED-FIRST-NAME     PIC X(20).
+           05 INSURED-MIDDLE-INIT    PIC X(01).
+           05 DATE-OF-BIRTH         PIC X(10).
+           05 SOCIAL-SECURITY-NUM    PIC X(09).
+           05 POLICY-TYPE            PIC X(20).
+              88 LIFE-POLICY        VALUE 'LIFE'.
+              88 TERM-POLICY       VALUE 'TERM'.
+              88 WHOLE-LIFE        VALUE 'WHOLE'.
+              88 UNIVERSAL-LIFE    VALUE 'UNIVERSAL'.
+           05 FACE-AMOUNT            PIC 9(12).
+           05 PREMIUM-AMOUNT         PIC 9(08)V99.
+           05 PREMIUM-FREQUENCY      PIC X(01).
+              88 MONTHLY           VALUE 'M'.
+              88 QUARTERLY         VALUE 'Q'.
+              88 ANNUAL            VALUE 'A'.
+           05 CASH-VALUE            PIC 9(12)V99.
+           05 POLICY-STATUS         PIC X(10).
+              88 ACTIVE            VALUE 'ACTIVE'.
+              88 LAPSED            VALUE 'LAPSED'.
+              88 SURRENDERED       VALUE 'SURRENDERED'.
+              88 MATURED           VALUE 'MATURED'.
+           05 EFFECTIVE-DATE        PIC X(10).
+           05 EXPIRATION-DATE       PIC X(10).
+           05 ISSUE-DATE            PIC X(10).
+           05 AGENT-ID              PIC X(10).
+           05 FILLER                PIC X(15).
+       
+       01 CLAIM-RECORD.
+           05 RECORD-TYPE           PIC X(01) VALUE 'C'.
+           05 POLICY-NUMBER         PIC X(12).
+           05 CLAIM-NUMBER          PIC X(15).
+           05 CLAIM-DATE            PIC X(10).
+           05 CLAIM-TYPE            PIC X(20).
+              88 DEATH-CLAIM       VALUE 'DEATH'.
+              88 DISABILITY        VALUE 'DISABILITY'.
+              88 ACCIDENTAL        VALUE 'ACCIDENTAL'.
+              88 SURRENDER         VALUE 'SURRENDER'.
+           05 CLAIM-AMOUNT          PIC 9(12)V99.
+           05 CLAIM-STATUS          PIC X(10).
+              88 PENDING           VALUE 'PENDING'.
+              88 APPROVED          VALUE 'APPROVED'.
+              88 DENIED            VALUE 'DENIED'.
+              88 PAID              VALUE 'PAID'.
+           05 PAYMENT-DATE          PIC X(10).
+           05 PAYMENT-AMOUNT        PIC 9(12)V99.
+           05 BENEFICIARY-ID        PIC X(10).
+           05 FILLER                PIC X(20).
+       
+       01 BENEFICIARY-RECORD.
+           05 RECORD-TYPE           PIC X(01) VALUE 'B'.
+           05 POLICY-NUMBER         PIC X(12).
+           05 BENEFICIARY-ID        PIC X(10).
+           05 BENEFICIARY-LAST-NAME PIC X(30).
+           05 BENEFICIARY-FIRST-NAME PIC X(20).
+           05 BENEFICIARY-RELATION  PIC X(20).
+              88 SPOUSE            VALUE 'SPOUSE'.
+              88 CHILD             VALUE 'CHILD'.
+              88 PARENT            VALUE 'PARENT'.
+              88 OTHER             VALUE 'OTHER'.
+           05 BENEFICIARY-PERCENT   PIC 9(03)V99.
+           05 DATE-ADDED            PIC X(10).
+           05 DATE-REMOVED          PIC X(10).
+           05 FILLER                PIC X(25).
+       
+       01 POLICY-TRAILER-RECORD.
+           05 RECORD-TYPE           PIC X(01) VALUE 'T'.
+           05 TRAILER-SEQUENCE      PIC 9(05).
+           05 TOTAL-POLICIES        PIC 9(10).
+           05 TOTAL-CLAIMS          PIC 9(10).
+           05 TOTAL-BENEFICIARIES    PIC 9(10).
+           05 CHECKSUM              PIC 9(15).
+           05 FILLER                PIC X(39).
+       
+       *> Record length: 150 bytes (fixed)
+       *> Encoding: EBCDIC
+       *> Record types: H (Header), P (Policy), C (Claim), B (Beneficiary), T (Trailer)

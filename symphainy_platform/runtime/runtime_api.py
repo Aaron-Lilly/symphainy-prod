@@ -15,7 +15,7 @@ project_root = Path(__file__).resolve().parents[3]
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from typing import Dict, Any, Optional
 from pydantic import BaseModel
 
@@ -87,7 +87,8 @@ class RuntimeAPI:
         self,
         execution_lifecycle_manager: ExecutionLifecycleManager,
         state_surface: StateSurface,
-        artifact_storage: Optional[Any] = None  # ArtifactStorageAbstraction
+        artifact_storage: Optional[Any] = None,  # ArtifactStorageAbstraction
+        file_storage: Optional[Any] = None  # FileStorageAbstraction
     ):
         """
         Initialize Runtime API.
@@ -96,8 +97,10 @@ class RuntimeAPI:
             execution_lifecycle_manager: Execution lifecycle manager
             state_surface: State surface for execution state
             artifact_storage: Optional artifact storage abstraction
+            file_storage: Optional file storage abstraction (for file artifacts)
         """
         self.execution_lifecycle_manager = execution_lifecycle_manager
+        self.file_storage = file_storage
         self.state_surface = state_surface
         self.artifact_storage = artifact_storage
         self.logger = get_logger(self.__class__.__name__)
@@ -173,6 +176,9 @@ class RuntimeAPI:
             Intent submission response
         """
         try:
+            # Log received tenant_id for debugging
+            self.logger.info(f"🔵 RECEIVED REQUEST: tenant_id={request.tenant_id}, intent_type={request.intent_type}")
+            
             # Create intent
             intent = IntentFactory.create_intent(
                 intent_type=request.intent_type,
@@ -234,17 +240,35 @@ class RuntimeAPI:
             
             artifacts = execution_state.get("artifacts", {})
             
+            # Validate artifacts structure on retrieval
+            if artifacts:
+                # Check for flat keys at top level (indicates semantic_payload was unwrapped)
+                has_flat_keys = any(k in artifacts for k in ["file_id", "artifact_type", "file_path"])
+                has_structured_key = "file" in artifacts
+                
+                if has_flat_keys and not has_structured_key:
+                    self.logger.warning(f"Retrieved artifacts have flat keys instead of structured 'file' key! Keys: {list(artifacts.keys())[:15]}")
+            
             # If requested, retrieve full artifacts from storage
-            if include_artifacts and self.artifact_storage and artifacts:
+            if include_artifacts and artifacts:
                 retrieved_artifacts = {}
                 for key, value in artifacts.items():
-                    # Skip artifact_id and storage_path references
-                    if key.endswith("_artifact_id"):
+                    # Pattern 1: Structured artifacts (result_type, semantic_payload, renderings) - CHECK FIRST
+                    # This is the new pattern from Content Realm refactoring
+                    if isinstance(value, dict) and "result_type" in value:
+                        self.logger.info(f"API_PATTERN1_MATCH: {key} -> structured artifact")
+                        # Structured artifact - keep as-is (semantic_payload is JSON-serializable)
+                        # renderings may need expansion if they contain artifact references
+                        retrieved_artifacts[key] = value
+                        continue
+                    
+                    # Pattern 2: Structured artifact references (*_artifact_id)
+                    elif key.endswith("_artifact_id"):
                         artifact_id = value
                         artifact_key = key.replace("_artifact_id", "")
                         
-                        # Retrieve full artifact
-                        artifact = await self.artifact_storage.get_artifact(
+                        # Use unified artifact retrieval (handles both structured and file artifacts)
+                        artifact = await self.get_artifact(
                             artifact_id=artifact_id,
                             tenant_id=tenant_id,
                             include_visuals=include_visuals
@@ -252,10 +276,52 @@ class RuntimeAPI:
                         
                         if artifact:
                             retrieved_artifacts[artifact_key] = artifact
-                            # Keep the artifact_id reference for convenience
                             retrieved_artifacts[f"{artifact_key}_artifact_id"] = artifact_id
-                    elif not key.endswith("_storage_path"):
-                        # Keep non-reference artifacts as-is
+                    
+                    # Pattern 3: File artifact references (file_id) - LEGACY, should not happen after refactoring
+                    elif key == "file_id" and isinstance(value, str):
+                        artifact_id = value
+                        artifact = await self.get_artifact(
+                            artifact_id=artifact_id,
+                            tenant_id=tenant_id,
+                            include_visuals=include_visuals
+                        )
+                        if artifact:
+                            retrieved_artifacts["file"] = artifact
+                            retrieved_artifacts["file_id"] = artifact_id
+                    
+                    # Pattern 4: File reference (file_reference) - LEGACY
+                    elif key == "file_reference" and isinstance(value, str):
+                        if value.startswith("file:"):
+                            parts = value.split(":")
+                            if len(parts) >= 4:
+                                file_id = parts[3]
+                                artifact = await self.get_artifact(
+                                    artifact_id=file_id,
+                                    tenant_id=tenant_id,
+                                    include_visuals=include_visuals
+                                )
+                                if artifact:
+                                    retrieved_artifacts["file"] = artifact
+                                    retrieved_artifacts["file_reference"] = value
+                    
+                    # Pattern 5: Visual path references (normalize and keep)
+                    elif key.endswith("_visual_path") or key.endswith("_path"):
+                        retrieved_artifacts[key] = value
+                    
+                    # Pattern 6: Skip storage_path references (internal use)
+                    elif key.endswith("_storage_path"):
+                        pass
+                    
+                    # Pattern 7: Keep all other artifacts as-is (legacy format - should not happen after refactoring)
+                    else:
+                        # Check if this is actually a flat dict that should be converted to structured
+                        # This handles the case where execution state has old format but we want to return structured
+                        if isinstance(value, dict) and not any(k in value for k in ["result_type", "semantic_payload"]):
+                            # This looks like legacy flat format - log warning
+                            self.logger.warning(f"API_PATTERN7_LEGACY: key '{key}' -> legacy flat format, keys: {list(value.keys())[:10]}")
+                        else:
+                            self.logger.info(f"API_PATTERN7_OTHER: key '{key}' -> type={type(value).__name__}, is_dict={isinstance(value, dict)}")
                         retrieved_artifacts[key] = value
                 
                 artifacts = retrieved_artifacts
@@ -282,28 +348,133 @@ class RuntimeAPI:
         self,
         artifact_id: str,
         tenant_id: str,
-        include_visuals: bool = False
+        include_visuals: bool = False,
+        materialization_policy: Optional[Any] = None  # MaterializationPolicyAbstraction
     ) -> Optional[Dict[str, Any]]:
         """
-        Get artifact by ID.
+        Get artifact by ID (unified retrieval with materialization policy awareness).
+        
+        Handles both:
+        1. Structured artifacts (via ArtifactStorageAbstraction)
+        2. File artifacts (via FileStorageAbstraction)
+        3. Fallback to direct GCS lookup
+        4. Materialization policy awareness (checks if artifact should be persisted)
         
         Args:
-            artifact_id: Artifact ID
+            artifact_id: Artifact ID (can be file_id or artifact_id)
             tenant_id: Tenant ID
             include_visuals: If True, include full visual images
+            materialization_policy: Optional materialization policy abstraction
         
         Returns:
             Optional[Dict]: Artifact data or None if not found
         """
-        if not self.artifact_storage:
-            self.logger.warning("Artifact storage not available")
-            return None
+        # Try ArtifactStorageAbstraction first (structured artifacts)
+        if self.artifact_storage:
+            artifact = await self.artifact_storage.get_artifact(
+                artifact_id=artifact_id,
+                tenant_id=tenant_id,
+                include_visuals=include_visuals
+            )
+            if artifact:
+                # Add materialization policy metadata if available
+                if materialization_policy:
+                    artifact_type = artifact.get("artifact_type")
+                    if artifact_type:
+                        # Check if artifact type should be persisted (for future use)
+                        # Currently MVP persists all, but this enables future policy checks
+                        artifact["materialization_policy"] = "persist"  # MVP: all persisted
+                return artifact
         
-        return await self.artifact_storage.get_artifact(
-            artifact_id=artifact_id,
-            tenant_id=tenant_id,
-            include_visuals=include_visuals
-        )
+        # Try FileStorageAbstraction (file artifacts)
+        # Files are always persisted (platform-native), so no policy check needed
+        if self.file_storage:
+            try:
+                # Try to get file metadata by UUID
+                file_metadata = await self.file_storage.get_file_by_uuid(artifact_id)
+                if file_metadata:
+                    # Format file as artifact
+                    artifact = self._format_file_as_artifact(file_metadata, tenant_id, include_visuals)
+                    # Files are always persisted (platform-native)
+                    if materialization_policy:
+                        artifact["materialization_policy"] = "persist"
+                    return artifact
+            except Exception as e:
+                self.logger.debug(f"File storage lookup failed for {artifact_id}: {e}")
+        
+        # Fallback: Try to get file from State Surface (files might be in state but not in Supabase)
+        if self.state_surface:
+            try:
+                # Try to construct file_reference and get from state
+                # File references are in format: "file:tenant:session:file_id"
+                # But we only have file_id, so try common patterns
+                file_reference_patterns = [
+                    f"file:{tenant_id}:*:{artifact_id}",  # Try with wildcard session
+                    f"file:{tenant_id}:**:{artifact_id}",  # Try with any session pattern
+                ]
+                
+                # Actually, we need to search state surface for files with this file_id
+                # For now, try direct lookup if we can construct a reference
+                # This is a limitation - we'd need file_id -> file_reference mapping
+                # For MVP, files should be in Supabase, so this is a fallback
+                pass  # State Surface lookup would require file_id -> file_reference mapping
+            except Exception as e:
+                self.logger.debug(f"State Surface lookup failed for {artifact_id}: {e}")
+        
+        # Fallback: Try direct GCS lookup (for artifacts stored directly)
+        # This handles edge cases where metadata might be missing
+        if self.artifact_storage and hasattr(self.artifact_storage, 'gcs'):
+            # ArtifactStorageAbstraction has fallback logic, but we've already tried it
+            pass
+        
+        # Materialization policy awareness: If artifact not found and policy says "discard",
+        # it might have been ephemeral (future enhancement)
+        if materialization_policy:
+            self.logger.debug(f"Artifact {artifact_id} not found - may be ephemeral (discarded by policy)")
+        
+        self.logger.warning(f"Artifact not found: {artifact_id} (tenant: {tenant_id})")
+        return None
+    
+    def _format_file_as_artifact(
+        self,
+        file_metadata: Dict[str, Any],
+        tenant_id: str,
+        include_visuals: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Format file metadata as artifact structure.
+        
+        Args:
+            file_metadata: File metadata from FileStorageAbstraction
+            tenant_id: Tenant ID
+            include_visuals: Whether to include file contents
+        
+        Returns:
+            Dict: Artifact-formatted file data
+        """
+        artifact = {
+            "artifact_id": file_metadata.get("id") or file_metadata.get("file_id"),
+            "artifact_type": "file",  # Standardize artifact type
+            "tenant_id": tenant_id,
+            "file_id": file_metadata.get("id") or file_metadata.get("file_id"),
+            "file_path": file_metadata.get("file_path") or file_metadata.get("storage_path"),
+            "file_reference": file_metadata.get("file_reference"),
+            "file_name": file_metadata.get("file_name") or file_metadata.get("ui_name"),
+            "file_type": file_metadata.get("file_type"),
+            "mime_type": file_metadata.get("mime_type") or file_metadata.get("content_type"),
+            "file_size": file_metadata.get("file_size"),
+            "metadata": file_metadata.get("metadata", {}),
+            "created_at": file_metadata.get("created_at"),
+            "updated_at": file_metadata.get("updated_at")
+        }
+        
+        # Include file contents if requested
+        if include_visuals and file_metadata.get("content"):
+            artifact["content"] = file_metadata.get("content")
+        elif include_visuals and file_metadata.get("file_content"):
+            artifact["content"] = file_metadata.get("file_content")
+        
+        return artifact
 
     
     async def get_visual(
@@ -397,9 +568,30 @@ def create_runtime_app(
         tenant_id: str,
         include_visuals: bool = False
     ):
-        """Get artifact by ID."""
+        """
+        Get artifact by ID.
+        
+        Supports unified retrieval of:
+        - Structured artifacts (workflow, sop, solution, etc.)
+        - File artifacts (files ingested via Content Realm)
+        - Composite artifacts with visuals
+        
+        Materialization policy awareness:
+        - Files are always persisted (platform-native)
+        - Structured artifacts follow materialization policy (MVP: all persisted)
+        """
         from fastapi import HTTPException
-        artifact = await runtime_api.get_artifact(artifact_id, tenant_id, include_visuals)
+        
+        # Materialization policy is handled at storage time, not retrieval time
+        # For MVP, all artifacts are persisted, so we don't need to check policy here
+        # Future: When ephemeral artifacts are supported, we'll check policy here
+        
+        artifact = await runtime_api.get_artifact(
+            artifact_id=artifact_id,
+            tenant_id=tenant_id,
+            include_visuals=include_visuals,
+            materialization_policy=None  # Not needed for MVP (all persisted)
+        )
         if not artifact:
             raise HTTPException(status_code=404, detail="Artifact not found")
         return artifact

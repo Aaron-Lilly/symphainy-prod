@@ -29,6 +29,7 @@ from ..enabling_services.coexistence_analysis_service import CoexistenceAnalysis
 from ..enabling_services.visual_generation_service import VisualGenerationService
 from ..agents.journey_liaison_agent import JourneyLiaisonAgent
 from symphainy_platform.realms.outcomes.enabling_services.solution_synthesis_service import SolutionSynthesisService
+from symphainy_platform.civic_systems.artifact_plane.artifact_plane import ArtifactPlane
 
 
 class JourneyOrchestrator:
@@ -43,15 +44,17 @@ class JourneyOrchestrator:
     - Journey creation from blueprints
     """
     
-    def __init__(self, public_works: Optional[Any] = None):
+    def __init__(self, public_works: Optional[Any] = None, artifact_plane: Optional[ArtifactPlane] = None):
         """
         Initialize Journey Orchestrator.
         
         Args:
             public_works: Public Works Foundation Service (for accessing abstractions)
+            artifact_plane: Artifact Plane for managing Purpose-Bound Outcomes
         """
         self.logger = get_logger(self.__class__.__name__)
         self.public_works = public_works
+        self.artifact_plane = artifact_plane
         
         # Initialize enabling services with Public Works
         self.workflow_conversion_service = WorkflowConversionService(public_works=public_works)
@@ -92,8 +95,7 @@ class JourneyOrchestrator:
             return await self._handle_analyze_coexistence(intent, context)
         elif intent_type == "create_blueprint":
             return await self._handle_create_blueprint(intent, context)
-        elif intent_type == "create_solution_from_blueprint":
-            return await self._handle_create_solution_from_blueprint(intent, context)
+        # Note: create_solution_from_blueprint moved to Outcomes Realm
         elif intent_type == "generate_sop_from_chat":
             return await self._handle_generate_sop_from_chat(intent, context)
         elif intent_type == "sop_chat_message":
@@ -260,9 +262,11 @@ class JourneyOrchestrator:
         except Exception as e:
             self.logger.warning(f"Failed to generate workflow visualization: {e}")
         
+        workflow_id = workflow_result.get("workflow_id")
+        
         # Extract semantic payload (the meaning)
         semantic_payload = {
-            "workflow_id": workflow_result.get("workflow_id"),
+            "workflow_id": workflow_id,
             "workflow_type": workflow_result.get("workflow_type"),
             "status": workflow_result.get("status"),
             "sop_id": sop_id,
@@ -280,11 +284,40 @@ class JourneyOrchestrator:
                 "storage_path": visual_result.get("storage_path")
             }
         
-        # Create structured artifact
+        # Create artifact in Artifact Plane (Purpose-Bound Outcome)
+        artifact_id = None
+        if self.artifact_plane:
+            try:
+                # Full artifact payload (semantic + renderings)
+                artifact_payload = {
+                    "result_type": "workflow",
+                    "semantic_payload": semantic_payload,
+                    "renderings": renderings
+                }
+                
+                artifact_result = await self.artifact_plane.create_artifact(
+                    artifact_type="workflow",
+                    artifact_id=workflow_id,  # Use workflow_id as artifact_id
+                    payload=artifact_payload,
+                    context=context,
+                    lifecycle_state="draft",  # Initial state
+                    owner="client",
+                    purpose="delivery",
+                    source_artifact_ids=[sop_id] if sop_id else None  # Workflow depends on SOP if created from SOP
+                )
+                
+                artifact_id = artifact_result.get("artifact_id")
+                self.logger.info(f"✅ Workflow registered in Artifact Plane: {artifact_id}")
+            except Exception as e:
+                self.logger.warning(f"Failed to register workflow in Artifact Plane: {e}")
+                # Continue with structured artifact for backward compatibility
+        
+        # Create structured artifact (for backward compatibility and execution state reference)
         structured_artifact = create_structured_artifact(
             result_type="workflow",
             semantic_payload=semantic_payload,
-            renderings=renderings
+            renderings=renderings,
+            metadata={"artifact_id": artifact_id} if artifact_id else None  # Include artifact_id reference
         )
         
         return {
@@ -294,7 +327,9 @@ class JourneyOrchestrator:
             "events": [
                 {
                     "type": "workflow_created",
-                    "sop_id": sop_id
+                    "sop_id": sop_id,
+                    "workflow_id": workflow_id,
+                    "artifact_id": artifact_id  # Include artifact_id in event
                 }
             ]
         }
@@ -316,22 +351,65 @@ class JourneyOrchestrator:
             context=context
         )
         
+        analysis_id = analysis_result.get("analysis_id")
+        
+        # Extract semantic payload
+        semantic_payload = {
+            "workflow_id": workflow_id,
+            "analysis_id": analysis_id,
+            "status": analysis_result.get("status")
+        }
+        
+        renderings = {
+            "coexistence_analysis": analysis_result
+        }
+        
+        # Create artifact in Artifact Plane (Purpose-Bound Outcome)
+        artifact_id = None
+        if self.artifact_plane:
+            try:
+                # Full artifact payload (semantic + renderings)
+                artifact_payload = {
+                    "result_type": "coexistence_analysis",
+                    "semantic_payload": semantic_payload,
+                    "renderings": renderings
+                }
+                
+                artifact_result = await self.artifact_plane.create_artifact(
+                    artifact_type="coexistence_analysis",
+                    artifact_id=analysis_id,  # Use analysis_id as artifact_id
+                    payload=artifact_payload,
+                    context=context,
+                    lifecycle_state="draft",  # Initial state
+                    owner="client",
+                    purpose="decision_support",  # Analysis is for decision support
+                    source_artifact_ids=[workflow_id] if workflow_id else None  # Analysis depends on workflow
+                )
+                
+                artifact_id = artifact_result.get("artifact_id")
+                self.logger.info(f"✅ Coexistence analysis registered in Artifact Plane: {artifact_id}")
+            except Exception as e:
+                self.logger.warning(f"Failed to register coexistence analysis in Artifact Plane: {e}")
+                # Continue with structured artifact for backward compatibility
+        
+        # Create structured artifact (for backward compatibility and execution state reference)
+        structured_artifact = create_structured_artifact(
+            result_type="coexistence_analysis",
+            semantic_payload=semantic_payload,
+            renderings=renderings,
+            metadata={"artifact_id": artifact_id} if artifact_id else None  # Include artifact_id reference
+        )
+        
         return {
             "artifacts": {
-                "coexistence_analysis": create_structured_artifact(
-                    result_type="coexistence_analysis",
-                    semantic_payload={
-                        "workflow_id": workflow_id,
-                        "analysis_id": analysis_result.get("analysis_id"),
-                        "status": analysis_result.get("status")
-                    },
-                    renderings={"coexistence_analysis": analysis_result}
-                )
+                "coexistence_analysis": structured_artifact
             },
             "events": [
                 {
                     "type": "coexistence_analyzed",
-                    "workflow_id": workflow_id
+                    "workflow_id": workflow_id,
+                    "analysis_id": analysis_id,
+                    "artifact_id": artifact_id  # Include artifact_id in event
                 }
             ]
         }
@@ -356,9 +434,11 @@ class JourneyOrchestrator:
             current_state_workflow_id=current_state_workflow_id
         )
         
+        blueprint_id = blueprint_result.get("blueprint_id")
+        
         # Extract semantic payload
         semantic_payload = {
-            "blueprint_id": blueprint_result.get("blueprint_id"),
+            "blueprint_id": blueprint_id,
             "workflow_id": workflow_id,
             "components": blueprint_result.get("components", {}).keys() if isinstance(blueprint_result.get("components"), dict) else []
         }
@@ -368,11 +448,40 @@ class JourneyOrchestrator:
             "blueprint": blueprint_result
         }
         
-        # Create structured artifact
+        # Create artifact in Artifact Plane (Purpose-Bound Outcome)
+        artifact_id = None
+        if self.artifact_plane:
+            try:
+                # Full artifact payload (semantic + renderings)
+                artifact_payload = {
+                    "result_type": "blueprint",
+                    "semantic_payload": semantic_payload,
+                    "renderings": renderings
+                }
+                
+                artifact_result = await self.artifact_plane.create_artifact(
+                    artifact_type="blueprint",
+                    artifact_id=blueprint_id,  # Use blueprint_id as artifact_id
+                    payload=artifact_payload,
+                    context=context,
+                    lifecycle_state="draft",  # Initial state
+                    owner="client",
+                    purpose="delivery",
+                    source_artifact_ids=[workflow_id] if workflow_id else None  # Blueprint depends on workflow
+                )
+                
+                artifact_id = artifact_result.get("artifact_id")
+                self.logger.info(f"✅ Blueprint registered in Artifact Plane: {artifact_id}")
+            except Exception as e:
+                self.logger.warning(f"Failed to register blueprint in Artifact Plane: {e}")
+                # Continue with structured artifact for backward compatibility
+        
+        # Create structured artifact (for backward compatibility and execution state reference)
         structured_artifact = create_structured_artifact(
             result_type="blueprint",
             semantic_payload=semantic_payload,
-            renderings=renderings
+            renderings=renderings,
+            metadata={"artifact_id": artifact_id} if artifact_id else None  # Include artifact_id reference
         )
         
         return {
@@ -383,69 +492,14 @@ class JourneyOrchestrator:
                 {
                     "type": "blueprint_created",
                     "workflow_id": workflow_id,
-                    "blueprint_id": blueprint_result.get("blueprint_id")
+                    "blueprint_id": blueprint_id,
+                    "artifact_id": artifact_id  # Include artifact_id in event
                 }
             ]
         }
     
-    async def _handle_create_solution_from_blueprint(
-        self,
-        intent: Intent,
-        context: ExecutionContext
-    ) -> Dict[str, Any]:
-        """Handle create_solution_from_blueprint intent - create platform solution from blueprint."""
-        blueprint_id = intent.parameters.get("blueprint_id")
-        if not blueprint_id:
-            raise ValueError("blueprint_id is required for create_solution_from_blueprint intent")
-        
-        # Read blueprint from State Surface
-        # Try to get from execution state first
-        execution_state = await context.state_surface.get_execution_state(
-            f"blueprint_{blueprint_id}",
-            context.tenant_id
-        )
-        
-        blueprint_data = None
-        if execution_state and execution_state.get("artifacts", {}).get("blueprint"):
-            blueprint_data = execution_state["artifacts"]["blueprint"]
-        else:
-            # Try to get from file reference
-            blueprint_reference = f"blueprint:{context.tenant_id}:{context.session_id}:{blueprint_id}"
-            blueprint_file = await context.state_surface.get_file(blueprint_reference)
-            if blueprint_file:
-                import json
-                if isinstance(blueprint_file, bytes):
-                    blueprint_data = json.loads(blueprint_file.decode('utf-8'))
-                else:
-                    blueprint_data = blueprint_file
-        
-        if not blueprint_data:
-            raise ValueError(f"Blueprint {blueprint_id} not found")
-        
-        # Create solution via SolutionSynthesisService
-        solution_result = await self.solution_synthesis_service.create_solution_from_artifact(
-            solution_source="blueprint",
-            source_id=blueprint_id,
-            source_data=blueprint_data,
-            tenant_id=context.tenant_id,
-            context=context
-        )
-        
-        return {
-            "artifacts": {
-                "solution": solution_result,
-                "solution_id": solution_result.get("solution_id"),
-                "blueprint_id": blueprint_id
-            },
-            "events": [
-                {
-                    "type": "solution_created_from_blueprint",
-                    "solution_id": solution_result.get("solution_id"),
-                    "blueprint_id": blueprint_id,
-                    "session_id": context.session_id
-                }
-            ]
-        }
+    # Note: create_solution_from_blueprint moved to Outcomes Realm
+    # Use create_solution intent with solution_source="blueprint" instead
     
     async def _handle_generate_sop_from_chat(
         self,
@@ -552,3 +606,217 @@ class JourneyOrchestrator:
                 }
             ]
         }
+    
+    def _define_soa_api_handlers(self) -> Dict[str, Any]:
+        """
+        Define Journey Orchestrator SOA APIs.
+        
+        UNIFIED PATTERN: MCP Server automatically registers these as MCP Tools.
+        
+        Returns:
+            Dict of SOA API definitions with handlers, input schemas, and descriptions
+        """
+        return {
+            "optimize_process": {
+                "handler": self._handle_optimize_process_soa,
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "workflow_id": {
+                            "type": "string",
+                            "description": "Workflow identifier to optimize"
+                        },
+                        "optimization_goals": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Optional optimization goals"
+                        },
+                        "user_context": {
+                            "type": "object",
+                            "description": "Optional user context"
+                        }
+                    },
+                    "required": ["workflow_id"]
+                },
+                "description": "Optimize a business process/workflow"
+            },
+            "generate_sop": {
+                "handler": self._handle_generate_sop_soa,
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "workflow_id": {
+                            "type": "string",
+                            "description": "Workflow identifier (optional if chat_mode=True)"
+                        },
+                        "process_description": {
+                            "type": "string",
+                            "description": "Process description (for chat mode)"
+                        },
+                        "chat_mode": {
+                            "type": "boolean",
+                            "description": "Use chat-based SOP generation",
+                            "default": False
+                        },
+                        "user_context": {
+                            "type": "object",
+                            "description": "Optional user context"
+                        }
+                    },
+                    "required": []
+                },
+                "description": "Generate Standard Operating Procedure"
+            },
+            "create_workflow": {
+                "handler": self._handle_create_workflow_soa,
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "sop_id": {
+                            "type": "string",
+                            "description": "SOP identifier (if creating from SOP)"
+                        },
+                        "workflow_definition": {
+                            "type": "object",
+                            "description": "Workflow definition (if creating from definition)"
+                        },
+                        "workflow_file_path": {
+                            "type": "string",
+                            "description": "Path to workflow file (BPMN, etc.)"
+                        },
+                        "workflow_name": {
+                            "type": "string",
+                            "description": "Workflow name"
+                        },
+                        "user_context": {
+                            "type": "object",
+                            "description": "Optional user context"
+                        }
+                    },
+                    "required": []
+                },
+                "description": "Create a workflow from SOP, definition, or file"
+            }
+        }
+    
+    async def _handle_optimize_process_soa(
+        self,
+        intent: Optional[Intent] = None,
+        context: Optional[ExecutionContext] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Handle optimize_process SOA API (dual call pattern)."""
+        if intent and context:
+            return await self._handle_optimize_process(intent, context)
+        else:
+            workflow_id = kwargs.get("workflow_id")
+            user_context = kwargs.get("user_context", {})
+            tenant_id = user_context.get("tenant_id", "default")
+            session_id = user_context.get("session_id", "default")
+            solution_id = user_context.get("solution_id", "default")
+            
+            from symphainy_platform.runtime.intent_model import IntentFactory
+            intent_obj = IntentFactory.create_intent(
+                intent_type="optimize_process",
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id,
+                parameters={
+                    "workflow_id": workflow_id,
+                    "optimization_goals": kwargs.get("optimization_goals", [])
+                }
+            )
+            
+            exec_context = ExecutionContext(
+                execution_id="optimize_process",
+                intent=intent_obj,
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id
+            )
+            
+            return await self._handle_optimize_process(intent_obj, exec_context)
+    
+    async def _handle_generate_sop_soa(
+        self,
+        intent: Optional[Intent] = None,
+        context: Optional[ExecutionContext] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Handle generate_sop SOA API (dual call pattern)."""
+        if intent and context:
+            return await self._handle_generate_sop(intent, context)
+        else:
+            workflow_id = kwargs.get("workflow_id")
+            process_description = kwargs.get("process_description")
+            chat_mode = kwargs.get("chat_mode", False)
+            user_context = kwargs.get("user_context", {})
+            tenant_id = user_context.get("tenant_id", "default")
+            session_id = user_context.get("session_id", "default")
+            solution_id = user_context.get("solution_id", "default")
+            
+            from symphainy_platform.runtime.intent_model import IntentFactory
+            intent_obj = IntentFactory.create_intent(
+                intent_type="generate_sop",
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id,
+                parameters={
+                    "workflow_id": workflow_id,
+                    "process_description": process_description,
+                    "chat_mode": chat_mode
+                }
+            )
+            
+            exec_context = ExecutionContext(
+                execution_id="generate_sop",
+                intent=intent_obj,
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id
+            )
+            
+            return await self._handle_generate_sop(intent_obj, exec_context)
+    
+    async def _handle_create_workflow_soa(
+        self,
+        intent: Optional[Intent] = None,
+        context: Optional[ExecutionContext] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Handle create_workflow SOA API (dual call pattern)."""
+        if intent and context:
+            return await self._handle_create_workflow(intent, context)
+        else:
+            sop_id = kwargs.get("sop_id")
+            workflow_definition = kwargs.get("workflow_definition")
+            workflow_file_path = kwargs.get("workflow_file_path")
+            workflow_name = kwargs.get("workflow_name")
+            user_context = kwargs.get("user_context", {})
+            tenant_id = user_context.get("tenant_id", "default")
+            session_id = user_context.get("session_id", "default")
+            solution_id = user_context.get("solution_id", "default")
+            
+            from symphainy_platform.runtime.intent_model import IntentFactory
+            intent_obj = IntentFactory.create_intent(
+                intent_type="create_workflow",
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id,
+                parameters={
+                    "sop_id": sop_id,
+                    "workflow_definition": workflow_definition,
+                    "workflow_file_path": workflow_file_path,
+                    "workflow_name": workflow_name
+                }
+            )
+            
+            exec_context = ExecutionContext(
+                execution_id="create_workflow",
+                intent=intent_obj,
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id
+            )
+            
+            return await self._handle_create_workflow(intent_obj, exec_context)

@@ -18,7 +18,7 @@ project_root = Path(__file__).resolve().parents[5]
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 from utilities import get_logger
 
 

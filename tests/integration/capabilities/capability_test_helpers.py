@@ -76,21 +76,56 @@ def print_info(message: str):
 
 
 async def get_valid_token(test_prefix: str = "test") -> Optional[str]:
-    """Get a valid authentication token."""
+    """Get a valid authentication token.
+    
+    Tries registration first, falls back to login if user already exists.
+    """
     async with httpx.AsyncClient(timeout=10.0) as client:
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
+        email = f"{test_prefix}_{timestamp}@example.com"
+        password = "TestPassword123!"
+        print_info(f"Attempting registration for {email}")
+        
+        # Try registration first
         response = await client.post(
             f"{API_BASE_URL}/api/auth/register",
             json={
-                "email": f"{test_prefix}_{timestamp}@example.com",
-                "password": "TestPassword123!",
+                "email": email,
+                "password": password,
                 "name": "Test User"
             },
             headers=TEST_HEADERS
         )
         
+        # Check registration response
         if response.status_code == 200:
-            return response.json().get("access_token")
+            data = response.json()
+            if data.get("success") and data.get("access_token"):
+                print_info(f"Registration successful for {email}")
+                return data.get("access_token")
+            # Registration returned 200 but success=False (user exists, etc.) - try login
+            print_warning(f"Registration returned success=False: {data.get('error', 'Unknown error')}")
+        elif response.status_code != 200:
+            # Registration failed with error status - try login as fallback
+            print_warning(f"Registration failed with status {response.status_code}")
+        
+        # Registration failed or user exists - try login as fallback
+        print_info(f"Attempting login for {email}")
+        # (This handles cases where user already exists or registration endpoint fixed it)
+        login_response = await client.post(
+            f"{API_BASE_URL}/api/auth/login",
+            json={
+                "email": email,
+                "password": password
+            },
+            headers=TEST_HEADERS
+        )
+        
+        if login_response.status_code == 200:
+            login_data = login_response.json()
+            if login_data.get("access_token"):
+                return login_data.get("access_token")
+        
         return None
 
 
@@ -109,12 +144,11 @@ async def submit_intent(
             f"{API_BASE_URL}/api/intent/submit",
             json={
                 "intent_type": intent_type,
+                "tenant_id": "test_tenant",  # Top-level field required by IntentSubmitRequest
                 "session_id": session_id,
+                "solution_id": "default",  # Top-level field required by IntentSubmitRequest
                 "parameters": parameters,
-                "metadata": {
-                    "tenant_id": "test_tenant",
-                    "solution_id": "default"
-                }
+                "metadata": {}
             },
             headers={**TEST_HEADERS, "Authorization": f"Bearer {token}"}
         )

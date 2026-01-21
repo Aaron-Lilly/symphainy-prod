@@ -217,10 +217,13 @@ parsed_data = result.artifacts["parsed_data"]
 **Scenario:** Extract structured data from PDF permits
 
 **Flow:**
-1. Upload PDF permit file
-2. Call `parse_content` with file_id
-3. Parser extracts permit number, date, location, etc.
-4. Use parsed data for analysis
+1. Upload PDF permit file (Phase 1 - creates pending boundary contract)
+2. Save file (Phase 2 - authorizes materialization, makes available for parsing)
+3. Call `parse_content` with file_id (file must be saved first)
+4. Parser extracts permit number, date, location, etc.
+5. Use parsed data for analysis
+
+**Note:** Files must be saved before parsing. The two-phase materialization flow ensures files are explicitly authorized before parsing.
 
 ### Use Case 2: Insurance Policy Migration
 **Scenario:** Extract data from 350k mainframe binary files
@@ -266,9 +269,30 @@ Parsing errors are handled gracefully:
 
 ---
 
+## Two-Phase Materialization Requirement
+
+**Important:** Files must be saved before parsing. The platform uses a two-phase materialization flow:
+
+1. **Phase 1: Upload** (`ingest_file` intent)
+   - Creates pending boundary contract
+   - File uploaded but not yet materialized
+   - Status: `materialization_pending: true`
+
+2. **Phase 2: Save** (`save_materialization` intent)
+   - User explicitly saves the file
+   - Materialization authorized
+   - Status: `available_for_parsing: true`
+
+3. **Phase 3: Parse** (`parse_content` intent)
+   - File can now be parsed
+   - Parser extracts structured data
+
+**Why?** This ensures workspace-scoped security and explicit user control over materialization. See [File Management](file_management.md) for details on the two-phase flow.
+
 ## Related Capabilities
 
-- [Data Ingestion](data_ingestion.md) - Upload files to parse
+- [Data Ingestion](data_ingestion.md) - Upload files to parse (Phase 1)
+- [File Management](file_management.md) - Save files for parsing (Phase 2)
 - [Bulk Operations](bulk_operations.md) - Parse multiple files
 - [Semantic Interpretation](../insights/semantic_interpretation.md) - Interpret parsed data
 

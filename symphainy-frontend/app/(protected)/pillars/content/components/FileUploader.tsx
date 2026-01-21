@@ -59,6 +59,13 @@ interface UploadState {
   success: boolean;
   processingStatus: string | null;
   workflowId: string | null;
+  // NEW: Two-phase materialization state
+  boundaryContractId: string | null;
+  fileId: string | null;
+  materializationPending: boolean;
+  saving: boolean;
+  saveError: string | null;
+  saveSuccess: boolean;
 }
 
 interface FileUploaderProps {
@@ -88,6 +95,13 @@ export function FileUploader({
     success: false,
     processingStatus: null,
     workflowId: null,
+    // NEW: Two-phase materialization state
+    boundaryContractId: null,
+    fileId: null,
+    materializationPending: false,
+    saving: false,
+    saveError: null,
+    saveSuccess: false,
   });
 
   // Get available file categories for selected content type
@@ -229,13 +243,23 @@ export function FileUploader({
       );
 
       if (result.success && result.file) {
+        // Store boundary_contract_id and file_id for save step
+        const boundaryContractId = result.boundary_contract_id;
+        const fileId = result.file_id || result.file?.id;
+        const materializationPending = result.materialization_pending === true;
+        
         setUploadState(prev => ({ 
           ...prev, 
           uploading: false, 
           success: true,
           error: null,
-          processingStatus: 'File uploaded successfully! Processing started...',
-          workflowId: result.file?.id || null
+          processingStatus: materializationPending 
+            ? 'File uploaded! Please save to enable parsing and other activities.' 
+            : 'File uploaded successfully! Processing started...',
+          workflowId: result.file?.id || null,
+          boundaryContractId: boundaryContractId || null,
+          fileId: fileId || null,
+          materializationPending: materializationPending,
         }));
         
         // Update realm state (Content realm)
@@ -284,21 +308,30 @@ export function FileUploader({
           onFileUploaded(result.file.id);
         }
         
-        // Reset form after successful upload
-        setTimeout(() => {
-          setUploadState({
-            step: 'content_type',
-            contentType: null,
-            fileCategory: null,
-            selectedFile: null,
-            copybookFile: null,
-            uploading: false,
-            error: null,
-            success: false,
-            processingStatus: null,
-            workflowId: null,
-          });
-        }, 3000);
+        // Only reset form if materialization is not pending (file was already saved)
+        // If materialization is pending, keep the state so user can click Save
+        if (!materializationPending) {
+          setTimeout(() => {
+            setUploadState({
+              step: 'content_type',
+              contentType: null,
+              fileCategory: null,
+              selectedFile: null,
+              copybookFile: null,
+              uploading: false,
+              error: null,
+              success: false,
+              processingStatus: null,
+              workflowId: null,
+              boundaryContractId: null,
+              fileId: null,
+              materializationPending: false,
+              saving: false,
+              saveError: null,
+              saveSuccess: false,
+            });
+          }, 3000);
+        }
         
       } else {
         const errorMsg = result.error || 'Upload failed';
@@ -335,6 +368,94 @@ export function FileUploader({
       }
     }
   }, [uploadState, isAuthenticated, contentAPIManager, state.realm, setRealmState, onFileUploaded, onUploadError, selectedFileTypeConfig]);
+
+  // Handle save materialization (Phase 2)
+  const handleSaveMaterialization = useCallback(async () => {
+    if (!uploadState.boundaryContractId || !uploadState.fileId) {
+      setUploadState(prev => ({ 
+        ...prev, 
+        saveError: 'Missing boundary contract ID or file ID. Please upload the file again.' 
+      }));
+      return;
+    }
+
+    setUploadState(prev => ({ 
+      ...prev, 
+      saving: true, 
+      saveError: null,
+      saveSuccess: false
+    }));
+
+    try {
+      const result = await contentAPIManager.saveMaterialization(
+        uploadState.boundaryContractId,
+        uploadState.fileId
+      );
+
+      if (result.success) {
+        setUploadState(prev => ({ 
+          ...prev, 
+          saving: false,
+          saveSuccess: true,
+          materializationPending: false,
+          processingStatus: 'File saved! Now available for parsing and other activities.',
+        }));
+        
+        toast.success('File saved successfully!', {
+          description: result.message || 'File is now available for parsing and other activities.'
+        });
+        
+        // Call callback if provided
+        if (onFileUploaded && uploadState.fileId) {
+          onFileUploaded(uploadState.fileId);
+        }
+        
+        // Reset form after successful save
+        setTimeout(() => {
+          setUploadState({
+            step: 'content_type',
+            contentType: null,
+            fileCategory: null,
+            selectedFile: null,
+            copybookFile: null,
+            uploading: false,
+            error: null,
+            success: false,
+            processingStatus: null,
+            workflowId: null,
+            boundaryContractId: null,
+            fileId: null,
+            materializationPending: false,
+            saving: false,
+            saveError: null,
+            saveSuccess: false,
+          });
+        }, 3000);
+      } else {
+        const errorMsg = result.error || 'Save failed';
+        setUploadState(prev => ({ 
+          ...prev, 
+          saving: false, 
+          saveError: errorMsg
+        }));
+        
+        toast.error('Save failed', {
+          description: errorMsg
+        });
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Save failed';
+      setUploadState(prev => ({ 
+        ...prev, 
+        saving: false, 
+        saveError: errorMessage
+      }));
+      
+      toast.error('Save failed', {
+        description: errorMessage
+      });
+    }
+  }, [uploadState.boundaryContractId, uploadState.fileId, contentAPIManager, onFileUploaded]);
 
   // Format file size
   const formatFileSize = (bytes: number): string => {
@@ -561,6 +682,58 @@ export function FileUploader({
           <span className="text-sm text-blue-800">{uploadState.processingStatus}</span>
           {uploadState.workflowId && (
             <span className="text-xs text-blue-600">(Workflow: {uploadState.workflowId})</span>
+          )}
+        </div>
+      )}
+
+      {/* Save Materialization Section (Phase 2) */}
+      {uploadState.success && uploadState.materializationPending && uploadState.boundaryContractId && (
+        <div className="space-y-3 p-4 bg-amber-50 border border-amber-200 rounded-md">
+          <div className="flex items-start space-x-2">
+            <AlertCircle className="h-5 w-5 text-amber-600 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm font-medium text-amber-900 mb-1">
+                File uploaded successfully!
+              </p>
+              <p className="text-xs text-amber-700 mb-3">
+                For MVP purposes, files must be saved for parsing and other activities. 
+                Please click "Save File" to complete the materialization process.
+              </p>
+              <Button
+                onClick={handleSaveMaterialization}
+                disabled={uploadState.saving}
+                className="w-full bg-amber-600 hover:bg-amber-700 text-white"
+                data-testid="save-materialization-button"
+              >
+                {uploadState.saving ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="h-4 w-4 mr-2" />
+                    Save File
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+          
+          {/* Save Error */}
+          {uploadState.saveError && (
+            <div className="flex items-center space-x-2 p-2 bg-red-50 border border-red-200 rounded">
+              <AlertCircle className="h-4 w-4 text-red-500" />
+              <span className="text-xs text-red-700">{uploadState.saveError}</span>
+            </div>
+          )}
+          
+          {/* Save Success */}
+          {uploadState.saveSuccess && (
+            <div className="flex items-center space-x-2 p-2 bg-green-50 border border-green-200 rounded">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              <span className="text-xs text-green-700">File saved successfully!</span>
+            </div>
           )}
         </div>
       )}

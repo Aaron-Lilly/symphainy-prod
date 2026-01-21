@@ -137,6 +137,48 @@ async def get_data(self):
 
 ---
 
+## 📊 Data Classification Rules
+
+### Four-Class Framework
+
+All data must be classified into one of four classes based on time and purpose:
+
+1. **Working Materials** - Temporary, time-bound (FMS)
+2. **Records of Fact** - Persistent meaning (Supabase + ArangoDB)
+3. **Purpose-Bound Outcomes** - Intentional deliverables (Artifact Plane)
+4. **Platform DNA** - Generalized capabilities (Supabase registries)
+
+**Classification Rules:**
+- ✅ Source files → Working Materials (FMS)
+- ✅ Derived artifacts → Purpose-Bound Outcomes (Artifact Plane)
+- ✅ Embeddings/interpretations → Records of Fact
+- ✅ Promoted capabilities → Platform DNA
+- ❌ No mixing classes in same storage
+- ❌ No artifacts in execution state (only references)
+- ❌ No Working Materials without TTL
+- ❌ No Records of Fact with expiration
+
+**Classification by Purpose, Not Format:**
+- Working Material = inputs used to reach conclusions
+- Purpose-Bound Outcome = conclusions created for a decision or delivery
+- A "file" can become an outcome (e.g., generated SOP)
+- An "analysis" can still be working material if provisional
+
+**Storage Rules:**
+- Working Materials: FMS (GCS + Supabase)
+- Records of Fact: Supabase + ArangoDB
+- Purpose-Bound Outcomes: Artifact Plane
+- Platform DNA: Supabase registries
+
+**Transition Rules:**
+- Working Material → Record of Fact: Explicit promotion via Data Steward SDK
+- Purpose-Bound Outcome → Platform DNA: Explicit promotion via Curator
+- All transitions are policy-governed
+- All transitions recorded in WAL for audit
+- **Not Allowed:** Automatic transitions, silent mutations, or transitions without policy approval
+
+---
+
 ## 📐 Architecture Guide Wins
 
 ### Code Must Match Architecture

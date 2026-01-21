@@ -188,12 +188,48 @@ async def register(
         })
         
         if not auth_data or not auth_data.get("access_token"):
+            # Check if user already exists - try login instead
+            error_msg = auth_data.get("error", "") if auth_data else ""
+            if "already registered" in error_msg.lower() or "user already" in error_msg.lower():
+                logger.info(f"User {request.email} already exists, attempting login instead")
+                try:
+                    # Try to authenticate the existing user
+                    login_data = await auth_abstraction.authenticate({
+                        "email": request.email,
+                        "password": request.password
+                    })
+                    
+                    if login_data and login_data.get("access_token"):
+                        # Login succeeded - get user context
+                        try:
+                            auth_result = await security_guard.authenticate({
+                                "email": request.email,
+                                "password": request.password
+                            })
+                        except Exception:
+                            auth_result = None
+                        
+                        return AuthResponse(
+                            success=True,
+                            access_token=login_data.get("access_token"),
+                            refresh_token=login_data.get("refresh_token"),
+                            user_id=auth_result.user_id if auth_result else login_data.get("user_id"),
+                            tenant_id=auth_result.tenant_id if auth_result else login_data.get("tenant_id"),
+                            roles=auth_result.roles if auth_result else [],
+                            permissions=auth_result.permissions if auth_result else [],
+                            message="User already exists, logged in successfully"
+                        )
+                except Exception as login_error:
+                    logger.warning(f"Login attempt failed for existing user: {login_error}")
+                    # Fall through to return registration error
+            
+            # Registration failed for other reasons
             return AuthResponse(
                 success=False,
-                error="Registration failed"
+                error=auth_data.get("error", "Registration failed") if auth_data else "Registration failed"
             )
         
-        # Get user context via Security Guard SDK for roles/permissions
+        # Registration succeeded - get user context via Security Guard SDK for roles/permissions
         auth_result = await security_guard.register_user({
             "email": request.email,
             "password": request.password,

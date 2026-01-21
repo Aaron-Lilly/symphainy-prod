@@ -78,6 +78,7 @@ class ContentRealm(RealmBase):
             
             # File Management
             "register_file",            # Register existing file in State Surface
+            "save_materialization",      # Explicitly save (materialize) uploaded file (two-phase flow)
             "retrieve_file_metadata",   # Get Supabase record (metadata only)
             "retrieve_file",             # Get file contents from GCS
             "list_files",                # List files for tenant/session

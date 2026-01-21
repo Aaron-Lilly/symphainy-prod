@@ -94,12 +94,13 @@ They define **capability by design, constrained by policy**.
 
 Civic Systems expose **SDKs, planes, and surfaces** used by Runtime and domain services.
 
-There are four Civic Systems:
+There are five Civic Systems:
 
 1. **Smart City** — governance
 2. **Experience** — exposure
 3. **Agentic** — reasoning
 4. **Platform SDK** — how solutions and domains are built correctly
+5. **Artifact Plane** — Purpose-Bound Outcomes management
 
 Civic Systems may depend on each other, but **Runtime remains the single execution authority**.
 
@@ -193,8 +194,8 @@ It exposes policy‑aware primitives consumed by Runtime.
 | -------------- | -------------------------------------- |
 | City Manager   | Global policy, tenancy, escalation     |
 | Security Guard | Identity, authN/Z, zero trust          |
-| Curator        | Capability, agent, domain registries   |
-| Data Steward   | Data boundaries, contracts, provenance |
+| Curator        | Capability promotion, registries        |
+| Data Steward   | Data boundaries, contracts, materialization |
 | Librarian      | Semantic schemas & meaning             |
 | Traffic Cop    | Sessions, execution IDs, correlation   |
 | Post Office    | Event routing & ordering               |
@@ -205,6 +206,58 @@ It exposes policy‑aware primitives consumed by Runtime.
 * **SDK-First:** Smart City SDK provides coordination logic (used by Experience, Solution, Realms)
 * **Primitives:** Smart City Primitives provide policy decisions (used by Runtime only)
 * **Separation:** SDK coordinates, Primitives validate
+
+#### Data Steward (Data Boundaries & Materialization)
+
+**Responsibilities:**
+- Boundary contract negotiation (`request_data_access()`)
+- Materialization authorization (`authorize_materialization()`)
+- Materialization policy evaluation (tenant-scoped with platform-level defaults)
+- TTL enforcement for Working Materials (automated purge job driven by policy + lifecycle state)
+- "Data stays at door" enforcement
+
+**Two-Phase Materialization Flow:**
+
+1. **Request Data Access** (`request_data_access()`)
+   - Negotiate boundary contract
+   - Determine if access is granted
+   - Create contract in `data_boundary_contracts` table
+   - Returns: `DataAccessRequest` with `contract_id`
+
+2. **Authorize Materialization** (`authorize_materialization()`)
+   - Evaluate materialization policy (tenant-scoped, with platform defaults)
+   - Determine materialization type
+   - Set TTL and scope
+   - Update boundary contract with materialization decision
+   - Returns: `MaterializationAuthorization`
+
+**Materialization Types:**
+- `reference` - Reference only, no materialization
+- `partial_extraction` - Extract specific fields
+- `deterministic` - Deterministic representation (becomes Record of Fact)
+- `semantic_embedding` - Semantic embedding (becomes Record of Fact)
+- `full_artifact` - Full artifact (Working Material, TTL-bound)
+
+**Policy Evaluation:**
+- Materialization policy is tenant-scoped (with platform-level defaults)
+- Policy determines: type, scope, TTL, backing store
+- Policy evaluation happens in Data Steward Primitives (not Runtime)
+- Runtime consumes policy decisions, doesn't make them
+
+#### Curator (Capability Promotion)
+
+**Responsibilities:**
+- Validates promotion of Purpose-Bound Outcomes → Platform DNA
+- Manages capability registries (Solution, Intent, Realm)
+- Ensures de-identification and generalization
+- Policy approval for promotions
+
+**Promotion Process:**
+1. Receive promotion request
+2. Validate promotion criteria (de-identified, generalizable, policy-approved)
+3. Generalize outcome (remove client context)
+4. Create registry entry (versioned, immutable)
+5. Return promotion result
 
 ### 4.2 Experience (Exposure & Interaction)
 
@@ -335,58 +388,246 @@ If Runtime cannot see it, **it did not happen**.
 
 ---
 
-## 7. The Data Brain (Runtime‑Native Data Cognition)
+## 7. The Data Framework (Four Classes by Time + Purpose)
 
-> **Data participates in execution without being centralized.**
+> **Data is classified by time (how long it exists) and purpose (why it exists).**
 
-The Data Brain lives **inside Runtime**.
+The platform manages four distinct classes of data, each with different lifecycle, governance, and infrastructure.
 
-It owns:
-* data references & provenance
-* semantic projection (deterministic + expert)
-* virtualization & hydration
-* mutation governance
-* execution‑level attribution
+### 7.1 Working Materials (Temporary)
 
-It enables:
-* data mash without ingestion
-* explainable interpretation
-* replayable migration
-* safe bi‑directional sync
+**Definition:** Temporarily materialized data for understanding, parsing, and assessment.
 
-### 7.1 Data Brain Scaling Patterns
+**Properties:**
+- Time-bound (TTL enforced by policy)
+- Policy-bound (boundary contract required)
+- Explicitly non-archival
+- Exists only to enable transformation
 
-For large-scale deployments (e.g., 350k policies):
+**Infrastructure:**
+- **Storage:** GCS (temporary), Supabase (tracking, status, audit)
+- **TTL:** Enforced by automated purge job (driven by policy + lifecycle state)
+- **Purge:** Automated when TTL expires
 
-**1. Reference-First Architecture**
-* Data Brain stores references, not data
-* Hydration happens on-demand via domain services
-* Virtual queries federate across external systems
+**Platform Components:**
+- Content Realm FMS (file ingestion, parsing)
+- Boundary contracts (govern access and TTL)
+- Materialization policy (determines TTL)
 
-**2. Bi-Directional Sync Strategy**
-* Runtime tracks mutations in WAL
-* Domain services implement sync adapters
-* Data Brain coordinates sync without owning data
+**Examples:**
+- Raw uploaded files
+- Parsed file results (temporary)
+- Intermediate schemas
+- Reviewable previews
 
-**3. Provenance at Scale**
-* Provenance stored as execution-level metadata
-* Lineage queries use indexed references
-* Full history replayable from WAL
+**Transition:** Working Materials → Records of Fact (via explicit `promote_to_record_of_fact()` workflow)
 
-**4. Snapshot Strategy**
-* Periodically snapshot state for performance
-* Replay from snapshot + events since snapshot
-* Critical for 350k policies (can't replay millions of events)
+---
 
-**Critical Rule:**
-> **Phase 2 Data Brain never returns raw data by default — only references.**
+### 7.2 Records of Fact (Persistent Meaning)
 
-That single rule preserves:
-* scalability
-* governance
-* replayability
+**Definition:** Persistent, auditable, and reproducible conclusions or interpreted meaning.
 
-You can always add "hydration" later.
+**Properties:**
+- Must persist (auditable, reproducible)
+- Do NOT require original file to persist
+- May reference expired source artifacts
+- Represent "what the system concluded, at that moment, under those policies"
+
+**Key Principle:**
+> **Persistence of meaning ≠ persistence of material**
+
+**Infrastructure:**
+- **Storage:** Supabase (structured data), ArangoDB (graph/lineage, embeddings)
+- **No raw files required** (meaning persists independently)
+
+**Platform Components:**
+- Data Steward (manages embeddings, interpretations)
+- SemanticDataAbstraction (stores embeddings in ArangoDB, with pluggable vector backends)
+- Insights Realm (creates interpretations)
+
+**Examples:**
+- Deterministic embeddings
+- Semantic embeddings
+- Interpreted meaning (entities, relationships)
+- Data quality conclusions
+
+**Promotion Workflow:**
+1. Working Material exists (with boundary contract)
+2. Explicit `promote_to_record_of_fact()` via Data Steward SDK
+3. Requires boundary contract with `materialization_type="deterministic"` or `"semantic_embedding"`
+4. Creates persistent Record of Fact entry
+5. Links to source Working Material (which may expire later)
+6. Record of Fact persists even if source expires
+
+**Lineage:**
+- Records of Fact store `source_file_id` and `source_expired_at` (nullable)
+- When Working Material expires, update Records of Fact with `source_expired_at`
+- Records of Fact remain valid even if source expired
+- **Reference preservation without material dependency** - meaning is independent
+
+**Vector Search:**
+- SemanticDataAbstraction backed by ArangoDB (with pluggable vector backends)
+- Preserves architectural flexibility and avoids vendor lock-in
+- Business logic uses abstraction, not direct vector backend
+
+**Permanence:**
+- Records of Fact are **permanent** (no expiration)
+- They represent audit trail and must persist
+- Source expiration tracked but doesn't affect Record of Fact
+
+---
+
+### 7.3 Purpose-Bound Outcomes (Intentional Deliverables)
+
+**Definition:** Intentional artifacts created for a specific purpose and audience.
+
+**Properties:**
+- Owner (client/platform/shared)
+- Purpose (decision support, delivery, governance, learning)
+- Lifecycle states (draft → accepted → obsolete)
+- May be reused, revised, or discarded
+- May feed platform but are not the platform
+
+**Infrastructure:**
+- **Storage:** Artifact Plane (Supabase metadata + GCS/document store for payloads)
+- **Lifecycle:** Tracked in Artifact Plane registry with explicit lifecycle states
+
+**Platform Components:**
+- Artifact Plane (manages Purpose-Bound Outcomes)
+- Outcomes Realm (roadmaps, POCs, solutions)
+- Journey Realm (blueprints, SOPs, workflows)
+- Insights Realm (reports, visualizations as deliverables)
+
+**Examples:**
+- Roadmaps
+- POCs
+- Blueprints
+- SOPs
+- Quality assessment reports (as deliverables)
+- Business analysis reports
+
+**Classification Rule:**
+> **By purpose, not format:**
+> - Working Material = inputs used to reach conclusions
+> - Purpose-Bound Outcome = conclusions created for a decision or delivery
+
+**Lifecycle State Machine:**
+- `draft` → `accepted` (owner or authorized user)
+- `draft` → `obsolete` (owner or authorized user)
+- `accepted` → `obsolete` (owner or authorized user)
+- Transitions are policy-governed
+- Tracked in Artifact Plane registry
+- Transitions recorded in WAL for audit
+
+**Versioning:**
+- When artifact transitions to `accepted`, create immutable version
+- Store versions in Artifact Plane registry
+- Link versions via `parent_artifact_id`
+- Current version tracked in registry
+- **Past versions are immutable** (read-only)
+
+**Cross-Realm Dependencies:**
+- Artifact Plane as coordination and reference source of truth (not execution owner)
+- All Purpose-Bound Outcomes stored in Artifact Plane
+- Cross-realm dependencies work automatically
+- Artifact Plane coordinates and references, but does NOT orchestrate logic
+
+**Search:**
+- Artifact Plane supports search via registry queries
+- Filter by: type, tenant, session, lifecycle_state, owner, purpose
+- Enables artifact discovery and reuse
+
+**Dependencies:**
+- Track artifact → artifact dependencies in Artifact Plane
+- Dependencies enable impact analysis
+- Lineage enables audit trail
+- Validate dependencies before deletion
+
+---
+
+### 7.4 Platform DNA (Generalized Capability)
+
+**Definition:** Generalized, curated, de-identified capabilities promoted from outcomes.
+
+**Properties:**
+- De-identified (no client context)
+- Generalizable (reusable across clients)
+- Policy-approved (Curator validates)
+- Abstracted from client context
+- Versioned, curated, immutable
+
+**Infrastructure:**
+- **Storage:** Supabase registries (versioned, immutable)
+- **Promotion:** Via Curator role (deliberate act)
+
+**Platform Components:**
+- Curator (validates promotion)
+- Solution Registry
+- Intent Registry
+- Realm Registry
+
+**Examples:**
+- New intents (promoted from outcomes)
+- New realms (promoted from outcomes)
+- New journeys (promoted from outcomes)
+- New solutions (promoted from outcomes)
+- New capabilities (promoted from outcomes)
+
+**Promotion Workflow:**
+1. **Promotion Request:** User/agent requests promotion of Purpose-Bound Outcome
+2. **Curator Validation:** Curator validates promotion criteria:
+   - Is it de-identified?
+   - Is it generalizable?
+   - Does it meet policy requirements?
+3. **Generalization:** System generalizes outcome (removes client context)
+4. **Registry Entry:** Creates entry in appropriate registry (Solution, Intent, Realm, etc.)
+5. **Versioning:** Creates versioned, immutable registry entry
+
+**Promotion Criteria:**
+- De-identified
+- Generalizable
+- Policy-approved
+- Abstracted from client context
+
+---
+
+### 7.5 Data Flow (End-to-End)
+
+```
+Client Working Material (External)
+    ↓ (Experience → Smart City)
+Boundary Contract Negotiation
+    ↓ (Data Steward: request_data_access)
+Access Granted?
+    ↓ (Data Steward: authorize_materialization)
+Materialization Decision
+    ├─ reference (no materialization)
+    ├─ partial_extraction (Working Material)
+    ├─ deterministic (→ Record of Fact)
+    ├─ semantic_embedding (→ Record of Fact)
+    └─ full_artifact (Working Material, TTL-bound)
+    ↓
+Working Material (FMS: GCS + Supabase, TTL-bound)
+    ↓ (explicit promotion via Data Steward SDK)
+Records of Fact (Supabase + ArangoDB, persistent)
+    ↓ (realm processing)
+Purpose-Bound Outcomes (Artifact Plane)
+    ↓ (optional, deliberate promotion via Curator)
+Platform DNA (Supabase registries)
+```
+
+**Key Principles:**
+- Each arrow is **policy-mediated**. Nothing moves automatically.
+- **Persistence of meaning ≠ persistence of material**
+- Working Materials expire, Records of Fact persist
+- Purpose-Bound Outcomes have lifecycle, Platform DNA is immutable
+
+**Classification Transitions:**
+- **Allowed:** Working Material → Record of Fact (explicit `promote_to_record_of_fact()`)
+- **Allowed:** Purpose-Bound Outcome → Platform DNA (explicit Curator promotion)
+- **Not Allowed:** Automatic transitions, silent mutations, or transitions without policy approval
+- All transitions are explicit, policy-governed, and recorded in WAL for audit
 
 ---
 

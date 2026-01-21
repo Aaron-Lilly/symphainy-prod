@@ -112,6 +112,9 @@ export function FileDashboard({
         updated_at: cf.uploadDate,
         upload_timestamp: cf.uploadDate,
         deleted: false,
+        // NEW: Materialization fields
+        boundary_contract_id: cf.boundary_contract_id || cf.metadata?.boundary_contract_id,
+        materialization_pending: cf.materialization_pending !== false && (cf.status === 'pending' || cf.metadata?.materialization_pending === true),
       }));
       
       // Sort by creation date (newest first)
@@ -256,12 +259,23 @@ export function FileDashboard({
   const getStatusBadge = (file: FileMetadata) => {
     const status = file.status || FileStatus.Uploaded;
     const isProcessing = processingFiles.has(file.file_id || file.uuid);
+    const isPending = file.materialization_pending === true;
     
     if (isProcessing) {
       return (
         <Badge variant="outline" className="text-xs">
           <Loader2 className="h-3 w-3 mr-1 animate-spin" />
           Processing
+        </Badge>
+      );
+    }
+    
+    // Show "Pending" badge if materialization is pending
+    if (isPending) {
+      return (
+        <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">
+          <Clock className="h-3 w-3 mr-1" />
+          Pending Save
         </Badge>
       );
     }
@@ -275,7 +289,10 @@ export function FileDashboard({
         return <Badge variant="outline" className="text-xs bg-yellow-50 text-yellow-700 border-yellow-200">Parsing</Badge>;
       case FileStatus.Uploaded:
       default:
-        return <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">Uploaded</Badge>;
+        return <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+          <CheckCircle className="h-3 w-3 mr-1" />
+          Saved
+        </Badge>;
     }
   };
 

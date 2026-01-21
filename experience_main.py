@@ -21,6 +21,8 @@ import uvicorn
 
 from utilities import get_logger
 from symphainy_platform.config import get_env_contract
+from symphainy_platform.config.config_helper import get_supabase_anon_key, get_supabase_service_key
+
 from symphainy_platform.config.service_config import get_redis_url, get_arango_url, get_consul_host, get_consul_port
 
 from symphainy_platform.civic_systems.experience.experience_service import create_app
@@ -62,8 +64,8 @@ async def lifespan(app: FastAPI):
                 "arango_password": env.ARANGO_ROOT_PASSWORD,
                 "arango_database": "symphainy_platform",
                 "supabase_url": getattr(env, "SUPABASE_URL", None),
-                "supabase_anon_key": getattr(env, "SUPABASE_ANON_KEY", None),
-                "supabase_service_key": getattr(env, "SUPABASE_SERVICE_KEY", None),
+                "supabase_anon_key": get_supabase_anon_key(),
+                "supabase_service_key": get_supabase_service_key(),
                 "supabase_jwks_url": getattr(env, "SUPABASE_JWKS_URL", None),
                 "supabase_jwt_issuer": getattr(env, "SUPABASE_JWT_ISSUER", None),
                 "gcs_project_id": getattr(env, "GCS_PROJECT_ID", None),

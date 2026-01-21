@@ -76,10 +76,12 @@ class StateManagementAbstraction(StateManagementProtocol):
             # Determine backend from metadata
             backend = (metadata or {}).get("backend", "redis")
             strategy = (metadata or {}).get("strategy", "hot")
+            self.logger.info(f"🔵 STORING STATE: {state_id}, backend={backend}, strategy={strategy}")
             
             # Store in appropriate backend
             if backend == "arango_db" and self.arango_adapter:
                 # ArangoDB storage (durable)
+                self.logger.info(f"Storing state {state_id} to ArangoDB (durable)")
                 try:
                     # Store in ArangoDB collection
                     collection_name = "state_data"
@@ -98,16 +100,32 @@ class StateManagementAbstraction(StateManagementProtocol):
                         "ttl": ttl
                     }
                     
-                    # Insert or update document
+                    # Insert or replace document (use replace for full document replacement, not merge)
                     existing = await self.arango_adapter.get_document(collection_name, state_id)
                     if existing:
-                        result = await self.arango_adapter.update_document(
+                        # Merge new state_data with existing state_data to preserve all fields
+                        # This ensures we don't lose fields like 'intent', 'created_at', etc.
+                        # IMPORTANT: For 'artifacts', always use the new value (don't merge nested dicts)
+                        existing_state_data = existing.get("state_data", {})
+                        merged_state_data = {**existing_state_data, **state_data}
+                        # Always use the new artifacts if present (prevents unwrapping structured artifacts)
+                        if "artifacts" in state_data:
+                            merged_state_data["artifacts"] = state_data["artifacts"]
+                        document["state_data"] = merged_state_data
+                        
+                        # Use replace instead of update to fully replace the document
+                        # This prevents merging artifacts from old state with new state
+                        result = await self.arango_adapter.replace_document(
                             collection_name,
                             state_id,
                             document
                         )
                     else:
                         result = await self.arango_adapter.insert_document(collection_name, document)
+                    if result:
+                        self.logger.info(f"✅ Successfully stored state {state_id} in ArangoDB")
+                    else:
+                        self.logger.error(f"❌ Failed to store state {state_id} in ArangoDB: insert/update returned False")
                     
                     if result:
                         self.logger.debug(f"State stored in ArangoDB: {state_id}")
@@ -119,6 +137,24 @@ class StateManagementAbstraction(StateManagementProtocol):
                     self.logger.error(f"ArangoDB storage failed for {state_id}: {e}", exc_info=True)
                     # Fall back to Redis if ArangoDB fails
                     backend = "redis"
+            
+            # For durable execution states, also store in Redis for hot access
+            # This ensures both hot (Redis) and durable (ArangoDB) storage
+            if strategy == "durable" and backend == "arango_db" and self.redis_adapter:
+                try:
+                    redis_key = f"{self.redis_prefix}{state_id}"
+                    redis_data = {
+                        "state_data": state_data,
+                        "metadata": metadata or {},
+                        "created_at": self.clock.now_iso(),
+                        "strategy": "hot",  # Hot copy in Redis
+                        "durable_backend": "arango_db"  # Indicates durable copy is in ArangoDB
+                    }
+                    await self.redis_adapter.set_json(redis_key, redis_data, ttl=3600)  # 1 hour TTL for hot state
+                    self.logger.debug(f"Also stored state {state_id} in Redis (hot copy)")
+                except Exception as e:
+                    self.logger.warning(f"Failed to store hot copy in Redis for {state_id}: {e}")
+                    # Don't fail - durable copy is in ArangoDB
             
             if backend == "redis" and self.redis_adapter:
                 # Redis storage (hot state)

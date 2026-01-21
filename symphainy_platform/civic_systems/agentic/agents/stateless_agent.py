@@ -43,18 +43,20 @@ class StatelessAgentBase(AgentBase):
             collaboration_router=collaboration_router
         )
     
-    async def process_request(
+    async def _process_with_assembled_prompt(
         self,
-        request: Dict[str, Any],
+        system_message: str,
+        user_message: str,
+        runtime_context: Any,  # AgentRuntimeContext
         context: ExecutionContext
     ) -> Dict[str, Any]:
         """
-        Process request without session state.
+        Process request with assembled prompt (4-layer model).
         
         Returns deterministic/semantic meaning of client data.
         """
-        # 1. Extract data from request
-        data = request.get("data", {})
+        # 1. Extract data from request (from runtime_context or user_message)
+        data = runtime_context.business_context.get("data", {}) if hasattr(runtime_context, 'business_context') else {}
         
         # 2. Generate semantic meaning (deterministic)
         semantic_meaning = await self.generate_semantic_meaning(data, context)
@@ -68,6 +70,18 @@ class StatelessAgentBase(AgentBase):
             },
             "confidence": 1.0
         }
+    
+    async def process_request(
+        self,
+        request: Dict[str, Any],
+        context: ExecutionContext
+    ) -> Dict[str, Any]:
+        """
+        Process request (delegates to 4-layer model).
+        
+        Maintains backward compatibility.
+        """
+        return await super().process_request(request, context)
     
     async def get_agent_description(self) -> str:
         """Get agent description."""

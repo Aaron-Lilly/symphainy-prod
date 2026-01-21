@@ -87,6 +87,7 @@ Civic Systems are the **behavioral backbone of the platform**. They define how w
 - **Smart City** – Applies governance, policy, coordination patterns (includes Curator role for capability registry)
 - **Agentic System** – Enables reasoning, collaboration, and assistance
 - **Experience** – Translates interactions into intents, streams execution updates
+- **Artifact Plane** – Manages Purpose-Bound Outcomes (roadmaps, POCs, blueprints, SOPs, reports)
 
 **This is where:**
 - humans are routed into flows
@@ -123,6 +124,49 @@ Realm Services do the actual domain-specific work:
 - never bypass governance or Runtime
 
 **Key Principle:** All operations flow through Runtime, ensuring that every action is governed, tracked, and explainable.
+
+---
+
+## Data Framework: Four Classes by Time + Purpose
+
+Symphainy classifies all data into four distinct classes based on **time** (how long it exists) and **purpose** (why it exists):
+
+### Working Materials (Temporary)
+- **What:** Raw files, parsed results, intermediate schemas
+- **Properties:** Time-bound, policy-governed, non-archival
+- **Storage:** FMS (GCS + Supabase tracking)
+- **Lifecycle:** TTL enforced, automated purge when expired
+- **Purpose:** Inputs used to reach conclusions
+
+### Records of Fact (Persistent Meaning)
+- **What:** Embeddings, interpretations, conclusions
+- **Properties:** Persistent, auditable, reproducible
+- **Storage:** Supabase (structured) + ArangoDB (graph/embeddings)
+- **Key Principle:** Persistence of meaning ≠ persistence of material
+- **Lifecycle:** Permanent (no expiration)
+- **Purpose:** What the system concluded, independent of source material
+
+### Purpose-Bound Outcomes (Intentional Deliverables)
+- **What:** Roadmaps, POCs, blueprints, SOPs, reports
+- **Properties:** Created for someone, exist for a reason, lifecycle-managed
+- **Storage:** Artifact Plane (Supabase metadata + GCS/document store)
+- **Lifecycle:** draft → accepted → obsolete (policy-governed transitions)
+- **Purpose:** Conclusions created for a decision or delivery
+
+### Platform DNA (Generalized Capability)
+- **What:** Promoted solutions, intents, realms, capabilities
+- **Properties:** De-identified, generalizable, curated, immutable
+- **Storage:** Supabase registries (versioned)
+- **Lifecycle:** Immutable once promoted
+- **Purpose:** Generalized capabilities reusable across clients
+
+**Key Insight:**
+> **The platform is allowed to remember conclusions without remembering materials, and allowed to create outcomes without absorbing them into its DNA.**
+
+**Classification Rule:**
+> **By purpose, not format:**
+> - Working Material = inputs used to reach conclusions
+> - Purpose-Bound Outcome = conclusions created for a decision or delivery
 
 ---
 

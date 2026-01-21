@@ -1,23 +1,22 @@
 """
-Materialization Policy Module
+Runtime Policies Module
 
-Defines protocols and abstractions for materialization policy evaluation.
+NOTE: Materialization policy has been moved to Smart City Primitives.
+This module is kept for backward compatibility but is deprecated.
 """
 
-from .materialization_policy_protocol import (
+# Materialization policy moved to Smart City Primitives
+# Import from new location for backward compatibility
+from symphainy_platform.civic_systems.smart_city.primitives.materialization_policy_primitives import (
     MaterializationDecision,
-    MaterializationPolicyProtocol
-)
-from .materialization_policy_abstraction import (
-    MaterializationPolicyAbstraction,
-    DEFAULT_POLICY,
-    MVP_POLICY_OVERRIDE
+    MaterializationPolicyStore,
+    MaterializationPolicyPrimitives,
+    DEFAULT_POLICY
 )
 
 __all__ = [
     "MaterializationDecision",
-    "MaterializationPolicyProtocol",
-    "MaterializationPolicyAbstraction",
+    "MaterializationPolicyStore",
+    "MaterializationPolicyPrimitives",
     "DEFAULT_POLICY",
-    "MVP_POLICY_OVERRIDE",
 ]

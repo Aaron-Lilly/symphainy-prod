@@ -99,6 +99,10 @@ class PublicWorksFoundationService:
         # Layer 0: Visual Generation Adapter
         self.visual_generation_adapter: Optional[Any] = None  # VisualGenerationAdapter
         
+        # Layer 0: LLM Adapters
+        self.openai_adapter: Optional[Any] = None  # OpenAIAdapter
+        self.huggingface_adapter: Optional[Any] = None  # HuggingFaceAdapter
+        
         # Layer 1: Infrastructure Abstractions
         self.state_abstraction: Optional[StateManagementAbstraction] = None
         self.service_discovery_abstraction: Optional[ServiceDiscoveryAbstraction] = None
@@ -266,13 +270,11 @@ class PublicWorksFoundationService:
         )
         supabase_anon_key = (
             self.config.get("supabase_anon_key") or
-            get_supabase_anon_key() or
-            (getattr(env, "SUPABASE_ANON_KEY", None) if hasattr(env, "SUPABASE_ANON_KEY") else None)
+            get_supabase_anon_key()
         )
         supabase_service_key = (
             self.config.get("supabase_service_key") or
-            get_supabase_service_key() or
-            (getattr(env, "SUPABASE_SERVICE_KEY", None) if hasattr(env, "SUPABASE_SERVICE_KEY") else None)
+            get_supabase_service_key()
         )
         supabase_jwks_url = self.config.get("supabase_jwks_url") or (getattr(env, "SUPABASE_JWKS_URL", None) if hasattr(env, "SUPABASE_JWKS_URL") else None)
         supabase_jwt_issuer = self.config.get("supabase_jwt_issuer") or (getattr(env, "SUPABASE_JWT_ISSUER", None) if hasattr(env, "SUPABASE_JWT_ISSUER") else None)
@@ -373,6 +375,79 @@ class PublicWorksFoundationService:
         self.visual_generation_adapter = VisualGenerationAdapter()
         self.logger.info("Visual Generation adapter created")
         
+        # LLM Adapters (OpenAI and HuggingFace)
+        from symphainy_platform.config.config_helper import (
+            get_openai_api_key,
+            get_huggingface_endpoint_url,
+            get_huggingface_api_key
+        )
+        from symphainy_platform.config.env_contract import get_env_contract
+        env = get_env_contract()
+        
+        # OpenAI adapter
+        openai_api_key = (
+            self.config.get("openai_api_key") or
+            get_openai_api_key() or
+            (getattr(env, "LLM_OPENAI_API_KEY", None) if hasattr(env, "LLM_OPENAI_API_KEY") else None) or
+            (getattr(env, "OPENAI_API_KEY", None) if hasattr(env, "OPENAI_API_KEY") else None)
+        )
+        openai_base_url = (
+            self.config.get("openai_base_url") or
+            (getattr(env, "OPENAI_BASE_URL", None) if hasattr(env, "OPENAI_BASE_URL") else None)
+        )
+        
+        if openai_api_key:
+            from .adapters.openai_adapter import OpenAIAdapter
+            try:
+                # Create a simple config dict for the adapter
+                openai_config = {
+                    "LLM_OPENAI_API_KEY": openai_api_key,
+                    "OPENAI_API_KEY": openai_api_key
+                }
+                self.openai_adapter = OpenAIAdapter(
+                    api_key=openai_api_key,
+                    base_url=openai_base_url,
+                    config_adapter=openai_config
+                )
+                self.logger.info("✅ OpenAI adapter created")
+            except Exception as e:
+                self.logger.warning(f"OpenAI adapter creation failed: {e}")
+        else:
+            self.logger.warning("OpenAI API key not found, OpenAI adapter not created")
+        
+        # HuggingFace adapter
+        hf_endpoint_url = (
+            self.config.get("huggingface_endpoint_url") or
+            get_huggingface_endpoint_url() or
+            (getattr(env, "HUGGINGFACE_EMBEDDINGS_ENDPOINT_URL", None) if hasattr(env, "HUGGINGFACE_EMBEDDINGS_ENDPOINT_URL") else None)
+        )
+        hf_api_key = (
+            self.config.get("huggingface_api_key") or
+            get_huggingface_api_key() or
+            (getattr(env, "HUGGINGFACE_EMBEDDINGS_API_KEY", None) if hasattr(env, "HUGGINGFACE_EMBEDDINGS_API_KEY") else None) or
+            (getattr(env, "HUGGINGFACE_API_KEY", None) if hasattr(env, "HUGGINGFACE_API_KEY") else None)
+        )
+        
+        if hf_endpoint_url and hf_api_key:
+            from .adapters.huggingface_adapter import HuggingFaceAdapter
+            try:
+                # Create a simple config dict for the adapter
+                hf_config = {
+                    "HUGGINGFACE_EMBEDDINGS_ENDPOINT_URL": hf_endpoint_url,
+                    "HUGGINGFACE_EMBEDDINGS_API_KEY": hf_api_key,
+                    "HUGGINGFACE_API_KEY": hf_api_key
+                }
+                self.huggingface_adapter = HuggingFaceAdapter(
+                    endpoint_url=hf_endpoint_url,
+                    api_key=hf_api_key,
+                    config_adapter=hf_config
+                )
+                self.logger.info("✅ HuggingFace adapter created")
+            except Exception as e:
+                self.logger.warning(f"HuggingFace adapter creation failed: {e}")
+        else:
+            self.logger.warning("HuggingFace configuration not found, HuggingFace adapter not created")
+        
         # Mainframe adapter (will be created in _create_abstractions after State Surface is available)
         
         # ArangoDB adapter
@@ -431,6 +506,10 @@ class PublicWorksFoundationService:
             arango_adapter=self.arango_adapter  # ArangoDB adapter for durable state
         )
         self.logger.info("State management abstraction created")
+        
+        # Ensure required ArangoDB collections exist for state management
+        if self.arango_adapter:
+            await self._ensure_state_collections()
         
         # Service discovery abstraction
         self.service_discovery_abstraction = ServiceDiscoveryAbstraction(
@@ -683,6 +762,35 @@ class PublicWorksFoundationService:
         
         self.logger.info("Parsing abstractions created with adapters connected")
     
+    async def _ensure_state_collections(self):
+        """
+        Ensure required ArangoDB collections exist for state management.
+        
+        This ensures infrastructure is ready before use, following the pattern
+        established for Supabase and other foundational databases.
+        
+        Raises:
+            RuntimeError: If collection creation fails (fail fast at startup)
+        """
+        if not self.arango_adapter:
+            return
+        
+        required_collections = ["state_data"]
+        
+        for collection_name in required_collections:
+            try:
+                if not await self.arango_adapter.collection_exists(collection_name):
+                    success = await self.arango_adapter.create_collection(collection_name)
+                    if success:
+                        self.logger.info(f"✅ Created ArangoDB collection: {collection_name}")
+                    else:
+                        raise RuntimeError(f"Failed to create ArangoDB collection: {collection_name}")
+                else:
+                    self.logger.debug(f"ArangoDB collection already exists: {collection_name}")
+            except Exception as e:
+                self.logger.error(f"Failed to ensure ArangoDB collection {collection_name}: {e}")
+                raise RuntimeError(f"Infrastructure initialization failed: could not create collection {collection_name}") from e
+    
     async def shutdown(self):
         """Shutdown all infrastructure components."""
         self.logger.info("Shutting down Public Works Foundation...")
@@ -923,3 +1031,21 @@ class PublicWorksFoundationService:
         # State Surface is part of Runtime, not Foundation
         # This method is a placeholder - State Surface should be passed via context
         return None
+    
+    def get_llm_adapter(self) -> Optional[Any]:
+        """
+        Get LLM adapter (OpenAI) for governed LLM access.
+        
+        Returns:
+            Optional[OpenAIAdapter]: OpenAI adapter or None
+        """
+        return self.openai_adapter
+    
+    def get_huggingface_adapter(self) -> Optional[Any]:
+        """
+        Get HuggingFace adapter for embedding generation.
+        
+        Returns:
+            Optional[HuggingFaceAdapter]: HuggingFace adapter or None
+        """
+        return self.huggingface_adapter

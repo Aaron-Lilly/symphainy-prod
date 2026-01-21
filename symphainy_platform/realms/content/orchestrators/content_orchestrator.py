@@ -27,6 +27,8 @@ from utilities import get_logger, generate_event_id, get_clock
 from symphainy_platform.runtime.intent_model import Intent, IntentFactory
 from symphainy_platform.runtime.execution_context import ExecutionContext
 from ..enabling_services.file_parser_service import FileParserService
+from ..enabling_services.deterministic_embedding_service import DeterministicEmbeddingService
+from ..enabling_services.embedding_service import EmbeddingService
 from symphainy_platform.foundations.public_works.protocols.ingestion_protocol import (
     IngestionRequest,
     IngestionResult,
@@ -59,6 +61,8 @@ class ContentOrchestrator:
         
         # Initialize enabling services with Public Works
         self.file_parser_service = FileParserService(public_works=public_works)
+        self.deterministic_embedding_service = DeterministicEmbeddingService(public_works=public_works)
+        self.embedding_service = EmbeddingService(public_works=public_works)
     
     async def handle_intent(
         self,
@@ -119,6 +123,8 @@ class ContentOrchestrator:
             return await self._handle_update_file_metadata(intent, context)
         elif intent_type == "parse_content":
             return await self._handle_parse_content(intent, context)
+        elif intent_type == "create_deterministic_embeddings":
+            return await self._handle_create_deterministic_embeddings(intent, context)
         elif intent_type == "extract_embeddings":
             return await self._handle_extract_embeddings(intent, context)
         elif intent_type == "get_parsed_file":
@@ -1260,7 +1266,7 @@ class ContentOrchestrator:
                         materialization_scope=materialization_scope,
                         materialization_backing_store=materialization_backing_store,
                         tenant_id=context.tenant_id,
-                        user_id=context.metadata.get("user_id", "system"),
+                        user_id=context.metadata.get("user_id") or "system",  # Use "system" as fallback
                         session_id=context.session_id,
                         file_reference=file_reference,
                         metadata=file_metadata or {}
@@ -1539,8 +1545,13 @@ class ContentOrchestrator:
         limit = intent.parameters.get("limit", 100)
         offset = intent.parameters.get("offset", 0)
         
-        # Query Supabase for files (filtered by workspace scope)
-        user_id = context.metadata.get("user_id")  # Get user_id from context for workspace filtering
+        # CRITICAL: Get user_id from context for workspace-scoped filtering
+        # Files are workspace-scoped (user_id, session_id, solution_id) for security
+        user_id = context.metadata.get("user_id")
+        if not user_id:
+            # Fallback: Try to get from intent metadata or use "system" as default
+            user_id = intent.metadata.get("user_id", "system")
+            self.logger.warning(f"⚠️ No user_id in context.metadata, using fallback: {user_id}")
         files = await self._list_files_from_supabase(
             tenant_id=tenant_id,
             session_id=session_id,
@@ -1709,20 +1720,22 @@ class ContentOrchestrator:
         session_id: Optional[str] = None,
         file_type: Optional[str] = None,
         limit: int = 100,
-        offset: int = 0
+        offset: int = 0,
+        user_id: Optional[str] = None  # NEW: Filter by user_id for workspace-scoped materialization
     ) -> List[Dict[str, Any]]:
         """
         List files from Supabase with filters.
         
         Args:
             tenant_id: Tenant identifier (may be string, will be converted to UUID for query)
-            session_id: Optional session identifier (not in schema, but kept for backward compatibility)
+            session_id: Optional session identifier (for workspace-scoped filtering via materialization_scope)
             file_type: Optional file type filter
             limit: Result limit
             offset: Pagination offset
+            user_id: Optional user_id for workspace-scoped filtering (files are scoped to user/session/solution)
         
         Returns:
-            List of file metadata dictionaries
+            List of file metadata dictionaries (filtered by workspace scope if user_id provided)
         """
         if not self.public_works:
             return []
@@ -1751,9 +1764,84 @@ class ContentOrchestrator:
             supabase_file_adapter = self.public_works.supabase_file_adapter
             if supabase_file_adapter:
                 try:
-                    # Query directly using service_key (bypasses RLS)
-                    result = supabase_file_adapter._client.table("project_files").select("*").eq("tenant_id", tenant_id_for_query).eq("deleted", False).execute()
+                    # Build query with workspace-scoped filtering
+                    query = supabase_file_adapter._client.table("project_files").select("*").eq("tenant_id", tenant_id_for_query).eq("deleted", False)
+                    
+                    # CRITICAL: Filter by workspace scope (materialization_scope JSONB field)
+                    # Workspace-scoped files are scoped to user_id, session_id, and solution_id
+                    # Note: PostgREST JSONB filtering uses -> for path access and @> for containment
+                    if user_id:
+                        # Convert user_id to UUID format for comparison (must match what's stored)
+                        import uuid as uuid_lib
+                        try:
+                            if isinstance(user_id, str):
+                                try:
+                                    user_id_uuid = uuid_lib.UUID(user_id)
+                                except ValueError:
+                                    user_id_uuid = uuid_lib.uuid5(uuid_lib.NAMESPACE_DNS, user_id)
+                                user_id_for_query = str(user_id_uuid)
+                            else:
+                                user_id_for_query = str(user_id)
+                        except Exception:
+                            user_id_for_query = user_id
+                        
+                        # Filter by materialization_scope JSONB field
+                        # Use PostgREST JSONB containment operator (@>) to check if materialization_scope contains user_id
+                        # materialization_scope structure: {"user_id": "...", "session_id": "...", "solution_id": "...", "scope_type": "workspace"}
+                        # We need to check if materialization_scope->>'user_id' matches our user_id
+                        # PostgREST doesn't support direct JSONB path filtering, so we'll filter in Python after fetch
+                        # OR use a raw SQL filter if available
+                        # For now, fetch all tenant files and filter in Python (less efficient but works)
+                        self.logger.debug(f"🔍 Filtering files by workspace scope: user_id={user_id_for_query}, session_id={session_id}")
+                    
+                    result = query.execute()
                     files = result.data if result.data else []
+                    
+                    # CRITICAL: Filter by workspace scope (materialization_scope JSONB field)
+                    # PostgREST doesn't easily support JSONB path filtering, so filter in Python
+                    if user_id:
+                        import uuid as uuid_lib
+                        try:
+                            if isinstance(user_id, str):
+                                try:
+                                    user_id_uuid = uuid_lib.UUID(user_id)
+                                except ValueError:
+                                    user_id_uuid = uuid_lib.uuid5(uuid_lib.NAMESPACE_DNS, user_id)
+                                user_id_for_query = str(user_id_uuid)
+                            else:
+                                user_id_for_query = str(user_id)
+                        except Exception:
+                            user_id_for_query = user_id
+                        
+                        # Filter files by materialization_scope->user_id
+                        # Only show files materialized for this user (workspace-scoped)
+                        filtered_files = []
+                        for file in files:
+                            materialization_scope = file.get("materialization_scope")
+                            if materialization_scope:
+                                # materialization_scope is a JSONB field (dict in Python)
+                                scope_user_id = materialization_scope.get("user_id")
+                                # Convert scope_user_id to string for comparison (it might be stored as string or UUID)
+                                scope_user_id_str = str(scope_user_id) if scope_user_id else None
+                                user_id_for_query_str = str(user_id_for_query)
+                                
+                                self.logger.debug(f"🔍 Comparing user_id: scope={scope_user_id_str}, query={user_id_for_query_str}")
+                                
+                                if scope_user_id_str == user_id_for_query_str:
+                                    # Also check session_id if provided (more specific scope)
+                                    if session_id:
+                                        scope_session_id = materialization_scope.get("session_id")
+                                        if scope_session_id == session_id:
+                                            filtered_files.append(file)
+                                            self.logger.debug(f"✅ File {file.get('uuid')} matches workspace scope")
+                                    else:
+                                        filtered_files.append(file)
+                                        self.logger.debug(f"✅ File {file.get('uuid')} matches user scope")
+                            else:
+                                # If no materialization_scope, skip (legacy files without workspace scope)
+                                self.logger.debug(f"⚠️ Skipping file {file.get('uuid')} - no materialization_scope (not workspace-scoped)")
+                        files = filtered_files
+                        self.logger.info(f"🔍 Workspace-scoped filtering: {len(files)} files for user_id={user_id_for_query}, session_id={session_id} (from {len(result.data) if result.data else 0} total files)")
                     
                     # Filter by file_type if provided
                     if file_type:
@@ -2504,35 +2592,101 @@ class ContentOrchestrator:
             ]
         }
     
+    async def _handle_create_deterministic_embeddings(
+        self,
+        intent: Intent,
+        context: ExecutionContext
+    ) -> Dict[str, Any]:
+        """Handle create_deterministic_embeddings intent."""
+        parsed_file_id = intent.parameters.get("parsed_file_id")
+        
+        if not parsed_file_id:
+            raise ValueError("parsed_file_id is required for create_deterministic_embeddings intent")
+        
+        # Get parsed file content
+        parsed_file = await self.file_parser_service.get_parsed_file(
+            parsed_file_id=parsed_file_id,
+            tenant_id=context.tenant_id,
+            context=context
+        )
+        
+        # Create deterministic embeddings
+        result = await self.deterministic_embedding_service.create_deterministic_embeddings(
+            parsed_file_id=parsed_file_id,
+            parsed_content=parsed_file,
+            context=context
+        )
+        
+        return {
+            "artifacts": {
+                "deterministic_embeddings_created": True,
+                "parsed_file_id": parsed_file_id,
+                "deterministic_embedding_id": result["deterministic_embedding_id"],
+                "schema_fingerprint": result["schema_fingerprint"],
+                "pattern_signature": result["pattern_signature"]
+            },
+            "events": [
+                {
+                    "type": "deterministic_embeddings_created",
+                    "parsed_file_id": parsed_file_id,
+                    "deterministic_embedding_id": result["deterministic_embedding_id"]
+                }
+            ]
+        }
+    
     async def _handle_extract_embeddings(
         self,
         intent: Intent,
         context: ExecutionContext
     ) -> Dict[str, Any]:
-        """Handle extract_embeddings intent."""
+        """
+        Handle extract_embeddings intent (semantic embeddings).
+        
+        Requires deterministic_embedding_id as input (users must create deterministic embeddings first).
+        """
         parsed_file_id = intent.parameters.get("parsed_file_id")
+        deterministic_embedding_id = intent.parameters.get("deterministic_embedding_id")
         
         if not parsed_file_id:
             raise ValueError("parsed_file_id is required for extract_embeddings intent")
         
+        if not deterministic_embedding_id:
+            raise ValueError(
+                "deterministic_embedding_id is required for extract_embeddings intent. "
+                "Please create deterministic embeddings first using create_deterministic_embeddings intent."
+            )
+        
+        # Validate deterministic embedding exists
+        deterministic_embedding = await self.deterministic_embedding_service.get_deterministic_embedding(
+            deterministic_embedding_id=deterministic_embedding_id,
+            context=context
+        )
+        
+        if not deterministic_embedding:
+            raise ValueError(f"Deterministic embedding not found: {deterministic_embedding_id}")
+        
         # Get file_id from parsed results (for lineage tracking)
         file_id = await self._get_file_id_from_parsed_result(parsed_file_id, context.tenant_id)
         
-        # For MVP: Return placeholder
-        # In full implementation: Create embeddings via EmbeddingService
-        embedding_id = generate_event_id()
-        arango_collection = "embeddings"
-        arango_key = embedding_id
+        # Create semantic embeddings via EmbeddingService
+        result = await self.embedding_service.create_semantic_embeddings(
+            deterministic_embedding_id=deterministic_embedding_id,
+            parsed_file_id=parsed_file_id,
+            context=context
+        )
+        
+        embedding_id = result.get("embedding_id")
+        embeddings_count = result.get("embeddings_count", 0)
         
         # Track embeddings in Supabase for lineage
         await self._track_embedding(
             embedding_id=embedding_id,
             parsed_file_id=parsed_file_id,
             file_id=file_id,
-            arango_collection=arango_collection,
-            arango_key=arango_key,
-            embedding_count=0,  # Will be updated when embeddings are actually created
-            model_name="placeholder",  # Will be updated when embeddings are actually created
+            arango_collection="structured_embeddings",
+            arango_key=embedding_id,
+            embedding_count=embeddings_count,
+            model_name="sentence-transformers/all-mpnet-base-v2",  # HuggingFace model
             tenant_id=context.tenant_id,
             context=context
         )
@@ -2541,13 +2695,18 @@ class ContentOrchestrator:
             "artifacts": {
                 "embeddings_created": True,
                 "parsed_file_id": parsed_file_id,
-                "embedding_id": embedding_id
+                "deterministic_embedding_id": deterministic_embedding_id,
+                "embedding_id": embedding_id,
+                "embeddings_count": embeddings_count,
+                "columns_processed": result.get("columns_processed", 0)
             },
             "events": [
                 {
                     "type": "embeddings_created",
                     "parsed_file_id": parsed_file_id,
-                    "embedding_id": embedding_id
+                    "deterministic_embedding_id": deterministic_embedding_id,
+                    "embedding_id": embedding_id,
+                    "embeddings_count": embeddings_count
                 }
             ]
         }
@@ -2940,3 +3099,238 @@ class ContentOrchestrator:
             self.logger.debug(f"Could not get file_id from parsed_result: {e}")
         
         return None
+    
+    def _define_soa_api_handlers(self) -> Dict[str, Any]:
+        """
+        Define Content Orchestrator SOA APIs.
+        
+        UNIFIED PATTERN: MCP Server automatically registers these as MCP Tools.
+        
+        Returns:
+            Dict of SOA API definitions with handlers, input schemas, and descriptions
+        """
+        return {
+            "ingest_file": {
+                "handler": self._handle_ingest_file_soa,
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "file_data": {
+                            "type": "object",
+                            "description": "File data (file_content as hex-encoded string, ui_name, file_type, etc.)",
+                            "properties": {
+                                "file_content": {"type": "string", "description": "Hex-encoded file content"},
+                                "ui_name": {"type": "string", "description": "User-friendly filename"},
+                                "file_type": {"type": "string", "description": "File type (e.g., 'pdf', 'csv')"},
+                                "mime_type": {"type": "string", "description": "MIME type"},
+                                "filename": {"type": "string", "description": "Original filename"}
+                            },
+                            "required": ["file_content", "ui_name"]
+                        },
+                        "ingestion_type": {
+                            "type": "string",
+                            "enum": ["upload", "edi", "api"],
+                            "description": "Ingestion type",
+                            "default": "upload"
+                        },
+                        "user_context": {
+                            "type": "object",
+                            "description": "Optional user context (includes workflow_id, session_id)"
+                        }
+                    },
+                    "required": ["file_data"]
+                },
+                "description": "Ingest a file for processing"
+            },
+            "parse_content": {
+                "handler": self._handle_parse_content_soa,
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "parsed_file_id": {
+                            "type": "string",
+                            "description": "File identifier (file_id) for parsing"
+                        },
+                        "parse_options": {
+                            "type": "object",
+                            "description": "Optional parsing options"
+                        },
+                        "user_context": {
+                            "type": "object",
+                            "description": "Optional user context"
+                        }
+                    },
+                    "required": ["parsed_file_id"]
+                },
+                "description": "Parse content from ingested file"
+            },
+            "extract_embeddings": {
+                "handler": self._handle_extract_embeddings_soa,
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "parsed_file_id": {
+                            "type": "string",
+                            "description": "Parsed file identifier"
+                        },
+                        "deterministic_embedding_id": {
+                            "type": "string",
+                            "description": "Deterministic embedding ID (required)"
+                        },
+                        "embedding_options": {
+                            "type": "object",
+                            "description": "Optional embedding options"
+                        },
+                        "user_context": {
+                            "type": "object",
+                            "description": "Optional user context"
+                        }
+                    },
+                    "required": ["parsed_file_id", "deterministic_embedding_id"]
+                },
+                "description": "Extract embeddings from parsed content"
+            }
+        }
+    
+    async def _handle_ingest_file_soa(
+        self,
+        intent: Optional[Intent] = None,
+        context: Optional[ExecutionContext] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Handle ingest_file SOA API (dual call pattern).
+        
+        Supports both intent-based and direct MCP tool calls.
+        """
+        # Handle both intent-based and direct call patterns
+        if intent and context:
+            # Called from intent handler
+            return await self._handle_ingest_file(intent, context)
+        else:
+            # Called from MCP tool (kwargs)
+            file_data = kwargs.get("file_data", {})
+            ingestion_type = kwargs.get("ingestion_type", "upload")
+            user_context = kwargs.get("user_context", {})
+            tenant_id = user_context.get("tenant_id", "default")
+            session_id = user_context.get("session_id", "default")
+            solution_id = user_context.get("solution_id", "default")
+            
+            # Create intent for ExecutionContext
+            from symphainy_platform.runtime.intent_model import IntentFactory
+            intent_obj = IntentFactory.create_intent(
+                intent_type="ingest_file",
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id,
+                parameters={
+                    "file_content": file_data.get("file_content"),
+                    "ui_name": file_data.get("ui_name"),
+                    "file_type": file_data.get("file_type", "unstructured"),
+                    "mime_type": file_data.get("mime_type", "application/octet-stream"),
+                    "filename": file_data.get("filename", file_data.get("ui_name")),
+                    "ingestion_type": ingestion_type
+                }
+            )
+            
+            exec_context = ExecutionContext(
+                execution_id=f"ingest_file_{ingestion_type}",
+                intent=intent_obj,
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id
+            )
+            
+            return await self._handle_ingest_file(intent_obj, exec_context)
+    
+    async def _handle_parse_content_soa(
+        self,
+        intent: Optional[Intent] = None,
+        context: Optional[ExecutionContext] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Handle parse_content SOA API (dual call pattern).
+        """
+        # Handle both intent-based and direct call patterns
+        if intent and context:
+            # Called from intent handler
+            return await self._handle_parse_content(intent, context)
+        else:
+            # Called from MCP tool (kwargs)
+            parsed_file_id = kwargs.get("parsed_file_id")  # This is actually file_id
+            parse_options = kwargs.get("parse_options", {})
+            user_context = kwargs.get("user_context", {})
+            tenant_id = user_context.get("tenant_id", "default")
+            session_id = user_context.get("session_id", "default")
+            solution_id = user_context.get("solution_id", "default")
+            
+            # Create intent for ExecutionContext
+            from symphainy_platform.runtime.intent_model import IntentFactory
+            intent_obj = IntentFactory.create_intent(
+                intent_type="parse_content",
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id,
+                parameters={
+                    "file_id": parsed_file_id,  # Content orchestrator expects file_id
+                    "parse_options": parse_options
+                }
+            )
+            
+            exec_context = ExecutionContext(
+                execution_id="parse_content",
+                intent=intent_obj,
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id
+            )
+            
+            return await self._handle_parse_content(intent_obj, exec_context)
+    
+    async def _handle_extract_embeddings_soa(
+        self,
+        intent: Optional[Intent] = None,
+        context: Optional[ExecutionContext] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Handle extract_embeddings SOA API (dual call pattern).
+        """
+        # Handle both intent-based and direct call patterns
+        if intent and context:
+            # Called from intent handler
+            return await self._handle_extract_embeddings(intent, context)
+        else:
+            # Called from MCP tool (kwargs)
+            parsed_file_id = kwargs.get("parsed_file_id")
+            deterministic_embedding_id = kwargs.get("deterministic_embedding_id")
+            embedding_options = kwargs.get("embedding_options", {})
+            user_context = kwargs.get("user_context", {})
+            tenant_id = user_context.get("tenant_id", "default")
+            session_id = user_context.get("session_id", "default")
+            solution_id = user_context.get("solution_id", "default")
+            
+            # Create intent for ExecutionContext
+            from symphainy_platform.runtime.intent_model import IntentFactory
+            intent_obj = IntentFactory.create_intent(
+                intent_type="extract_embeddings",
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id,
+                parameters={
+                    "parsed_file_id": parsed_file_id,
+                    "deterministic_embedding_id": deterministic_embedding_id,
+                    "embedding_options": embedding_options
+                }
+            )
+            
+            exec_context = ExecutionContext(
+                execution_id="extract_embeddings",
+                intent=intent_obj,
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id
+            )
+            
+            return await self._handle_extract_embeddings(intent_obj, exec_context)

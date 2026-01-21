@@ -5,6 +5,22 @@
 This document outlines how to test the new two-phase materialization flow:
 1. **Upload** → Creates boundary contract (pending materialization)
 2. **Save** → Authorizes materialization (active) and registers in materialization index
+3. **List** → Filters files by workspace scope (only saved files visible)
+
+## Quick Start: Comprehensive API Test
+
+Run the comprehensive API test script:
+```bash
+./test_two_phase_api.sh [BASE_URL]
+# Example: ./test_two_phase_api.sh http://35.215.64.103:8000
+```
+
+This script tests:
+- ✅ Health check
+- ✅ Upload (Phase 1) - Creates pending boundary contract
+- ✅ Save (Phase 2) - Authorizes materialization
+- ✅ List Files (Phase 3) - Workspace-scoped filtering
+- ✅ Error handling
 
 ## Prerequisites
 
@@ -297,6 +313,32 @@ WHERE pf.deleted = false
 ✅ Files only available for parsing after save
 ✅ Migration updates existing data correctly
 ✅ No breaking changes to existing functionality (backwards compatible)
+
+## Test Scripts
+
+### Comprehensive API Test
+**Script**: `./test_two_phase_api.sh`
+**Purpose**: End-to-end API testing of all endpoints
+**Tests**:
+- Health check endpoint
+- Upload file (Phase 1)
+- Save materialization (Phase 2)
+- List files (Phase 3)
+- Error handling
+
+**Usage**:
+```bash
+# Test against localhost
+./test_two_phase_api.sh
+
+# Test against remote server
+./test_two_phase_api.sh http://35.215.64.103:8000
+```
+
+### Smoke Test
+**Script**: `./smoke_test.sh`
+**Purpose**: Quick validation of critical path
+**Tests**: Upload → Save → List flow
 
 ## Known Issues / Notes
 

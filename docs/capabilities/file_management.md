@@ -16,7 +16,73 @@ File Management provides core operations for working with files in the platform:
 
 ## Available Intents
 
-### 1. Register File
+### 1. Save Materialization (Two-Phase Flow - Phase 2)
+
+**Intent:** `save_materialization`
+
+**Purpose:** Explicitly save (materialize) a file that was uploaded. This is the second phase of the two-phase materialization flow. Files must be saved before they are available for parsing and other activities.
+
+**Use Case:** After uploading a file (Phase 1), user must explicitly save it to authorize materialization and make it available for parsing.
+
+**Parameters:**
+```python
+{
+    "boundary_contract_id": "<contract_uuid>",  # Required - from upload response
+    "file_id": "<file_uuid>"  # Required - from upload response
+}
+```
+
+**Response:**
+```python
+{
+    "success": True,
+    "file_id": "<file_uuid>",
+    "boundary_contract_id": "<contract_uuid>",
+    "execution_id": "<execution_id>",
+    "artifacts": {
+        "materialization": {
+            "result_type": "materialization",
+            "semantic_payload": {
+                "boundary_contract_id": "<contract_uuid>",
+                "file_id": "<file_uuid>",
+                "materialization_type": "full_artifact",
+                "materialization_scope": {
+                    "user_id": "<user_id>",
+                    "session_id": "<session_id>",
+                    "solution_id": "<solution_id>",
+                    "scope_type": "workspace"
+                },
+                "status": "saved",
+                "available_for_parsing": True
+            }
+        }
+    },
+    "message": "File saved and available for parsing"
+}
+```
+
+**Example:**
+```python
+# After upload (Phase 1), get boundary_contract_id and file_id
+# Then call save_materialization (Phase 2)
+intent = IntentFactory.create_intent(
+    intent_type="save_materialization",
+    tenant_id="tenant_123",
+    session_id="session_456",
+    solution_id="solution_789",
+    parameters={
+        "boundary_contract_id": "contract-abc-123",
+        "file_id": "file-xyz-789"
+    }
+)
+result = await execution_manager.execute(intent)
+```
+
+**Note:** For MVP purposes, files must be explicitly saved after upload to enable parsing and other activities. This is part of the workspace-scoped materialization pattern.
+
+---
+
+### 2. Register File
 
 **Intent:** `register_file`
 
@@ -175,13 +241,15 @@ file_contents = result.artifacts["file_contents"]
 
 ---
 
-### 4. List Files
+### 5. List Files
 
 **Intent:** `list_files`
 
-**Purpose:** List files for a tenant/session with optional filtering
+**Purpose:** List files for a tenant/session with optional filtering. **Only returns saved files (workspace-scoped filtering).**
 
-**Use Case:** Display file list in UI, find files by type, paginate through files
+**Use Case:** Display file list in UI, find files by type, paginate through files. Only shows files that have been saved (materialized).
+
+**Security:** Files are filtered by workspace scope (user_id, session_id, solution_id). Users can only see files they've materialized.
 
 **Parameters:**
 ```python
@@ -236,7 +304,7 @@ files = result.artifacts["files"]
 
 ---
 
-### 5. Get File By ID
+### 6. Get File By ID
 
 **Intent:** `get_file_by_id`
 
@@ -285,13 +353,30 @@ file_info = result.artifacts
 
 ## Business Use Cases
 
-### Use Case 1: Display File List
-**Scenario:** User wants to see all their uploaded files
+### Use Case 1: Two-Phase File Upload and Save
+**Scenario:** User uploads a file and saves it for parsing
 
 **Flow:**
-1. Call `list_files` with tenant_id
+1. Upload file via `ingest_file` intent (Phase 1)
+   - Creates pending boundary contract
+   - Returns `boundary_contract_id` and `file_id`
+   - File status: `materialization_pending: true`
+2. User explicitly saves file via `save_materialization` intent (Phase 2)
+   - Authorizes materialization
+   - Updates contract status to `active`
+   - Registers file in materialization index
+   - File status: `available_for_parsing: true`
+3. File now appears in `list_files` and is available for parsing
+
+### Use Case 2: Display File List
+**Scenario:** User wants to see all their saved files
+
+**Flow:**
+1. Call `list_files` with tenant_id (only returns saved files)
 2. Display files in UI
 3. User clicks on file → Call `retrieve_file_metadata` to show details
+
+**Note:** Only saved files appear in the list (workspace-scoped filtering).
 
 ### Use Case 2: Verify File Exists
 **Scenario:** Before processing a file, verify it exists
@@ -301,7 +386,7 @@ file_info = result.artifacts
 2. Check if file exists
 3. If exists, proceed with processing
 
-### Use Case 3: Download File
+### Use Case 4: Download File
 **Scenario:** User wants to download a file
 
 **Flow:**
@@ -331,11 +416,32 @@ All intents return proper error responses:
 
 ---
 
+## Two-Phase Materialization Flow
+
+The file management capability implements a **two-phase materialization flow** for workspace-scoped security:
+
+1. **Phase 1: Upload** (`ingest_file` intent)
+   - Creates pending boundary contract
+   - File is uploaded but not yet materialized
+   - Status: `materialization_pending: true`
+
+2. **Phase 2: Save** (`save_materialization` intent)
+   - User explicitly saves the file
+   - Materialization is authorized
+   - File is registered in materialization index
+   - Status: `available_for_parsing: true`
+
+**Why Two-Phase?**
+- Explicit user control over materialization
+- Workspace-scoped security (user_id, session_id, solution_id)
+- Files only available for parsing after explicit save
+- Aligns with Data Boundary Contract architecture
+
 ## Related Capabilities
 
-- [Data Ingestion](data_ingestion.md) - Upload files
+- [Data Ingestion](data_ingestion.md) - Upload files (Phase 1)
 - [File Lifecycle](file_lifecycle.md) - Archive, restore, purge files
-- [File Parsing](file_parsing.md) - Parse file contents
+- [File Parsing](file_parsing.md) - Parse file contents (requires saved files)
 
 ---
 

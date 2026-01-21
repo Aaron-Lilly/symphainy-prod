@@ -17,9 +17,11 @@ SDKs may depend on:
 from .security_guard_sdk import SecurityGuardSDK
 from .traffic_cop_sdk import TrafficCopSDK
 from .post_office_sdk import PostOfficeSDK
+from .materialization_policy_sdk import MaterializationPolicySDK
 
 __all__ = [
     "SecurityGuardSDK",
     "TrafficCopSDK",
     "PostOfficeSDK",
+    "MaterializationPolicySDK",
 ]

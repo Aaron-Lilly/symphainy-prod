@@ -433,12 +433,27 @@ class FileStorageAbstraction(FileStorageProtocol):
             # Prepare materialization record data
             # Note: session_id is NOT a column in project_files (removed in 001 migration)
             # session_id is stored in materialization_scope JSONB field instead
+            
+            # Convert string IDs to UUIDs (database expects UUIDs)
+            import uuid as uuid_lib
+            def to_uuid(value: Optional[str]) -> Optional[str]:
+                """Convert string to UUID, generating deterministic UUID if not valid UUID format."""
+                if not value:
+                    return None
+                try:
+                    # Try to parse as UUID
+                    return str(uuid_lib.UUID(value))
+                except (ValueError, AttributeError):
+                    # Generate deterministic UUID from string (for test values like "test_tenant")
+                    namespace = uuid_lib.UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8')  # DNS namespace
+                    return str(uuid_lib.uuid5(namespace, str(value)))
+            
             materialization_data = {
                 "uuid": file_id,
-                "tenant_id": tenant_id,
-                "user_id": user_id,
+                "tenant_id": to_uuid(tenant_id),
+                "user_id": to_uuid(user_id),
                 # session_id REMOVED - not in schema, stored in materialization_scope JSONB instead
-                "boundary_contract_id": boundary_contract_id,
+                "boundary_contract_id": to_uuid(boundary_contract_id) if boundary_contract_id else None,
                 "representation_type": materialization_type,
                 "materialization_scope": materialization_scope,  # Contains session_id in JSONB
                 "materialization_backing_store": materialization_backing_store,
@@ -448,7 +463,7 @@ class FileStorageAbstraction(FileStorageProtocol):
                 "ui_name": metadata.get("ui_name") or metadata.get("file_name", "unknown"),
                 "file_type": metadata.get("file_type", "unstructured"),
                 "mime_type": metadata.get("mime_type", "application/octet-stream"),
-                "file_path": metadata.get("storage_location") or metadata.get("file_path"),
+                "file_path": metadata.get("storage_location") or metadata.get("file_path") or metadata.get("file_reference") or f"{tenant_id}/{file_id}/{metadata.get('ui_name', 'unknown')}",
                 "file_size": metadata.get("size") or metadata.get("file_size"),
                 "file_hash": metadata.get("file_hash"),
                 "ingestion_type": metadata.get("ingestion_type", "upload"),
@@ -487,15 +502,15 @@ class FileStorageAbstraction(FileStorageProtocol):
                 except Exception as schema_error:
                     # If schema doesn't have new fields yet, try without them
                     self.logger.warning(f"Schema error (may need migration): {schema_error}")
-                    # Try with basic fields only
+                    # Try with basic fields only (with UUID conversion)
                     basic_data = {
                         "uuid": file_id,
-                        "tenant_id": tenant_id,
-                        "user_id": user_id,
+                        "tenant_id": to_uuid(tenant_id),
+                        "user_id": to_uuid(user_id),
                         "ui_name": metadata.get("ui_name") or metadata.get("file_name", "unknown"),
                         "file_type": metadata.get("file_type", "unstructured"),
                         "mime_type": metadata.get("mime_type", "application/octet-stream"),
-                        "file_path": metadata.get("storage_location") or metadata.get("file_path"),
+                        "file_path": metadata.get("storage_location") or metadata.get("file_path") or metadata.get("file_reference") or f"{tenant_id}/{file_id}/{metadata.get('ui_name', 'unknown')}",
                         "file_size": metadata.get("size") or metadata.get("file_size"),
                         "deleted": False,
                         "updated_at": self.clock.now_iso()

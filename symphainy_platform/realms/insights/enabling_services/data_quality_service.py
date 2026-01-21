@@ -51,21 +51,28 @@ class DataQualityService:
         source_file_id: str,
         parser_type: str,
         tenant_id: str,
-        context: ExecutionContext
+        context: ExecutionContext,
+        deterministic_embedding_id: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         Assess data quality across parsing, data, and source dimensions.
         
         Combines:
         - Parsing results (from Content Realm)
-        - Embeddings (from ArangoDB)
+        - Deterministic embeddings (for schema/pattern validation)
+        - Semantic embeddings (from ArangoDB)
         - Source file metadata (from Supabase)
         
+        Calculates:
+        - Parsing confidence: Based on parsing quality metrics
+        - Embedding confidence: Based on deterministic embedding match quality
+        - Overall confidence: (parsing_confidence + embedding_confidence) / 2
+        
         Identifies:
-        - Parsing issues (missing fields, format mismatches)
-        - Data issues (faded documents, corrupted data)
-        - Source issues (copybook mismatches, format problems)
-        - Root cause (parsing vs data vs source)
+        - Bad scan (parsing confidence < threshold)
+        - Bad schema (embedding confidence < threshold)
+        - Missing fields
+        - Invalid data
         
         Args:
             parsed_file_id: Parsed file identifier
@@ -73,9 +80,10 @@ class DataQualityService:
             parser_type: Parser type (e.g., "mainframe", "csv", "json", "pdf")
             tenant_id: Tenant identifier
             context: Execution context
+            deterministic_embedding_id: Optional deterministic embedding ID (for embedding confidence)
         
         Returns:
-            Dict with quality assessment results
+            Dict with quality assessment results including confidence scores
         """
         self.logger.info(
             f"Assessing data quality: {parsed_file_id} (source: {source_file_id}, "
@@ -86,16 +94,33 @@ class DataQualityService:
             # Get parsing results from State Surface
             parsed_data = await self._get_parsed_data(parsed_file_id, context)
             
-            # Get embeddings from ArangoDB (if available)
+            # Get deterministic embeddings (for embedding confidence calculation)
+            deterministic_embedding = None
+            if deterministic_embedding_id:
+                deterministic_embedding = await self._get_deterministic_embedding(
+                    deterministic_embedding_id, context
+                )
+            
+            # Get semantic embeddings from ArangoDB (if available)
             embeddings = await self._get_embeddings(parsed_file_id, tenant_id, context)
             
             # Get source file metadata from Supabase (if available)
             source_metadata = await self._get_source_metadata(source_file_id, tenant_id, context)
             
-            # Assess parsing quality
+            # Assess parsing quality and calculate parsing confidence
             parsing_quality = await self._assess_parsing_quality(
                 parsed_data, parser_type, source_metadata
             )
+            parsing_confidence = self._calculate_parsing_confidence(parsing_quality)
+            
+            # Assess embedding quality and calculate embedding confidence
+            embedding_quality = await self._assess_embedding_quality(
+                parsed_data, deterministic_embedding, embeddings
+            )
+            embedding_confidence = self._calculate_embedding_confidence(embedding_quality)
+            
+            # Calculate overall confidence
+            overall_confidence = (parsing_confidence + embedding_confidence) / 2.0
             
             # Assess data quality
             data_quality = await self._assess_data_quality(
@@ -117,17 +142,28 @@ class DataQualityService:
                 parsing_quality, data_quality, source_quality
             )
             
+            # Identify issues based on confidence thresholds
+            issues = self._identify_confidence_issues(
+                parsing_confidence, embedding_confidence, overall_confidence
+            )
+            
             return {
                 "quality_assessment": {
                     "overall_quality": overall_quality,
+                    "overall_confidence": overall_confidence,
+                    "parsing_confidence": parsing_confidence,
+                    "embedding_confidence": embedding_confidence,
                     "parsing_quality": parsing_quality,
+                    "embedding_quality": embedding_quality,
                     "data_quality": data_quality,
                     "source_quality": source_quality,
-                    "root_cause_analysis": root_cause
+                    "root_cause_analysis": root_cause,
+                    "issues": issues
                 },
                 "parsed_file_id": parsed_file_id,
                 "source_file_id": source_file_id,
-                "parser_type": parser_type
+                "parser_type": parser_type,
+                "deterministic_embedding_id": deterministic_embedding_id
             }
             
         except Exception as e:
@@ -135,6 +171,9 @@ class DataQualityService:
             return {
                 "quality_assessment": {
                     "overall_quality": "unknown",
+                    "overall_confidence": 0.0,
+                    "parsing_confidence": 0.0,
+                    "embedding_confidence": 0.0,
                     "error": str(e)
                 },
                 "parsed_file_id": parsed_file_id,
@@ -476,3 +515,276 @@ class DataQualityService:
             return "good"
         
         return "unknown"
+    
+    async def _get_deterministic_embedding(
+        self,
+        deterministic_embedding_id: str,
+        context: ExecutionContext
+    ) -> Optional[Dict[str, Any]]:
+        """Get deterministic embedding from ArangoDB."""
+        if not self.public_works:
+            return None
+        
+        arango_adapter = self.public_works.get_arango_adapter()
+        if not arango_adapter:
+            return None
+        
+        try:
+            if await arango_adapter.collection_exists("deterministic_embeddings"):
+                document = await arango_adapter.get_document(
+                    collection="deterministic_embeddings",
+                    key=deterministic_embedding_id
+                )
+                return document
+        except Exception as e:
+            self.logger.debug(f"Could not retrieve deterministic embedding: {e}")
+        
+        return None
+    
+    async def _assess_embedding_quality(
+        self,
+        parsed_data: Optional[Dict[str, Any]],
+        deterministic_embedding: Optional[Dict[str, Any]],
+        embeddings: Optional[List[Dict[str, Any]]]
+    ) -> Dict[str, Any]:
+        """
+        Assess embedding quality using deterministic embeddings.
+        
+        Checks:
+        - Schema fingerprint match quality
+        - Pattern signature match quality
+        - Missing fields detection
+        """
+        issues = []
+        
+        if not deterministic_embedding:
+            return {
+                "status": "unknown",
+                "issues": [
+                    {
+                        "type": "no_deterministic_embedding",
+                        "description": "No deterministic embedding available for validation",
+                        "severity": "medium",
+                        "suggestion": "Create deterministic embeddings first"
+                    }
+                ]
+            }
+        
+        if not parsed_data:
+            return {
+                "status": "unknown",
+                "issues": [
+                    {
+                        "type": "no_parsed_data",
+                        "description": "No parsed data available for comparison",
+                        "severity": "high"
+                    }
+                ]
+            }
+        
+        # Extract schema from parsed data
+        parsed_schema = self._extract_schema_from_parsed_data(parsed_data)
+        deterministic_schema = deterministic_embedding.get("schema", [])
+        
+        # Check schema match
+        schema_match = self._compare_schemas(parsed_schema, deterministic_schema)
+        
+        if not schema_match["exact_match"]:
+            issues.append({
+                "type": "schema_mismatch",
+                "description": f"Schema mismatch: {schema_match.get('differences', [])}",
+                "severity": "high",
+                "suggestion": "Review schema definition or source data format"
+            })
+        
+        # Check pattern signature match
+        pattern_signature = deterministic_embedding.get("pattern_signature", {})
+        if pattern_signature:
+            pattern_match = self._validate_pattern_signature(parsed_data, pattern_signature)
+            if not pattern_match["valid"]:
+                issues.append({
+                    "type": "pattern_mismatch",
+                    "description": pattern_match.get("description", "Pattern signature validation failed"),
+                    "severity": "medium",
+                    "suggestion": "Data patterns may have changed or source data format differs"
+                })
+        
+        # Check for missing fields
+        missing_fields = self._detect_missing_fields(parsed_schema, deterministic_schema)
+        if missing_fields:
+            issues.append({
+                "type": "missing_fields",
+                "description": f"Missing fields: {', '.join(missing_fields)}",
+                "severity": "high",
+                "suggestion": "Check source data or schema definition"
+            })
+        
+        status = "good" if not issues else ("issues" if not any(i.get("severity") == "high" for i in issues) else "poor")
+        
+        return {
+            "status": status,
+            "issues": issues,
+            "schema_match": schema_match,
+            "pattern_match": pattern_match if pattern_signature else None
+        }
+    
+    def _extract_schema_from_parsed_data(self, parsed_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Extract schema from parsed data."""
+        schema = []
+        
+        metadata = parsed_data.get("metadata", {})
+        columns = metadata.get("columns", [])
+        
+        if columns:
+            for idx, col in enumerate(columns):
+                schema.append({
+                    "name": col.get("name", f"column_{idx}"),
+                    "type": col.get("type", "unknown"),
+                    "position": idx
+                })
+        else:
+            # Try to infer from data
+            data = parsed_data.get("data", [])
+            if isinstance(data, list) and len(data) > 0:
+                first_row = data[0]
+                if isinstance(first_row, dict):
+                    for idx, (key, value) in enumerate(first_row.items()):
+                        schema.append({
+                            "name": key,
+                            "type": type(value).__name__,
+                            "position": idx
+                        })
+        
+        return schema
+    
+    def _compare_schemas(
+        self,
+        parsed_schema: List[Dict[str, Any]],
+        deterministic_schema: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Compare parsed schema with deterministic schema."""
+        parsed_cols = {col["name"].lower(): col for col in parsed_schema}
+        det_cols = {col["name"].lower(): col for col in deterministic_schema}
+        
+        exact_match = parsed_cols == det_cols
+        
+        differences = []
+        if not exact_match:
+            missing_in_parsed = set(det_cols.keys()) - set(parsed_cols.keys())
+            missing_in_det = set(parsed_cols.keys()) - set(det_cols.keys())
+            
+            if missing_in_parsed:
+                differences.append(f"Missing in parsed: {', '.join(missing_in_parsed)}")
+            if missing_in_det:
+                differences.append(f"Extra in parsed: {', '.join(missing_in_det)}")
+        
+        return {
+            "exact_match": exact_match,
+            "differences": differences
+        }
+    
+    def _validate_pattern_signature(
+        self,
+        parsed_data: Dict[str, Any],
+        pattern_signature: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Validate parsed data against pattern signature."""
+        # Simplified validation - check if data types match
+        data = parsed_data.get("data", [])
+        if not data:
+            return {"valid": False, "description": "No data to validate"}
+        
+        # Basic validation: check if we have data for expected columns
+        first_row = data[0] if isinstance(data, list) else {}
+        expected_cols = set(pattern_signature.keys())
+        actual_cols = set(first_row.keys()) if isinstance(first_row, dict) else set()
+        
+        if expected_cols - actual_cols:
+            return {
+                "valid": False,
+                "description": f"Missing columns in data: {', '.join(expected_cols - actual_cols)}"
+            }
+        
+        return {"valid": True}
+    
+    def _detect_missing_fields(
+        self,
+        parsed_schema: List[Dict[str, Any]],
+        deterministic_schema: List[Dict[str, Any]]
+    ) -> List[str]:
+        """Detect fields that are in deterministic schema but missing in parsed schema."""
+        parsed_cols = {col["name"].lower() for col in parsed_schema}
+        det_cols = {col["name"].lower() for col in deterministic_schema}
+        
+        missing = det_cols - parsed_cols
+        return list(missing)
+    
+    def _calculate_parsing_confidence(self, parsing_quality: Dict[str, Any]) -> float:
+        """Calculate parsing confidence score (0.0-1.0)."""
+        status = parsing_quality.get("status", "unknown")
+        issues = parsing_quality.get("issues", [])
+        
+        if status == "good":
+            return 0.95
+        elif status == "issues":
+            # Reduce confidence based on number of issues
+            high_severity_count = sum(1 for i in issues if i.get("severity") == "high")
+            medium_severity_count = sum(1 for i in issues if i.get("severity") == "medium")
+            
+            confidence = 0.7 - (high_severity_count * 0.2) - (medium_severity_count * 0.1)
+            return max(0.0, confidence)
+        elif status in ["poor", "failed"]:
+            return 0.3
+        else:
+            return 0.5
+    
+    def _calculate_embedding_confidence(self, embedding_quality: Dict[str, Any]) -> float:
+        """Calculate embedding confidence score (0.0-1.0)."""
+        status = embedding_quality.get("status", "unknown")
+        issues = embedding_quality.get("issues", [])
+        schema_match = embedding_quality.get("schema_match", {})
+        
+        if status == "good" and schema_match.get("exact_match", False):
+            return 0.95
+        elif status == "issues":
+            # Reduce confidence based on issues
+            high_severity_count = sum(1 for i in issues if i.get("severity") == "high")
+            medium_severity_count = sum(1 for i in issues if i.get("severity") == "medium")
+            
+            # Schema match quality
+            schema_bonus = 0.3 if schema_match.get("exact_match", False) else 0.0
+            
+            confidence = 0.6 + schema_bonus - (high_severity_count * 0.2) - (medium_severity_count * 0.1)
+            return max(0.0, min(1.0, confidence))
+        elif status == "poor":
+            return 0.3
+        else:
+            return 0.5
+    
+    def _identify_confidence_issues(
+        self,
+        parsing_confidence: float,
+        embedding_confidence: float,
+        overall_confidence: float
+    ) -> List[Dict[str, Any]]:
+        """Identify issues based on confidence thresholds."""
+        issues = []
+        threshold = 0.7  # Confidence threshold
+        
+        if parsing_confidence < threshold:
+            issues.append({
+                "type": "bad_scan",
+                "description": f"Parsing confidence is low ({parsing_confidence:.2f})",
+                "severity": "high",
+                "suggestion": "Review parser configuration or source file format"
+            })
+        
+        if embedding_confidence < threshold:
+            issues.append({
+                "type": "bad_schema",
+                "description": f"Embedding confidence is low ({embedding_confidence:.2f})",
+                "severity": "high",
+                "suggestion": "Review schema definition or create new deterministic embeddings"
+            })
+        
+        return issues

@@ -164,21 +164,25 @@ class SemanticDataAbstraction(SemanticDataProtocol):
         self,
         query_embedding: List[float],
         filter_conditions: Optional[Dict[str, Any]] = None,
-        limit: int = 10
+        limit: int = 10,
+        similarity_threshold: Optional[float] = None
     ) -> List[Dict[str, Any]]:
         """
         Vector similarity search - pure infrastructure.
         
-        NOTE: Actual vector similarity calculation is infrastructure (ArangoDB vector search).
-        This method delegates to ArangoDB adapter for vector search.
+        Uses pluggable vector backend (ArangoDB by default) for similarity calculation.
+        This method delegates to the vector backend adapter for vector search.
+        The adapter can be swapped with other backends (Pinecone, Weaviate) that implement
+        the VectorBackendProtocol interface.
         
         Args:
             query_embedding: Query vector (embedding)
-            filter_conditions: Optional filter conditions
+            filter_conditions: Optional filter conditions (e.g., {"file_id": "..."})
             limit: Maximum number of results
+            similarity_threshold: Optional minimum similarity score (0.0 to 1.0)
         
         Returns:
-            List of matching embedding documents (with similarity scores if available)
+            List of matching embedding documents with similarity scores, sorted by similarity (highest first)
         """
         try:
             if not query_embedding or len(query_embedding) == 0:
@@ -186,19 +190,21 @@ class SemanticDataAbstraction(SemanticDataProtocol):
             
             filter_conditions = filter_conditions or {}
             
-            # TODO: Use ArangoDB vector search when available
-            # For now, return filtered results (vector similarity will be implemented
-            # when ArangoDB vector search is configured)
-            result = await self.arango.find_documents(
-                self.structured_embeddings_collection,
+            # Use ArangoDB vector search via adapter
+            # The adapter handles vector similarity calculation using ArangoDB functions
+            results = await self.arango.vector_search(
+                collection_name=self.structured_embeddings_collection,
+                query_vector=query_embedding,
+                vector_field="embedding",  # Field name in embedding documents
                 filter_conditions=filter_conditions,
-                limit=limit
+                limit=limit,
+                similarity_threshold=similarity_threshold
             )
             
-            self.logger.debug(f"Vector search returned {len(result)} results")
+            self.logger.debug(f"Vector search returned {len(results)} results")
             
-            # Return raw data
-            return result
+            # Return raw data with similarity scores
+            return results
             
         except Exception as e:
             self.logger.error(f"Failed to perform vector search: {e}", exc_info=True)

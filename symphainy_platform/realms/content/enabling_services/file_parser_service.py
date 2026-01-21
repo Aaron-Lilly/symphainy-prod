@@ -86,14 +86,33 @@ class FileParserService:
         """
         self.logger.info(f"Parsing file: {file_id} for tenant: {tenant_id}")
         
-        # Construct file reference if not provided
-        if not file_reference:
-            file_reference = f"file:{tenant_id}:{context.session_id}:{file_id}"
+        # Get file metadata - try multiple approaches
+        file_metadata = None
         
-        # Get file metadata from State Surface to determine file type
-        file_metadata = await context.state_surface.get_file_metadata(file_reference)
+        # First, try with provided file_reference
+        if file_reference:
+            file_metadata = await context.state_surface.get_file_metadata(file_reference)
+        
+        # If that fails, try to get file by UUID directly (from FileStorageAbstraction)
+        if not file_metadata and self.file_storage_abstraction:
+            try:
+                file_metadata = await self.file_storage_abstraction.get_file_by_uuid(file_id)
+                if file_metadata:
+                    # Construct file_reference from actual file metadata
+                    actual_session_id = file_metadata.get("session_id") or context.session_id
+                    file_reference = f"file:{tenant_id}:{actual_session_id}:{file_id}"
+                    self.logger.info(f"Found file by UUID, using session_id: {actual_session_id}")
+            except Exception as e:
+                self.logger.debug(f"File lookup by UUID failed: {e}")
+        
+        # If still not found, try constructing file_reference with context session_id as fallback
         if not file_metadata:
-            raise ValueError(f"File metadata not found: {file_reference}")
+            if not file_reference:
+                file_reference = f"file:{tenant_id}:{context.session_id}:{file_id}"
+            file_metadata = await context.state_surface.get_file_metadata(file_reference)
+        
+        if not file_metadata:
+            raise ValueError(f"File metadata not found for file_id: {file_id} (tried file_reference: {file_reference})")
         
         filename = file_metadata.get("filename", "")
         file_type_from_metadata = file_metadata.get("file_type", "unstructured")
@@ -189,6 +208,21 @@ class FileParserService:
         
         self.logger.info(f"File parsed successfully: {file_id} -> {parsed_file_id} ({parsing_type})")
         
+        # Include parsed data in result (for immediate use, also stored in parsed file)
+        parsed_data = None
+        if parsing_result.structured_data is not None:
+            parsed_data = parsing_result.structured_data
+        elif parsing_result.text_content:
+            parsed_data = parsing_result.text_content
+        
+        # Calculate record count if structured_data is a list
+        record_count = None
+        if isinstance(parsed_data, list):
+            record_count = len(parsed_data)
+        elif isinstance(parsed_data, dict):
+            # For dict, count might be in a 'records' or 'data' key, or count keys
+            record_count = len(parsed_data)
+        
         return {
             "parsed_file_id": parsed_file_id,
             "parsed_file_reference": parsed_file_reference,
@@ -196,6 +230,8 @@ class FileParserService:
             "parsing_status": "completed",
             "parsing_type": parsing_type,
             "format": parsing_type,
+            "parsed_data": parsed_data,  # Include parsed data in result
+            "record_count": record_count,
             "metadata": {
                 "text_content_length": len(parsing_result.text_content) if parsing_result.text_content else 0,
                 "has_structured_data": parsing_result.structured_data is not None,

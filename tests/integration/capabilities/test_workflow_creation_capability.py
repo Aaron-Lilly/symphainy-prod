@@ -27,6 +27,7 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 import httpx
+from tests.integration.capabilities.capability_test_helpers import get_valid_token
 
 # Import artifact retrieval helpers
 from tests.integration.execution.artifact_retrieval_helpers import (
@@ -81,25 +82,6 @@ def print_warning(message: str):
 def print_info(message: str):
     """Print info message."""
     print(f"{Colors.BLUE}ℹ️  {message}{Colors.RESET}")
-
-
-async def get_valid_token() -> Optional[str]:
-    """Get a valid authentication token."""
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S%f")
-        response = await client.post(
-            f"{API_BASE_URL}/api/auth/register",
-            json={
-                "email": f"test_workflow_{timestamp}@example.com",
-                "password": "TestPassword123!",
-                "name": "Test User"
-            },
-            headers=TEST_HEADERS
-        )
-        
-        if response.status_code == 200:
-            return response.json().get("access_token")
-        return None
 
 
 async def submit_intent(

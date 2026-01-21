@@ -107,6 +107,32 @@ This directory contains test files aligned with platform use cases for comprehen
 - **Fields**: Same as ASCII copybook with EBCDIC encoding marker
 - **Use Case**: Insurance Migration - Copybook reference for EBCDIC binary parsing
 
+#### `insurance_policy_comprehensive_ebcdic.bin`
+- **Type**: Binary (EBCDIC-encoded)
+- **Content**: Comprehensive insurance policy records with multiple record types
+- **Structure**: Matches `copybook_insurance_comprehensive_ebcdic.txt`
+- **Record Types**: 
+  - Header (H): File metadata, total records, source system
+  - Policy (P): Policy master records with full policy details
+  - Claim (C): Claim records linked to policies
+  - Beneficiary (B): Beneficiary records linked to policies
+  - Trailer (T): File summary, totals, checksum
+- **Use Case**: Insurance Demo - Comprehensive mainframe binary file parsing with multiple record types
+- **Parser**: Binary Parser with Copybook
+- **Generated**: 100 policies, ~155 claims, ~146 beneficiaries (440 total records)
+
+#### `copybook_insurance_comprehensive_ebcdic.txt`
+- **Type**: Text (Copybook definition)
+- **Content**: COBOL copybook for comprehensive EBCDIC binary files
+- **Fields**: 
+  - Header: Record type, sequence, file date/time, total records, source system
+  - Policy: Policy number, insured info, policy details, amounts, dates, status
+  - Claim: Policy number, claim number, claim details, amounts, status
+  - Beneficiary: Policy number, beneficiary info, relationship, percentage
+  - Trailer: Record type, totals, checksum
+- **Use Case**: Insurance Demo - Copybook reference for comprehensive binary parsing
+- **Record Length**: 150 bytes (fixed)
+
 ### Image Files
 
 #### `test_document.jpg`
@@ -147,8 +173,10 @@ This directory contains test files aligned with platform use cases for comprehen
   - `variable_life_insurance_policy.xlsx`
   - `insurance_policy_ascii.bin` + `copybook_insurance_ascii.txt`
   - `insurance_policy_ebcdic.bin` + `copybook_insurance_ebcdic.txt`
+  - `insurance_policy_comprehensive_ebcdic.bin` + `copybook_insurance_comprehensive_ebcdic.txt` ⭐ NEW
   - `workflow_data_migration.bpmn`
 - **Purpose**: Parse binary files with copybooks, design migration workflows
+- **Comprehensive Test Data**: The `insurance_policy_comprehensive_ebcdic.bin` file includes multiple record types (header, policy, claims, beneficiaries, trailer) for comprehensive testing
 
 ### Insurance Use Cases (General)
 - **Files**:

@@ -75,8 +75,11 @@ cd /home/founders/demoversion/symphainy_source_code
 # Install dependencies
 pip install -r requirements.txt
 
-# Start infrastructure
-docker-compose -f docker-compose.infrastructure.yml up -d
+# Start all services (see docs/VM_DEPLOYMENT_STARTUP_GUIDE.md for details)
+docker-compose up -d
+
+# Or use the startup script
+./scripts/startup.sh
 
 # Run tests
 pytest tests/ -v
@@ -86,6 +89,7 @@ pytest tests/ -v
 
 ## 📚 Documentation
 
+- **VM Deployment Startup Guide**: `docs/VM_DEPLOYMENT_STARTUP_GUIDE.md` - **Start here for deployment** - Complete guide for starting all containers
 - **Platform Overview**: `docs/PLATFORM_OVERVIEW.md` - Executive overview of platform capabilities
 - **Developer Guide**: `docs/00_START_HERE.md` - Developer entry point
 - **Architecture**: `docs/architecture/north_star.md` - Authoritative architecture guide

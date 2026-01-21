@@ -72,6 +72,7 @@ class JourneyRealm(RealmBase):
             "create_workflow",
             "analyze_coexistence",
             "create_blueprint"
+            # Note: create_solution_from_blueprint moved to Outcomes Realm
         ]
     
     async def handle_intent(

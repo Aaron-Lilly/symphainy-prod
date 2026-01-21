@@ -21,6 +21,11 @@ if str(project_root) not in sys.path:
 
 from typing import Dict, Any, Optional, List
 import uuid
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from symphainy_platform.runtime.intent_model import Intent
+    from symphainy_platform.runtime.execution_context import ExecutionContext
 
 from utilities import get_logger
 from symphainy_platform.runtime.intent_model import Intent
@@ -33,7 +38,10 @@ from ..enabling_services.guided_discovery_service import GuidedDiscoveryService
 from ..enabling_services.structured_analysis_service import StructuredAnalysisService
 from ..enabling_services.unstructured_analysis_service import UnstructuredAnalysisService
 from ..enabling_services.lineage_visualization_service import LineageVisualizationService
+from ..enabling_services.structured_extraction_service import StructuredExtractionService
 from ..agents.insights_liaison_agent import InsightsLiaisonAgent
+from symphainy_platform.civic_systems.artifact_plane.artifact_plane import ArtifactPlane
+from symphainy_platform.civic_systems.smart_city.sdk.data_steward_sdk import DataStewardSDK
 
 
 class InsightsOrchestrator:
@@ -68,6 +76,7 @@ class InsightsOrchestrator:
         self.structured_analysis_service = StructuredAnalysisService(public_works=public_works)
         self.unstructured_analysis_service = UnstructuredAnalysisService(public_works=public_works)
         self.lineage_visualization_service = LineageVisualizationService(public_works=public_works)
+        self.structured_extraction_service = StructuredExtractionService(public_works=public_works)
         self.insights_liaison_agent = InsightsLiaisonAgent(public_works=public_works)
     
     async def handle_intent(
@@ -109,6 +118,12 @@ class InsightsOrchestrator:
             return await self._handle_analyze_unstructured(intent, context)
         elif intent_type == "visualize_lineage":
             return await self._handle_visualize_lineage(intent, context)
+        elif intent_type == "extract_structured_data":
+            return await self._handle_extract_structured_data(intent, context)
+        elif intent_type == "discover_extraction_pattern":
+            return await self._handle_discover_extraction_pattern(intent, context)
+        elif intent_type == "create_extraction_config":
+            return await self._handle_create_extraction_config(intent, context)
         else:
             raise ValueError(f"Unknown intent type: {intent_type}")
     
@@ -270,6 +285,7 @@ class InsightsOrchestrator:
         parsed_file_id = intent.parameters.get("parsed_file_id")
         source_file_id = intent.parameters.get("source_file_id")
         parser_type = intent.parameters.get("parser_type", "unknown")
+        deterministic_embedding_id = intent.parameters.get("deterministic_embedding_id")
         
         if not parsed_file_id:
             raise ValueError("parsed_file_id is required for assess_data_quality intent")
@@ -283,20 +299,23 @@ class InsightsOrchestrator:
             source_file_id=source_file_id,
             parser_type=parser_type,
             tenant_id=context.tenant_id,
-            context=context
+            context=context,
+            deterministic_embedding_id=deterministic_embedding_id
         )
         
         return {
             "artifacts": {
                 "quality_assessment": quality_result.get("quality_assessment"),
                 "parsed_file_id": parsed_file_id,
-                "source_file_id": source_file_id
+                "source_file_id": source_file_id,
+                "deterministic_embedding_id": deterministic_embedding_id
             },
             "events": [
                 {
                     "type": "data_quality_assessed",
                     "parsed_file_id": parsed_file_id,
-                    "source_file_id": source_file_id
+                    "source_file_id": source_file_id,
+                    "deterministic_embedding_id": deterministic_embedding_id
                 }
             ]
         }
@@ -326,8 +345,8 @@ class InsightsOrchestrator:
             context=context
         )
         
-        # Track interpretation in Supabase for lineage
-        await self._track_interpretation(
+        # Track interpretation in Supabase for lineage and promote to Record of Fact
+        interpretation_uuid = await self._track_interpretation(
             parsed_file_id=parsed_file_id,
             interpretation_type="self_discovery",
             interpretation_result=discovery_result,
@@ -335,6 +354,16 @@ class InsightsOrchestrator:
             tenant_id=context.tenant_id,
             context=context
         )
+        
+        # Promote interpretation to Record of Fact
+        if interpretation_uuid and self.data_steward_sdk:
+            await self._promote_interpretation_to_record_of_fact(
+                interpretation_uuid=interpretation_uuid,
+                parsed_file_id=parsed_file_id,
+                interpretation_result=discovery_result,
+                tenant_id=context.tenant_id,
+                context=context
+            )
         
         return {
             "artifacts": {
@@ -383,8 +412,8 @@ class InsightsOrchestrator:
         # Get guide UUID from Supabase
         guide_uuid = await self._get_guide_uuid(guide_id, context.tenant_id)
         
-        # Track interpretation in Supabase for lineage
-        await self._track_interpretation(
+        # Track interpretation in Supabase for lineage and promote to Record of Fact
+        interpretation_uuid = await self._track_interpretation(
             parsed_file_id=parsed_file_id,
             interpretation_type="guided",
             interpretation_result=interpretation_result,
@@ -392,6 +421,16 @@ class InsightsOrchestrator:
             tenant_id=context.tenant_id,
             context=context
         )
+        
+        # Promote interpretation to Record of Fact
+        if interpretation_uuid and self.data_steward_sdk:
+            await self._promote_interpretation_to_record_of_fact(
+                interpretation_uuid=interpretation_uuid,
+                parsed_file_id=parsed_file_id,
+                interpretation_result=interpretation_result,
+                tenant_id=context.tenant_id,
+                context=context
+            )
         
         return {
             "artifacts": {
@@ -430,7 +469,7 @@ class InsightsOrchestrator:
         )
         
         # Track analysis in Supabase for lineage
-        await self._track_analysis(
+        analysis_uuid = await self._track_analysis(
             parsed_file_id=parsed_file_id,
             analysis_type="structured",
             analysis_result=analysis_result,
@@ -440,15 +479,45 @@ class InsightsOrchestrator:
             context=context
         )
         
+        # Register as Purpose-Bound Outcome in Artifact Plane
+        artifact_id = None
+        if self.artifact_plane:
+            try:
+                # Create artifact payload
+                artifact_payload = {
+                    "result_type": "structured_analysis",
+                    "analysis_result": analysis_result,
+                    "parsed_file_id": parsed_file_id
+                }
+                
+                artifact_result = await self.artifact_plane.create_artifact(
+                    artifact_type="analysis_report",
+                    artifact_id=f"structured_analysis_{parsed_file_id}",
+                    payload=artifact_payload,
+                    context=context,
+                    lifecycle_state="draft",
+                    owner="client",
+                    purpose="decision_support",  # Analysis reports support decisions
+                    source_artifact_ids=[parsed_file_id] if parsed_file_id else None
+                )
+                
+                artifact_id = artifact_result.get("artifact_id")
+                self.logger.info(f"✅ Structured analysis registered in Artifact Plane: {artifact_id}")
+            except Exception as e:
+                self.logger.warning(f"Failed to register structured analysis in Artifact Plane: {e}")
+        
         return {
             "artifacts": {
                 "structured_analysis": analysis_result,
-                "parsed_file_id": parsed_file_id
+                "parsed_file_id": parsed_file_id,
+                "artifact_id": artifact_id  # Include artifact_id reference
             },
             "events": [
                 {
                     "type": "structured_data_analyzed",
-                    "parsed_file_id": parsed_file_id
+                    "parsed_file_id": parsed_file_id,
+                    "artifact_id": artifact_id,
+                    "analysis_uuid": analysis_uuid
                 }
             ]
         }
@@ -481,7 +550,7 @@ class InsightsOrchestrator:
             agent_session_id = analysis_result["deep_dive"].get("session_id")
         
         # Track analysis in Supabase for lineage
-        await self._track_analysis(
+        analysis_uuid = await self._track_analysis(
             parsed_file_id=parsed_file_id,
             analysis_type="unstructured",
             analysis_result=analysis_result,
@@ -491,17 +560,48 @@ class InsightsOrchestrator:
             context=context
         )
         
+        # Register as Purpose-Bound Outcome in Artifact Plane
+        artifact_id = None
+        if self.artifact_plane:
+            try:
+                # Create artifact payload
+                artifact_payload = {
+                    "result_type": "unstructured_analysis",
+                    "analysis_result": analysis_result,
+                    "parsed_file_id": parsed_file_id,
+                    "deep_dive": deep_dive
+                }
+                
+                artifact_result = await self.artifact_plane.create_artifact(
+                    artifact_type="analysis_report",
+                    artifact_id=f"unstructured_analysis_{parsed_file_id}",
+                    payload=artifact_payload,
+                    context=context,
+                    lifecycle_state="draft",
+                    owner="client",
+                    purpose="decision_support",  # Analysis reports support decisions
+                    source_artifact_ids=[parsed_file_id] if parsed_file_id else None
+                )
+                
+                artifact_id = artifact_result.get("artifact_id")
+                self.logger.info(f"✅ Unstructured analysis registered in Artifact Plane: {artifact_id}")
+            except Exception as e:
+                self.logger.warning(f"Failed to register unstructured analysis in Artifact Plane: {e}")
+        
         return {
             "artifacts": {
                 "unstructured_analysis": analysis_result,
                 "parsed_file_id": parsed_file_id,
-                "deep_dive_initiated": deep_dive
+                "deep_dive_initiated": deep_dive,
+                "artifact_id": artifact_id  # Include artifact_id reference
             },
             "events": [
                 {
                     "type": "unstructured_data_analyzed",
                     "parsed_file_id": parsed_file_id,
-                    "deep_dive": deep_dive
+                    "deep_dive": deep_dive,
+                    "artifact_id": artifact_id,
+                    "analysis_uuid": analysis_uuid
                 }
             ]
         }
@@ -523,15 +623,44 @@ class InsightsOrchestrator:
             context=context
         )
         
+        # Register visualization as Purpose-Bound Outcome in Artifact Plane
+        artifact_id = None
+        if self.artifact_plane:
+            try:
+                # Create artifact payload
+                artifact_payload = {
+                    "result_type": "lineage_visualization",
+                    "visualization_result": visualization_result,
+                    "file_id": file_id
+                }
+                
+                artifact_result = await self.artifact_plane.create_artifact(
+                    artifact_type="visualization",
+                    artifact_id=f"lineage_viz_{file_id}",
+                    payload=artifact_payload,
+                    context=context,
+                    lifecycle_state="draft",
+                    owner="client",
+                    purpose="delivery",  # Visualizations are deliverables
+                    source_artifact_ids=[file_id] if file_id else None
+                )
+                
+                artifact_id = artifact_result.get("artifact_id")
+                self.logger.info(f"✅ Lineage visualization registered in Artifact Plane: {artifact_id}")
+            except Exception as e:
+                self.logger.warning(f"Failed to register lineage visualization in Artifact Plane: {e}")
+        
         return {
             "artifacts": {
                 "lineage_visualization": visualization_result,
-                "file_id": file_id
+                "file_id": file_id,
+                "artifact_id": artifact_id  # Include artifact_id reference
             },
             "events": [
                 {
                     "type": "lineage_visualized",
-                    "file_id": file_id
+                    "file_id": file_id,
+                    "artifact_id": artifact_id
                 }
             ]
         }
@@ -630,12 +759,16 @@ class InsightsOrchestrator:
             )
             
             if result.get("success"):
-                self.logger.debug(f"Tracked interpretation in Supabase: {parsed_file_id}")
+                interpretation_uuid = interpretation_record.get("id")
+                self.logger.debug(f"Tracked interpretation in Supabase: {parsed_file_id} (UUID: {interpretation_uuid})")
+                return interpretation_uuid
             else:
                 self.logger.warning(f"Failed to track interpretation: {result.get('error')}")
+                return None
                 
         except Exception as e:
             self.logger.error(f"Failed to track interpretation: {e}", exc_info=True)
+            return None
     
     async def _track_analysis(
         self,
@@ -646,7 +779,7 @@ class InsightsOrchestrator:
         agent_session_id: Optional[str],
         tenant_id: str,
         context: ExecutionContext
-    ):
+    ) -> Optional[str]:
         """
         Track analysis in Supabase for lineage tracking.
         
@@ -796,3 +929,399 @@ class InsightsOrchestrator:
             self.logger.debug(f"Could not get guide UUID: {e}")
         
         return None
+    
+    async def _promote_interpretation_to_record_of_fact(
+        self,
+        interpretation_uuid: str,
+        parsed_file_id: str,
+        interpretation_result: Dict[str, Any],
+        tenant_id: str,
+        context: ExecutionContext
+    ) -> Optional[str]:
+        """
+        Promote interpretation to Record of Fact.
+        
+        Interpretations are persistent meaning (Records of Fact), not temporary Working Materials.
+        They should be promoted immediately after creation.
+        
+        Args:
+            interpretation_uuid: Interpretation UUID from Supabase
+            parsed_file_id: Parsed file identifier
+            interpretation_result: Full interpretation results
+            tenant_id: Tenant identifier
+            context: Execution context
+        
+        Returns:
+            Record of Fact ID or None if promotion failed
+        """
+        if not self.data_steward_sdk:
+            self.logger.debug("Data Steward SDK not available, skipping promotion to Record of Fact")
+            return None
+        
+        if not self.public_works:
+            self.logger.debug("Public Works not available, skipping promotion to Record of Fact")
+            return None
+        
+        supabase_adapter = self.public_works.get_supabase_adapter()
+        if not supabase_adapter:
+            self.logger.debug("Supabase adapter not available, skipping promotion to Record of Fact")
+            return None
+        
+        try:
+            # Get file_id and boundary contract info
+            file_id, parsed_result_uuid, embedding_uuid = await self._get_lineage_ids(
+                parsed_file_id, tenant_id
+            )
+            
+            # Extract interpretation content
+            interpretation_data = interpretation_result.get("interpretation", interpretation_result)
+            
+            # Promote to Record of Fact
+            record_id = await self.data_steward_sdk.promote_to_record_of_fact(
+                source_file_id=file_id or parsed_file_id,
+                source_boundary_contract_id="system",  # System-generated interpretation
+                tenant_id=tenant_id,
+                record_type="interpretation",
+                record_content=interpretation_data,
+                interpretation_id=interpretation_uuid,
+                confidence_score=interpretation_data.get("confidence_score"),
+                promoted_by="system",
+                promotion_reason="Interpretation created - persistent meaning",
+                supabase_adapter=supabase_adapter
+            )
+            
+            if record_id:
+                self.logger.info(f"✅ Interpretation promoted to Record of Fact: {record_id}")
+                return record_id
+            else:
+                self.logger.warning(f"Failed to promote interpretation to Record of Fact")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Failed to promote interpretation to Record of Fact: {e}", exc_info=True)
+            return None
+    
+    async def _handle_extract_structured_data(
+        self,
+        intent: Optional[Intent] = None,
+        context: Optional[ExecutionContext] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Handle extract_structured_data intent (SOA API handler).
+        
+        Can be called from:
+        - Intent handler (intent + context provided)
+        - MCP tool (kwargs provided, need to create context)
+        
+        Args:
+            intent: Optional Intent (if called from intent handler)
+            context: Optional Execution context
+            **kwargs: Parameters (pattern, data_source, extraction_config_id, user_context)
+        
+        Returns:
+            Dict with extraction result
+        """
+        # Handle both intent-based and direct call patterns
+        if intent and context:
+            # Called from intent handler
+            pattern = intent.parameters.get("pattern")
+            data_source = intent.parameters.get("data_source", {})
+            extraction_config_id = intent.parameters.get("extraction_config_id")
+            tenant_id = context.tenant_id
+            exec_context = context
+        else:
+            # Called from MCP tool (kwargs)
+            pattern = kwargs.get("pattern")
+            data_source = kwargs.get("data_source", {})
+            extraction_config_id = kwargs.get("extraction_config_id")
+            user_context = kwargs.get("user_context", {})
+            tenant_id = user_context.get("tenant_id", "default")
+            session_id = user_context.get("session_id", "default")
+            solution_id = user_context.get("solution_id", "default")
+            
+            # Create intent for ExecutionContext
+            from symphainy_platform.runtime.intent_model import IntentFactory
+            intent = IntentFactory.create_intent(
+                intent_type="extract_structured_data",
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id,
+                parameters={
+                    "pattern": pattern,
+                    "data_source": data_source,
+                    "extraction_config_id": extraction_config_id
+                }
+            )
+            
+            exec_context = ExecutionContext(
+                execution_id=f"extract_{pattern}",
+                intent=intent,
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id
+            )
+        
+        self.logger.info(f"Handling extract_structured_data: pattern={pattern}")
+        
+        if not pattern:
+            raise ValueError("pattern parameter required")
+        
+        # Call structured extraction service
+        result = await self.structured_extraction_service.extract_structured_data(
+            pattern=pattern,
+            data_source=data_source,
+            extraction_config_id=extraction_config_id,
+            tenant_id=tenant_id,
+            context=exec_context
+        )
+        
+        # If called from intent handler, return artifacts format
+        if intent and context:
+            artifact = create_structured_artifact(
+                artifact_type="extraction_result",
+                data=result,
+                metadata={
+                    "pattern": pattern,
+                    "extraction_config_id": extraction_config_id,
+                    "tenant_id": tenant_id
+                }
+            )
+            return {
+                "artifacts": [artifact],
+                "events": []
+            }
+        else:
+            # Called from MCP tool, return result directly
+            return result
+    
+    async def _handle_discover_extraction_pattern(
+        self,
+        intent: Optional[Intent] = None,
+        context: Optional[ExecutionContext] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Handle discover_extraction_pattern intent (SOA API handler).
+        
+        Args:
+            intent: Optional Intent (if called from intent handler)
+            context: Optional Execution context
+            **kwargs: Parameters (data_source, user_context)
+        
+        Returns:
+            Dict with discovered pattern
+        """
+        # Handle both intent-based and direct call patterns
+        if intent and context:
+            data_source = intent.parameters.get("data_source", {})
+            tenant_id = context.tenant_id
+            exec_context = context
+        else:
+            data_source = kwargs.get("data_source", {})
+            user_context = kwargs.get("user_context", {})
+            tenant_id = user_context.get("tenant_id", "default")
+            session_id = user_context.get("session_id", "default")
+            solution_id = user_context.get("solution_id", "default")
+            
+            # Create intent for ExecutionContext
+            from symphainy_platform.runtime.intent_model import IntentFactory
+            intent = IntentFactory.create_intent(
+                intent_type="discover_extraction_pattern",
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id,
+                parameters={"data_source": data_source}
+            )
+            
+            exec_context = ExecutionContext(
+                execution_id="discover_pattern",
+                intent=intent,
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id
+            )
+        
+        self.logger.info("Handling discover_extraction_pattern")
+        
+        # Call structured extraction service
+        result = await self.structured_extraction_service.discover_extraction_pattern(
+            data_source=data_source,
+            tenant_id=tenant_id,
+            context=exec_context
+        )
+        
+        # If called from intent handler, return artifacts format
+        if intent and context:
+            artifact = create_structured_artifact(
+                artifact_type="discovered_pattern",
+                data=result,
+                metadata={"tenant_id": tenant_id}
+            )
+            return {
+                "artifacts": [artifact],
+                "events": []
+            }
+        else:
+            # Called from MCP tool, return result directly
+            return result
+    
+    async def _handle_create_extraction_config(
+        self,
+        intent: Optional[Intent] = None,
+        context: Optional[ExecutionContext] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """
+        Handle create_extraction_config intent (SOA API handler).
+        
+        Args:
+            intent: Optional Intent (if called from intent handler)
+            context: Optional Execution context
+            **kwargs: Parameters (target_model_file_id, user_context)
+        
+        Returns:
+            Dict with created config
+        """
+        # Handle both intent-based and direct call patterns
+        if intent and context:
+            target_model_file_id = intent.parameters.get("target_model_file_id")
+            tenant_id = context.tenant_id
+            exec_context = context
+        else:
+            target_model_file_id = kwargs.get("target_model_file_id")
+            user_context = kwargs.get("user_context", {})
+            tenant_id = user_context.get("tenant_id", "default")
+            session_id = user_context.get("session_id", "default")
+            solution_id = user_context.get("solution_id", "default")
+            
+            # Create intent for ExecutionContext
+            from symphainy_platform.runtime.intent_model import IntentFactory
+            intent = IntentFactory.create_intent(
+                intent_type="create_extraction_config",
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id,
+                parameters={"target_model_file_id": target_model_file_id}
+            )
+            
+            exec_context = ExecutionContext(
+                execution_id="create_extraction_config",
+                intent=intent,
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id
+            )
+        
+        self.logger.info(f"Handling create_extraction_config: target_model={target_model_file_id}")
+        
+        if not target_model_file_id:
+            raise ValueError("target_model_file_id parameter required")
+        
+        # Call structured extraction service
+        result = await self.structured_extraction_service.create_extraction_config_from_target_model(
+            target_model_file_id=target_model_file_id,
+            tenant_id=tenant_id,
+            context=exec_context
+        )
+        
+        # If called from intent handler, return artifacts format
+        if intent and context:
+            artifact = create_structured_artifact(
+                artifact_type="extraction_config",
+                data=result,
+                metadata={
+                    "target_model_file_id": target_model_file_id,
+                    "tenant_id": tenant_id
+                }
+            )
+            return {
+                "artifacts": [artifact],
+                "events": []
+            }
+        else:
+            # Called from MCP tool, return result directly
+            return result
+    
+    def _define_soa_api_handlers(self) -> Dict[str, Any]:
+        """
+        Define Insights Orchestrator SOA APIs.
+        
+        UNIFIED PATTERN: MCP Server automatically registers these as MCP Tools.
+        
+        Returns:
+            Dict of SOA API definitions with handlers, input schemas, and descriptions
+        """
+        return {
+            "extract_structured_data": {
+                "handler": self._handle_extract_structured_data,
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "pattern": {
+                            "type": "string",
+                            "enum": ["variable_life_policy_rules", "aar", "pso", "custom"],
+                            "description": "Extraction pattern name"
+                        },
+                        "data_source": {
+                            "type": "object",
+                            "description": "Data source (parsed_file_id, embeddings, etc.)",
+                            "properties": {
+                                "parsed_file_id": {"type": "string"},
+                                "session_id": {"type": "string"}
+                            }
+                        },
+                        "extraction_config_id": {
+                            "type": ["string", "null"],
+                            "description": "Optional custom extraction config ID"
+                        },
+                        "user_context": {
+                            "type": "object",
+                            "description": "Optional user context (includes workflow_id, session_id)"
+                        }
+                    },
+                    "required": ["pattern", "data_source"]
+                },
+                "description": "Extract structured data using pre-configured or custom pattern"
+            },
+            "discover_extraction_pattern": {
+                "handler": self._handle_discover_extraction_pattern,
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "data_source": {
+                            "type": "object",
+                            "description": "Data source (parsed_file_id, embeddings, etc.)",
+                            "properties": {
+                                "parsed_file_id": {"type": "string"},
+                                "session_id": {"type": "string"}
+                            }
+                        },
+                        "user_context": {
+                            "type": "object",
+                            "description": "Optional user context"
+                        }
+                    },
+                    "required": ["data_source"]
+                },
+                "description": "Discover extraction pattern from data (freeform analysis)"
+            },
+            "create_extraction_config": {
+                "handler": self._handle_create_extraction_config,
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "target_model_file_id": {
+                            "type": "string",
+                            "description": "Parsed file ID of target data model"
+                        },
+                        "user_context": {
+                            "type": "object",
+                            "description": "Optional user context"
+                        }
+                    },
+                    "required": ["target_model_file_id"]
+                },
+                "description": "Create extraction configuration from target data model"
+            }
+        }

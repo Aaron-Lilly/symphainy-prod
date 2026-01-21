@@ -69,6 +69,7 @@ They define:
 2. **Smart City** – applies governance, policy, coordination patterns (includes Curator role for capability registry)
 3. **Agentic System** – enables reasoning, collaboration, and assistance
 4. **Experience** – translates interactions into intents, streams execution updates
+5. **Artifact Plane** – manages Purpose-Bound Outcomes (roadmaps, POCs, blueprints, SOPs, reports)
 
 **Note:** Experience is both Layer 1 (where intent is expressed) and a Civic System (how intent expression works). Curator is a Smart City Role, not a separate Civic System.
 

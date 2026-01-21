@@ -232,6 +232,8 @@ export interface FileMetadata {
   created_at: string;
   updated_at: string;
   deleted: boolean;
+  boundary_contract_id?: string;  // NEW: Boundary contract ID for materialization
+  materialization_pending?: boolean;  // NEW: Whether materialization is pending (needs save)
 }
 
 // API Upload request type (for backend communication)

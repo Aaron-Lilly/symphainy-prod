@@ -24,8 +24,10 @@ export interface ContentFile {
   type: string;
   size: number;
   uploadDate: string;
-  status?: string; // File status: "uploaded", "parsed", "embedded"
+  status?: string; // File status: "uploaded", "parsed", "embedded", "pending"
   metadata?: any;
+  boundary_contract_id?: string;  // NEW: Boundary contract ID
+  materialization_pending?: boolean;  // NEW: Whether materialization is pending
 }
 
 export interface UploadResponse {
@@ -33,6 +35,16 @@ export interface UploadResponse {
   file?: ContentFile;
   file_id?: string;
   file_reference?: string;
+  boundary_contract_id?: string;  // NEW: Boundary contract ID from upload
+  materialization_pending?: boolean;  // NEW: Whether materialization is pending
+  error?: string;
+}
+
+export interface SaveMaterializationResponse {
+  success: boolean;
+  file_id?: string;
+  boundary_contract_id?: string;
+  message?: string;
   error?: string;
 }
 
@@ -162,19 +174,52 @@ export class ContentAPIManager {
       // Track execution
       platformState.trackExecution(executionId);
 
-      // Wait for execution to complete (or return immediately and let UI poll)
-      // For MVP, we'll return immediately and let the UI track execution status
+      // Wait for execution to complete to get boundary_contract_id
+      // Poll execution status to get the result with boundary_contract_id
+      const maxAttempts = 30; // Wait up to 15 seconds (30 * 500ms)
+      let attempts = 0;
+      let boundaryContractId: string | undefined;
+      let materializationPending: boolean = true;
+      
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms
+        
+        const status = await platformState.getExecutionStatus(executionId);
+        
+        if (status?.status === "completed") {
+          // Extract boundary_contract_id from execution artifacts
+          const fileArtifact = status.artifacts?.file;
+          if (fileArtifact?.semantic_payload) {
+            boundaryContractId = fileArtifact.semantic_payload.boundary_contract_id;
+            materializationPending = fileArtifact.semantic_payload.materialization_pending === true;
+          }
+          break;
+        } else if (status?.status === "failed") {
+          throw new Error(status.error || "File upload execution failed");
+        }
+        
+        attempts++;
+      }
+
+      // If we didn't get boundary_contract_id, it's not critical for MVP
+      // The file was uploaded, but we may need to handle this case
+      if (!boundaryContractId && attempts >= maxAttempts) {
+        console.warn("Upload completed but boundary_contract_id not found in execution result");
+      }
+
       const contentFile: ContentFile = {
         id: fileId,
         name: uploadData.ui_name || file.name,
         type: file.type,
         size: file.size,
         uploadDate: new Date().toISOString(),
-        status: "uploaded",
+        status: materializationPending ? "pending" : "uploaded",
         metadata: {
           file_id: fileId,
           file_reference: fileReference,
           execution_id: executionId,
+          boundary_contract_id: boundaryContractId,
+          materialization_pending: materializationPending,
           ...uploadData,
         },
       };
@@ -184,6 +229,8 @@ export class ContentAPIManager {
         file: contentFile,
         file_id: fileId,
         file_reference: fileReference,
+        boundary_contract_id: boundaryContractId,
+        materialization_pending: materializationPending,
       };
     } catch (error) {
       console.error("Error uploading file:", error);
@@ -195,49 +242,138 @@ export class ContentAPIManager {
   }
 
   /**
-   * List files
+   * Save materialization (save_materialization intent)
    * 
-   * Flow: Query State Surface via Runtime (or use existing endpoint for MVP)
+   * Explicitly save (materialize) a file that was uploaded.
+   * This is the second phase of the two-phase materialization flow.
+   * 
+   * Flow: Direct API call to /api/content/save_materialization
    */
-  async listFiles(): Promise<ContentFile[]> {
+  async saveMaterialization(
+    boundaryContractId: string,
+    fileId: string
+  ): Promise<SaveMaterializationResponse> {
     try {
-      // For MVP, we'll use the existing endpoint
-      // In full implementation, this would query State Surface via Runtime
-      const { getApiEndpointUrl } = require('@/shared/config/api-config');
-      const url = getApiEndpointUrl('/api/v1/content-pillar/dashboard-files');
+      const platformState = this.getPlatformState();
       
+      if (!platformState.state.session.sessionId || !platformState.state.session.tenantId) {
+        throw new Error("Session required to save materialization");
+      }
+
+      if (!boundaryContractId || !fileId) {
+        throw new Error("boundary_contract_id and file_id are required");
+      }
+
+      // Call save_materialization endpoint directly
+      const { getApiEndpointUrl } = require('@/shared/config/api-config');
+      const url = getApiEndpointUrl(
+        `/api/content/save_materialization?boundary_contract_id=${encodeURIComponent(boundaryContractId)}&file_id=${encodeURIComponent(fileId)}&tenant_id=${encodeURIComponent(platformState.state.session.tenantId)}`
+      );
+
+      // Get user_id from auth context (should be available in platform state or auth)
+      const user_id = platformState.state.session.userId || "system";
+      const session_id = platformState.state.session.sessionId;
+
       const response = await fetch(url, {
-        method: 'GET',
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'x-user-id': user_id,
+          'x-session-id': session_id,
         },
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to list files: ${response.statusText}`);
+        const error = await response.json().catch(() => ({ detail: 'Save materialization failed' }));
+        throw new Error(error.detail || `Save materialization failed: ${response.statusText}`);
       }
 
       const data = await response.json();
-      const backendFiles = data.files || [];
 
-      // Map backend response to ContentFile format
-      return backendFiles.map((file: any) => ({
-        id: file.uuid || file.file_id || '',
-        name: file.ui_name || file.original_filename || file.filename || 'Unnamed File',
-        type: file.file_type || file.mime_type || '',
-        size: file.size || file.size_bytes || file.file_size || 0,
-        uploadDate: file.created_at || file.uploaded_at || new Date().toISOString(),
-        status: file.status || (file.type === 'parsed' ? 'parsed' : file.type === 'embedded' ? 'embedded' : 'uploaded'),
-        metadata: {
-          ...file,
-          file_type: file.type,
-          mime_type: file.mime_type,
-          content_type: file.content_type,
-          parsed: file.type === 'parsed' || file.status === 'parsed',
-          original_file_id: file.original_file_id,
-          parsed_file_id: file.parsed_file_id,
-        },
-      }));
+      return {
+        success: data.success === true,
+        file_id: data.file_id || fileId,
+        boundary_contract_id: data.boundary_contract_id || boundaryContractId,
+        message: data.message || "File saved successfully",
+      };
+    } catch (error) {
+      console.error("Error saving materialization:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Save materialization failed",
+      };
+    }
+  }
+
+  /**
+   * List files
+   * 
+   * Flow: Query via Runtime intent (list_files) - returns only saved files (workspace-scoped)
+   */
+  async listFiles(): Promise<ContentFile[]> {
+    try {
+      const platformState = this.getPlatformState();
+      
+      if (!platformState.state.session.sessionId || !platformState.state.session.tenantId) {
+        throw new Error("Session required to list files");
+      }
+
+      // Submit list_files intent to Runtime
+      const executionId = await platformState.submitIntent(
+        "list_files",
+        {
+          tenant_id: platformState.state.session.tenantId,
+          session_id: platformState.state.session.sessionId,
+        }
+      );
+
+      // Track execution
+      platformState.trackExecution(executionId);
+
+      // Wait for execution to complete
+      const maxAttempts = 10;
+      let attempts = 0;
+      
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const status = await platformState.getExecutionStatus(executionId);
+        
+        if (status?.status === "completed") {
+          // Extract files from execution artifacts
+          const fileListArtifact = status.artifacts?.file_list;
+          if (fileListArtifact?.semantic_payload?.files) {
+            const backendFiles = fileListArtifact.semantic_payload.files;
+            
+            // Map backend response to ContentFile format
+            return backendFiles.map((file: any) => ({
+              id: file.file_id || file.uuid || '',
+              name: file.file_name || file.ui_name || 'Unnamed File',
+              type: file.file_type || file.mime_type || '',
+              size: file.file_size || 0,
+              uploadDate: file.created_at || new Date().toISOString(),
+              status: file.materialization_pending ? 'pending' : (file.status || 'uploaded'),
+              boundary_contract_id: file.boundary_contract_id,
+              materialization_pending: file.materialization_pending === true,
+              metadata: {
+                ...file,
+                file_type: file.file_type,
+                mime_type: file.mime_type,
+                boundary_contract_id: file.boundary_contract_id,
+                materialization_pending: file.materialization_pending,
+              },
+            }));
+          }
+          // If no files in response, return empty array
+          return [];
+        } else if (status?.status === "failed") {
+          throw new Error(status.error || "Failed to list files");
+        }
+        
+        attempts++;
+      }
+
+      throw new Error("Timeout waiting for file list");
     } catch (error) {
       console.error("Error listing files:", error);
       throw error;

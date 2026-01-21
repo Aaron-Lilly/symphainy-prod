@@ -227,7 +227,7 @@ class ArangoAdapter:
         document_key: str,
         updates: Dict[str, Any]
     ) -> Optional[Dict[str, Any]]:
-        """Update document in collection."""
+        """Update document in collection (merges with existing document)."""
         if not self._db:
             return None
         try:
@@ -235,6 +235,22 @@ class ArangoAdapter:
             return collection.update({"_key": document_key, **updates})
         except ArangoError as e:
             self.logger.error(f"Failed to update document {document_key}: {e}")
+            return None
+    
+    async def replace_document(
+        self,
+        collection_name: str,
+        document_key: str,
+        document: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Replace document in collection (fully replaces existing document)."""
+        if not self._db:
+            return None
+        try:
+            collection = self._db.collection(collection_name)
+            return collection.replace({"_key": document_key, **document})
+        except ArangoError as e:
+            self.logger.error(f"Failed to replace document {document_key}: {e}")
             return None
     
     async def delete_document(
@@ -252,6 +268,69 @@ class ArangoAdapter:
         except ArangoError as e:
             self.logger.error(f"Failed to delete document {document_key}: {e}")
             return False
+    
+    async def find_documents(
+        self,
+        collection_name: str,
+        filter_conditions: Optional[Dict[str, Any]] = None,
+        limit: Optional[int] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Find documents in collection with filtering.
+        
+        Args:
+            collection_name: Collection to search in
+            filter_conditions: Optional filter conditions (e.g., {"file_id": "..."})
+            limit: Optional limit on number of results
+        
+        Returns:
+            List of matching documents
+        """
+        if not self._db:
+            return []
+        
+        try:
+            # Build AQL query with filters
+            filter_parts = []
+            bind_vars = {}
+            
+            if filter_conditions:
+                for key, value in filter_conditions.items():
+                    filter_parts.append(f"doc.{key} == @{key}")
+                    bind_vars[key] = value
+            
+            filter_clause = " AND ".join(filter_parts) if filter_parts else "true"
+            
+            query = f"FOR doc IN {collection_name} FILTER {filter_clause}"
+            
+            if limit:
+                query += f" LIMIT {limit}"
+            
+            query += " RETURN doc"
+            
+            results = await self.execute_aql(query, bind_vars=bind_vars)
+            return results
+            
+        except Exception as e:
+            self.logger.error(f"Failed to find documents: {e}", exc_info=True)
+            return []
+    
+    async def create_document(
+        self,
+        collection_name: str,
+        document: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Create document in collection (alias for insert_document for compatibility).
+        
+        Args:
+            collection_name: Collection name
+            document: Document to create
+        
+        Returns:
+            Created document result
+        """
+        return await self.insert_document(collection_name, document)
     
     # ============================================================================
     # RAW AQL OPERATIONS
@@ -293,3 +372,131 @@ class ArangoAdapter:
     def get_database(self) -> Optional[StandardDatabase]:
         """Get ArangoDB database instance (for advanced operations)."""
         return self._db
+    
+    # ============================================================================
+    # VECTOR SEARCH OPERATIONS
+    # ============================================================================
+    
+    async def vector_search(
+        self,
+        collection_name: str,
+        query_vector: List[float],
+        vector_field: str = "embedding",
+        filter_conditions: Optional[Dict[str, Any]] = None,
+        limit: int = 10,
+        similarity_threshold: Optional[float] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Perform vector similarity search using ArangoDB.
+        
+        Uses manual cosine similarity calculation via AQL (compatible with all ArangoDB versions).
+        Supports filtering and similarity threshold.
+        
+        Args:
+            collection_name: Collection to search in
+            query_vector: Query vector (embedding) to search for
+            vector_field: Field name containing the vector (default: "embedding")
+            filter_conditions: Optional filter conditions (e.g., {"file_id": "..."})
+            limit: Maximum number of results
+            similarity_threshold: Optional minimum similarity score (0.0 to 1.0)
+        
+        Returns:
+            List of documents with similarity scores, sorted by similarity (highest first)
+        """
+        if not self._db:
+            self.logger.warning("ArangoDB not connected, cannot perform vector search")
+            return []
+        
+        if not query_vector or len(query_vector) == 0:
+            self.logger.warning("Query vector is empty")
+            return []
+        
+        try:
+            # Build AQL query for vector similarity search
+            # ArangoDB uses COSINE_SIMILARITY for vector similarity
+            # Format: COSINE_SIMILARITY(doc.vector_field, @query_vector)
+            
+            # Build filter conditions
+            filter_parts = []
+            bind_vars = {"query_vector": query_vector, "limit": limit}
+            
+            if filter_conditions:
+                for key, value in filter_conditions.items():
+                    filter_parts.append(f"doc.{key} == @{key}")
+                    bind_vars[key] = value
+            
+            filter_clause = " AND ".join(filter_parts) if filter_parts else "true"
+            
+            # Build similarity threshold filter
+            similarity_filter = ""
+            if similarity_threshold is not None:
+                similarity_filter = f" AND similarity >= @threshold"
+                bind_vars["threshold"] = similarity_threshold
+            
+            # AQL query for vector similarity search
+            # Note: ArangoDB 3.10+ supports vector similarity functions
+            # For earlier versions, we'll use a fallback approach
+            query = f"""
+            FOR doc IN {collection_name}
+            FILTER {filter_clause}
+            LET similarity = COSINE_SIMILARITY(doc.{vector_field}, @query_vector)
+            FILTER similarity >= 0.0{similarity_filter}
+            SORT similarity DESC
+            LIMIT @limit
+            RETURN MERGE(doc, {{"similarity": similarity}})
+            """
+            
+            # Execute query
+            results = await self.execute_aql(query, bind_vars=bind_vars)
+            
+            self.logger.debug(f"Vector search returned {len(results)} results")
+            
+            return results
+            
+        except Exception as e:
+            # Fallback: If cosine similarity calculation fails, use L2 distance-based approach
+            self.logger.warning(f"Vector search with cosine similarity failed: {e}, trying L2 distance fallback")
+            try:
+                # Fallback: Use L2 distance (Euclidean distance)
+                # Lower distance = higher similarity
+                filter_parts = []
+                bind_vars = {"query_vector": query_vector, "limit": limit}
+                
+                if filter_conditions:
+                    for key, value in filter_conditions.items():
+                        filter_parts.append(f"doc.{key} == @{key}")
+                        bind_vars[key] = value
+                
+                filter_clause = " AND ".join(filter_parts) if filter_parts else "true"
+                
+                # Fallback: Calculate L2 distance and convert to similarity (1 / (1 + distance))
+                # L2 distance = sqrt(sum((a_i - b_i)^2))
+                similarity_filter = ""
+                if similarity_threshold is not None:
+                    similarity_filter = f" AND similarity >= @threshold"
+                    bind_vars["threshold"] = similarity_threshold
+                
+                query = f"""
+                FOR doc IN {collection_name}
+                FILTER {filter_clause} AND doc.{vector_field} != null AND LENGTH(doc.{vector_field}) == LENGTH(@query_vector)
+                LET squared_distance = (
+                    SUM(
+                        FOR i IN 0..LENGTH(@query_vector)-1
+                        RETURN (doc.{vector_field}[i] - @query_vector[i]) * (doc.{vector_field}[i] - @query_vector[i])
+                    )
+                )
+                LET distance = SQRT(squared_distance)
+                LET similarity = 1.0 / (1.0 + distance)
+                FILTER similarity >= 0.0{similarity_filter}
+                SORT similarity DESC
+                LIMIT @limit
+                RETURN MERGE(doc, {{"similarity": similarity}})
+                """
+                
+                results = await self.execute_aql(query, bind_vars=bind_vars)
+                self.logger.debug(f"Vector search (fallback) returned {len(results)} results")
+                return results
+                
+            except Exception as fallback_error:
+                self.logger.error(f"Vector search fallback also failed: {fallback_error}", exc_info=True)
+                return []

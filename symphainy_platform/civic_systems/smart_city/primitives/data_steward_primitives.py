@@ -4,6 +4,8 @@ Data Steward Primitives - Policy Decisions for Data Governance
 Primitives for Data Steward policy decisions (used by Runtime only).
 """
 
+from __future__ import annotations  # Enable postponed evaluation of annotations
+
 import sys
 from pathlib import Path
 
@@ -11,12 +13,17 @@ project_root = Path(__file__).resolve().parents[5]
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 import uuid
+import hashlib
 
 from utilities import get_logger, get_clock
+
+if TYPE_CHECKING:
+    # Forward reference for type hints
+    pass
 
 
 @dataclass
@@ -31,7 +38,7 @@ class DataPermissionCheck:
 class ProvenanceChainValidation:
     """Provenance chain validation result."""
     is_valid: bool
-    chain: List[Dict[str, Any]]
+    chain: list[Dict[str, Any]]  # Using list instead of List for Python 3.9+ compatibility
     reason: Optional[str] = None
 
 
@@ -66,7 +73,7 @@ class DataStewardPrimitives:
     def __init__(
         self, 
         policy_store: Optional[Any] = None, 
-        boundary_contract_store: Optional[BoundaryContractStore] = None
+        boundary_contract_store: Optional[Any] = None  # BoundaryContractStore (defined later in file)
     ):
         self.policy_store = policy_store
         self.boundary_contract_store = boundary_contract_store  # BoundaryContractStore instance
@@ -96,7 +103,7 @@ class DataStewardPrimitives:
     
     async def validate_provenance_chain(
         self,
-        provenance_chain: List[Dict[str, Any]],
+        provenance_chain: list[Dict[str, Any]],  # Using list instead of List for Python 3.9+ compatibility
         tenant_id: str
     ) -> ProvenanceChainValidation:
         """Validate provenance chain (policy decision)."""
@@ -178,10 +185,24 @@ class DataStewardPrimitives:
         contract_id = None
         if self.boundary_contract_store:
             try:
+                # Convert string IDs to UUIDs (database expects UUIDs)
+                def to_uuid(value: Optional[str]) -> Optional[str]:
+                    """Convert string to UUID, generating deterministic UUID if not valid UUID format."""
+                    if not value:
+                        return None
+                    try:
+                        # Try to parse as UUID
+                        return str(uuid.UUID(value))
+                    except (ValueError, AttributeError):
+                        # Generate deterministic UUID from string (for test values like "test_tenant")
+                        # Use namespace UUID v5 for deterministic generation
+                        namespace = uuid.UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8')  # DNS namespace
+                        return str(uuid.uuid5(namespace, str(value)))
+                
                 contract_data = {
-                    "tenant_id": tenant_id,
-                    "user_id": user_id,
-                    "intent_id": intent_id,
+                    "tenant_id": to_uuid(tenant_id),
+                    "user_id": to_uuid(user_id),
+                    "intent_id": to_uuid(intent_id),
                     "external_source_type": external_source_type,
                     "external_source_identifier": external_source_identifier,
                     "external_source_metadata": external_source_metadata or {},
@@ -191,7 +212,7 @@ class DataStewardPrimitives:
                     "access_reason": access_reason,
                     "access_conditions": access_conditions,
                     "contract_status": "pending",  # Will be activated after materialization decision
-                    "created_by": user_id,
+                    "created_by": to_uuid(user_id),
                     "contract_terms": {
                         "intent_type": intent.get("intent_type"),
                         "requested_at": self.clock.now_iso()
@@ -263,16 +284,46 @@ class DataStewardPrimitives:
             )
         
         # Determine materialization type from policy
-        # MVP: Use materialization policy to decide
-        materialization_type = requested_type or "full_artifact"  # MVP default
-        materialization_backing_store = "gcs"  # MVP default
-        materialization_ttl = None  # MVP: Permanent (can be made configurable)
-        policy_basis = "mvp_default_policy"
+        # Use database-backed policy store (capability by design, implementation by policy)
+        materialization_type = requested_type or "full_artifact"  # Default fallback
+        materialization_backing_store = "gcs"  # Default fallback
+        materialization_ttl = None  # Default: Permanent
+        policy_basis = "mvp_default_policy"  # Default fallback
         
-        # If materialization policy is provided, use it to determine type
-        if materialization_policy:
-            # Get artifact type from contract metadata or use default
-            artifact_type = contract.get("external_source_metadata", {}).get("artifact_type", "file")
+        # Get artifact type from contract metadata or use default
+        artifact_type = contract.get("external_source_metadata", {}).get("artifact_type", "file")
+        solution_id = context.get("solution_id") if context else None
+        
+        # Use database-backed policy store if available (preferred)
+        if self.materialization_policy_store:
+            try:
+                decision = await self.materialization_policy_store.evaluate_policy(
+                    artifact_type=artifact_type,
+                    tenant_id=tenant_id,
+                    solution_id=solution_id,
+                    requested_type=requested_type
+                )
+                
+                if decision.get("allowed", False):
+                    materialization_type = decision.get("materialization_type", requested_type or "full_artifact")
+                    materialization_backing_store = decision.get("backing_store", "gcs")
+                    ttl_days = decision.get("ttl_days")
+                    if ttl_days:
+                        materialization_ttl = timedelta(days=ttl_days)
+                    policy_basis = decision.get("policy_basis", "materialization_policy")
+                else:
+                    # Policy denied materialization
+                    return MaterializationAuthorization(
+                        materialization_allowed=False,
+                        reason=f"Materialization not allowed by policy for artifact type: {artifact_type}"
+                    )
+                    
+            except Exception as e:
+                self.logger.warning(f"Error evaluating materialization policy: {e}")
+                # Fall through to legacy policy evaluation or defaults
+        
+        # Fallback to legacy materialization_policy if provided (for backward compatibility)
+        elif materialization_policy:
             try:
                 decision = await materialization_policy.evaluate_policy(
                     artifact_type=artifact_type,
@@ -304,13 +355,25 @@ class DataStewardPrimitives:
         reference_scope = {}
         
         if context:
-            user_id = context.get("user_id")
+            user_id = context.get("user_id") or "system"
             session_id = context.get("session_id")
             solution_id = context.get("solution_id")
             
+            # Convert user_id to UUID for consistency (materialization_scope should store UUID for filtering)
+            def to_uuid(value: Optional[str]) -> Optional[str]:
+                """Convert string to UUID, generating deterministic UUID if not valid UUID format."""
+                if not value:
+                    return None
+                try:
+                    return str(uuid.UUID(value))
+                except (ValueError, AttributeError):
+                    namespace = uuid.UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8')
+                    return str(uuid.uuid5(namespace, str(value)))
+            
             # Set materialization scope (where this materialization is scoped to)
+            # Store user_id as UUID for consistent filtering
             materialization_scope = {
-                "user_id": user_id,
+                "user_id": to_uuid(user_id),  # Store as UUID for consistent filtering
                 "session_id": session_id,
                 "solution_id": solution_id,
                 "scope_type": "workspace"  # MVP default: workspace-scoped
@@ -434,9 +497,22 @@ class BoundaryContractStore:
             return None
         
         try:
+            # Convert string IDs to UUIDs (database expects UUIDs)
+            def to_uuid(value: Optional[str]) -> Optional[str]:
+                """Convert string to UUID, generating deterministic UUID if not valid UUID format."""
+                if not value:
+                    return None
+                try:
+                    # Try to parse as UUID
+                    return str(uuid.UUID(value))
+                except (ValueError, AttributeError):
+                    # Generate deterministic UUID from string (for test values like "test_tenant")
+                    namespace = uuid.UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8')  # DNS namespace
+                    return str(uuid.uuid5(namespace, str(value)))
+            
             response = self.supabase_adapter.service_client.table("data_boundary_contracts").select(
                 "*"
-            ).eq("tenant_id", tenant_id).eq(
+            ).eq("tenant_id", to_uuid(tenant_id)).eq(
                 "external_source_type", external_source_type
             ).eq(
                 "external_source_identifier", external_source_identifier
@@ -470,9 +546,22 @@ class BoundaryContractStore:
             return None
         
         try:
+            # Convert string IDs to UUIDs (database expects UUIDs)
+            def to_uuid(value: Optional[str]) -> Optional[str]:
+                """Convert string to UUID, generating deterministic UUID if not valid UUID format."""
+                if not value:
+                    return None
+                try:
+                    # Try to parse as UUID
+                    return str(uuid.UUID(value))
+                except (ValueError, AttributeError):
+                    # Generate deterministic UUID from string (for test values like "test_tenant")
+                    namespace = uuid.UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8')  # DNS namespace
+                    return str(uuid.uuid5(namespace, str(value)))
+            
             response = self.supabase_adapter.service_client.table("data_boundary_contracts").select(
                 "*"
-            ).eq("contract_id", contract_id).eq("tenant_id", tenant_id).execute()
+            ).eq("contract_id", to_uuid(contract_id)).eq("tenant_id", to_uuid(tenant_id)).execute()
             
             if response.data and len(response.data) > 0:
                 return response.data[0]
@@ -502,12 +591,24 @@ class BoundaryContractStore:
             return False
         
         try:
+            # Convert string IDs to UUIDs (database expects UUIDs)
+            def to_uuid(value: Optional[str]) -> Optional[str]:
+                """Convert string to UUID, generating deterministic UUID if not valid UUID format."""
+                if not value:
+                    return None
+                try:
+                    # Try to parse as UUID
+                    return str(uuid.UUID(value))
+                except (ValueError, AttributeError):
+                    # Generate deterministic UUID from string (for test values like "test_tenant")
+                    namespace = uuid.UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8')  # DNS namespace
+                    return str(uuid.uuid5(namespace, str(value)))
             # Add updated_at timestamp
             updates["updated_at"] = datetime.now().isoformat()
             
             response = self.supabase_adapter.service_client.table("data_boundary_contracts").update(
                 updates
-            ).eq("contract_id", contract_id).eq("tenant_id", tenant_id).execute()
+            ).eq("contract_id", to_uuid(contract_id)).eq("tenant_id", to_uuid(tenant_id)).execute()
             
             if response.data:
                 self.logger.debug(f"Updated boundary contract: {contract_id}")

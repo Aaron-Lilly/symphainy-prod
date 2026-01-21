@@ -20,6 +20,7 @@ from typing import Dict, Any, Optional, List
 from dataclasses import dataclass
 
 from utilities import get_logger, get_clock
+from symphainy_platform.civic_systems.smart_city.services.curator_service import CuratorService
 
 
 @dataclass
@@ -111,3 +112,48 @@ class CuratorSDK:
             "domains": [],
             "execution_contract": execution_contract
         }
+    
+    async def promote_to_platform_dna(
+        self,
+        artifact_id: str,
+        tenant_id: str,
+        registry_type: str,  # "solution", "intent", "realm"
+        registry_name: str,
+        registry_id: Optional[str] = None,
+        promoted_by: str = "curator",
+        description: Optional[str] = None,
+        tags: Optional[List[str]] = None
+    ) -> Optional[str]:
+        """
+        Promote Purpose-Bound Outcome to Platform DNA.
+        
+        This is an explicit workflow that creates a generalized, curated capability
+        from a Purpose-Bound Outcome.
+        
+        Args:
+            artifact_id: Artifact ID of Purpose-Bound Outcome to promote
+            tenant_id: Tenant ID (for retrieving artifact)
+            registry_type: Type of registry ("solution", "intent", "realm")
+            registry_name: Human-readable name for the registry entry
+            registry_id: Optional registry ID (if None, will be generated)
+            promoted_by: Who/what initiated the promotion
+            description: Optional description
+            tags: Optional tags for discovery
+        
+        Returns:
+            Registry ID (UUID string) or None if promotion failed
+        """
+        if not self.curator_service:
+            self.logger.warning("Curator Service not available, cannot promote to Platform DNA")
+            return None
+        
+        return await self.curator_service.promote_to_platform_dna(
+            artifact_id=artifact_id,
+            tenant_id=tenant_id,
+            registry_type=registry_type,
+            registry_name=registry_name,
+            registry_id=registry_id,
+            promoted_by=promoted_by,
+            description=description,
+            tags=tags
+        )

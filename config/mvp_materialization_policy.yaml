@@ -15,6 +15,7 @@ materialization_policy:
   solution: persist
   roadmap: persist
   poc: persist
+  file: persist  # ✅ Add file to materialization policy
   visual: persist
   
   # Future: Client-specific overrides

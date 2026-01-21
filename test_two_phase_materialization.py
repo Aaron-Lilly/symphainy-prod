@@ -162,6 +162,8 @@ async def test_list_files():
     
     request_data = {
         "tenant_id": TEST_CONFIG["tenant_id"],
+        "session_id": TEST_CONFIG["session_id"],
+        "solution_id": "default",
         "intent_type": "list_files",
         "parameters": {}
     }

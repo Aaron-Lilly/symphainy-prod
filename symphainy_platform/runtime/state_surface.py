@@ -95,6 +95,7 @@ class StateSurface:
         """
         state_id = f"execution:{tenant_id}:{execution_id}"
         state["updated_at"] = self.clock.now_iso()
+        self.logger.info(f"🔵 SET_EXECUTION_STATE CALLED: {state_id}, status={state.get('status')}")
         
         if self.use_memory:
             self._memory_store[state_id] = state
@@ -109,9 +110,18 @@ class StateSurface:
             success = await self.state_abstraction.store_state(
                 state_id,
                 state,
-                metadata={"type": "execution_state", "tenant_id": tenant_id},
-                ttl=3600  # 1 hour TTL for hot state
+                metadata={
+                    "type": "execution_state",
+                    "tenant_id": tenant_id,
+                    "backend": "arango_db",  # Execution states must be durable
+                    "strategy": "durable"
+                },
+                ttl=None  # No TTL for durable execution state
             )
+            if success:
+                self.logger.info(f"✅ SET_EXECUTION_STATE SUCCESS: {state_id}")
+            else:
+                self.logger.error(f"❌ SET_EXECUTION_STATE FAILED: {state_id}")
             return success
         except Exception as e:
             self.logger.error(f"Failed to store execution state: {e}", exc_info=True)

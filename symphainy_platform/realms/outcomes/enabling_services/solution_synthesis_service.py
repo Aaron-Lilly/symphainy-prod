@@ -184,7 +184,7 @@ class SolutionSynthesisService:
                 "analyze_coexistence",
                 "create_blueprint",
                 "create_workflow",
-                "create_solution_from_blueprint"
+                "create_solution"  # Use unified create_solution intent
             ])
         
         # Build solution

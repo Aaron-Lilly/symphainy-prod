@@ -61,7 +61,15 @@ async def submit_intent(
         # 1. Validate session (via Traffic Cop SDK - prepares validation contract)
         # For MVP, we'll extract tenant_id from parameters or use a default
         # In production, this would come from session state
-        tenant_id = request.parameters.get("tenant_id", "default_tenant")
+        # Extract tenant_id from request body
+        # CRITICAL: For multi-tenant support, tenant_id must come from request body
+        # IntentSubmitRequest now has tenant_id as a required field
+        tenant_id = request.tenant_id
+        logger.info(f"🔵 EXPERIENCE API: Extracted tenant_id={tenant_id} from request")
+        if not tenant_id:
+            # This is a critical error - tenant_id is required for multi-tenant operation
+            logger.error("❌ CRITICAL: tenant_id is missing from request - multi-tenant operation requires tenant_id")
+            raise ValueError("tenant_id is required in request body for multi-tenant operation")
         
         # Try to validate session (for MVP, we'll be lenient if session doesn't exist)
         try:
