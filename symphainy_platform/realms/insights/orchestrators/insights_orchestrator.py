@@ -40,6 +40,7 @@ from ..enabling_services.unstructured_analysis_service import UnstructuredAnalys
 from ..enabling_services.lineage_visualization_service import LineageVisualizationService
 from ..enabling_services.structured_extraction_service import StructuredExtractionService
 from ..agents.insights_liaison_agent import InsightsLiaisonAgent
+from ..agents.business_analysis_agent import BusinessAnalysisAgent
 from symphainy_platform.civic_systems.artifact_plane.artifact_plane import ArtifactPlane
 from symphainy_platform.civic_systems.smart_city.sdk.data_steward_sdk import DataStewardSDK
 
@@ -78,6 +79,12 @@ class InsightsOrchestrator:
         self.lineage_visualization_service = LineageVisualizationService(public_works=public_works)
         self.structured_extraction_service = StructuredExtractionService(public_works=public_works)
         self.insights_liaison_agent = InsightsLiaisonAgent(public_works=public_works)
+        
+        # Initialize agents (agentic forward pattern)
+        self.business_analysis_agent = BusinessAnalysisAgent(
+            agent_definition_id="business_analysis_agent",
+            public_works=public_works
+        )
     
     async def handle_intent(
         self,
@@ -124,6 +131,8 @@ class InsightsOrchestrator:
             return await self._handle_discover_extraction_pattern(intent, context)
         elif intent_type == "create_extraction_config":
             return await self._handle_create_extraction_config(intent, context)
+        elif intent_type == "match_source_to_target":
+            return await self._handle_match_source_to_target(intent, context)
         else:
             raise ValueError(f"Unknown intent type: {intent_type}")
     
@@ -162,27 +171,46 @@ class InsightsOrchestrator:
         intent: Intent,
         context: ExecutionContext
     ) -> Dict[str, Any]:
-        """Handle interpret_data intent."""
+        """
+        Handle interpret_data intent using agentic forward pattern.
+        
+        ARCHITECTURAL PRINCIPLE: Orchestrator delegates to Agent, Agent reasons and uses services as tools.
+        """
         parsed_file_id = intent.parameters.get("parsed_file_id")
         if not parsed_file_id:
             raise ValueError("parsed_file_id is required for interpret_data intent")
         
-        # Interpret data via DataAnalyzerService
-        interpretation_result = await self.data_analyzer_service.interpret_data(
-            parsed_file_id=parsed_file_id,
-            tenant_id=context.tenant_id,
+        # Assemble runtime context (call site responsibility)
+        runtime_context = await self.runtime_context_service.create_runtime_context(
+            request={"type": "interpret_data", "parsed_file_id": parsed_file_id},
             context=context
         )
         
+        # Use BusinessAnalysisAgent (agentic forward pattern)
+        # Agent reasons about data, uses MCP tools to get data, constructs business interpretation
+        # Pass runtime context (read-only) to agent
+        agent_result = await self.business_analysis_agent.process_request(
+            {
+                "type": "interpret_data",
+                "parsed_file_id": parsed_file_id
+            },
+            context,
+            runtime_context=runtime_context
+        )
+        
+        # Extract business interpretation from agent result
+        business_analysis = agent_result.get("artifact", {})
+        
         return {
             "artifacts": {
-                "interpretation": interpretation_result,
+                "interpretation": business_analysis,
                 "parsed_file_id": parsed_file_id
             },
             "events": [
                 {
                     "type": "data_interpreted",
-                    "parsed_file_id": parsed_file_id
+                    "parsed_file_id": parsed_file_id,
+                    "business_data_type": business_analysis.get("business_data_type")
                 }
             ]
         }
@@ -675,26 +703,23 @@ class InsightsOrchestrator:
         if not self.public_works:
             return None
         
-        arango_adapter = self.public_works.get_arango_adapter()
-        if not arango_adapter:
+        # Use SemanticDataAbstraction (governed access)
+        # ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
+        semantic_data = self.public_works.get_semantic_data_abstraction()
+        if not semantic_data:
+            self.logger.warning("SemanticDataAbstraction not available")
             return None
         
         try:
-            # Query embeddings collection for this parsed_file_id
-            if await arango_adapter.collection_exists("embeddings"):
-                query = """
-                FOR e IN embeddings
-                FILTER e.parsed_file_id == @parsed_file_id
-                RETURN e
-                """
-                bind_vars = {"parsed_file_id": parsed_file_id}
-                
-                embeddings = await arango_adapter.execute_aql(query, bind_vars=bind_vars)
-                return embeddings if embeddings else None
+            # Query embeddings via abstraction
+            embeddings = await semantic_data.get_semantic_embeddings(
+                filter_conditions={"parsed_file_id": parsed_file_id},
+                limit=None
+            )
+            return embeddings if embeddings else None
         except Exception as e:
-            self.logger.debug(f"Could not retrieve embeddings: {e}")
-        
-        return None
+            self.logger.debug(f"Could not retrieve embeddings via abstraction: {e}")
+            return None
     
     async def _track_interpretation(
         self,
@@ -720,9 +745,11 @@ class InsightsOrchestrator:
             self.logger.debug("Public Works not available, skipping lineage tracking")
             return
         
-        supabase_adapter = self.public_works.get_supabase_adapter()
-        if not supabase_adapter:
-            self.logger.debug("Supabase adapter not available, skipping lineage tracking")
+        # Use RegistryAbstraction (governed access)
+        # ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
+        registry = self.public_works.get_registry_abstraction()
+        if not registry:
+            self.logger.debug("Registry abstraction not available, skipping lineage tracking")
             return
         
         try:
@@ -750,12 +777,11 @@ class InsightsOrchestrator:
                 "coverage_score": coverage_score
             }
             
-            # Insert into Supabase
-            result = await supabase_adapter.execute_rls_policy(
+            # Insert via RegistryAbstraction (governed access)
+            result = await registry.insert_record(
                 table="interpretations",
-                operation="insert",
-                user_context={"tenant_id": tenant_id},
-                data=interpretation_record
+                data=interpretation_record,
+                user_context={"tenant_id": tenant_id}
             )
             
             if result.get("success"):
@@ -796,9 +822,11 @@ class InsightsOrchestrator:
             self.logger.debug("Public Works not available, skipping lineage tracking")
             return
         
-        supabase_adapter = self.public_works.get_supabase_adapter()
-        if not supabase_adapter:
-            self.logger.debug("Supabase adapter not available, skipping lineage tracking")
+        # Use RegistryAbstraction (governed access)
+        # ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
+        registry = self.public_works.get_registry_abstraction()
+        if not registry:
+            self.logger.debug("Registry abstraction not available, skipping lineage tracking")
             return
         
         try:
@@ -820,12 +848,11 @@ class InsightsOrchestrator:
                 "agent_session_id": agent_session_id
             }
             
-            # Insert into Supabase
-            result = await supabase_adapter.execute_rls_policy(
+            # Insert via RegistryAbstraction (governed access)
+            result = await registry.insert_record(
                 table="analyses",
-                operation="insert",
-                user_context={"tenant_id": tenant_id},
-                data=analysis_record
+                data=analysis_record,
+                user_context={"tenant_id": tenant_id}
             )
             
             if result.get("success"):
@@ -847,45 +874,40 @@ class InsightsOrchestrator:
         Returns:
             Tuple of (file_id, parsed_result_uuid, embedding_uuid)
         """
-        if not self.public_works:
-            return (None, None, None)
-        
-        supabase_adapter = self.public_works.get_supabase_adapter()
-        if not supabase_adapter:
+        # Use RegistryAbstraction (governed access)
+        # ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
+        registry = self.public_works.get_registry_abstraction()
+        if not registry:
             return (None, None, None)
         
         try:
-            # Query parsed_results table
-            query_result = await supabase_adapter.execute_rls_policy(
+            # Query parsed_results table via RegistryAbstraction
+            query_result_data = await registry.query_records(
                 table="parsed_results",
-                operation="select",
-                user_context={"tenant_id": tenant_id},
-                data=None
+                user_context={"tenant_id": tenant_id}
             )
             
             file_id = None
             parsed_result_uuid = None
             embedding_uuid = None
             
-            if query_result.get("success") and query_result.get("data"):
+            if query_result_data:
                 matching_records = [
-                    r for r in query_result["data"]
+                    r for r in query_result_data
                     if r.get("parsed_result_id") == parsed_file_id and r.get("tenant_id") == tenant_id
                 ]
                 if matching_records:
                     parsed_result_uuid = matching_records[0].get("id")
                     file_id = matching_records[0].get("file_id")
                     
-                    # Try to get embedding UUID
-                    embedding_query = await supabase_adapter.execute_rls_policy(
+                    # Try to get embedding UUID via RegistryAbstraction
+                    embedding_query_data = await registry.query_records(
                         table="embeddings",
-                        operation="select",
-                        user_context={"tenant_id": tenant_id},
-                        data=None
+                        user_context={"tenant_id": tenant_id}
                     )
-                    if embedding_query.get("success") and embedding_query.get("data"):
+                    if embedding_query_data:
                         embedding_matches = [
-                            e for e in embedding_query["data"]
+                            e for e in embedding_query_data
                             if e.get("parsed_result_id") == parsed_result_uuid
                         ]
                         if embedding_matches:
@@ -906,17 +928,18 @@ class InsightsOrchestrator:
         if not self.public_works:
             return None
         
-        supabase_adapter = self.public_works.get_supabase_adapter()
-        if not supabase_adapter:
+        # Use RegistryAbstraction (governed access)
+        # ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
+        registry = self.public_works.get_registry_abstraction()
+        if not registry:
             return None
         
         try:
-            query_result = await supabase_adapter.execute_rls_policy(
+            query_result_data = await registry.query_records(
                 table="guides",
-                operation="select",
-                user_context={"tenant_id": tenant_id},
-                data=None
+                user_context={"tenant_id": tenant_id}
             )
+            query_result = {"success": True, "data": query_result_data}
             
             if query_result.get("success") and query_result.get("data"):
                 matching_records = [
@@ -1243,6 +1266,285 @@ class InsightsOrchestrator:
             # Called from MCP tool, return result directly
             return result
     
+    async def _handle_match_source_to_target(
+        self,
+        intent: Intent,
+        context: ExecutionContext
+    ) -> Dict[str, Any]:
+        """
+        Handle match_source_to_target intent - three-phase source-to-target matching.
+        
+        Args:
+            intent: The intent to handle
+            context: Execution context
+        
+        Returns:
+            Dict with "artifacts" and "events" keys
+        """
+        # Extract parameters
+        source_deterministic_embedding_id = intent.parameters.get("source_deterministic_embedding_id")
+        target_deterministic_embedding_id = intent.parameters.get("target_deterministic_embedding_id")
+        source_parsed_file_id = intent.parameters.get("source_parsed_file_id")
+        target_parsed_file_id = intent.parameters.get("target_parsed_file_id")
+        
+        # Validate required parameters
+        if not source_deterministic_embedding_id:
+            raise ValueError("source_deterministic_embedding_id is required for match_source_to_target intent")
+        if not target_deterministic_embedding_id:
+            raise ValueError("target_deterministic_embedding_id is required for match_source_to_target intent")
+        if not source_parsed_file_id:
+            raise ValueError("source_parsed_file_id is required for match_source_to_target intent")
+        if not target_parsed_file_id:
+            raise ValueError("target_parsed_file_id is required for match_source_to_target intent")
+        
+        # Call GuidedDiscoveryService.match_source_to_target
+        matching_result = await self.guided_discovery_service.match_source_to_target(
+            source_deterministic_embedding_id=source_deterministic_embedding_id,
+            target_deterministic_embedding_id=target_deterministic_embedding_id,
+            source_parsed_file_id=source_parsed_file_id,
+            target_parsed_file_id=target_parsed_file_id,
+            context=context
+        )
+        
+        # Track matching in Supabase for lineage
+        matching_uuid = await self._track_matching(
+            source_parsed_file_id=source_parsed_file_id,
+            target_parsed_file_id=target_parsed_file_id,
+            matching_result=matching_result,
+            tenant_id=context.tenant_id,
+            context=context
+        )
+        
+        return {
+            "artifacts": {
+                "matching_result": matching_result,
+                "source_parsed_file_id": source_parsed_file_id,
+                "target_parsed_file_id": target_parsed_file_id,
+                "source_deterministic_embedding_id": source_deterministic_embedding_id,
+                "target_deterministic_embedding_id": target_deterministic_embedding_id,
+                "matching_uuid": matching_uuid
+            },
+            "events": [
+                {
+                    "type": "source_to_target_matched",
+                    "source_parsed_file_id": source_parsed_file_id,
+                    "target_parsed_file_id": target_parsed_file_id,
+                    "overall_confidence": matching_result.get("overall_confidence", 0.0)
+                }
+            ]
+        }
+    
+    async def _track_matching(
+        self,
+        source_parsed_file_id: str,
+        target_parsed_file_id: str,
+        matching_result: Dict[str, Any],
+        tenant_id: str,
+        context: ExecutionContext
+    ) -> Optional[str]:
+        """
+        Track source-to-target matching in Supabase for lineage tracking.
+        
+        Args:
+            source_parsed_file_id: Source parsed file identifier
+            target_parsed_file_id: Target parsed file identifier
+            matching_result: Full matching results
+            tenant_id: Tenant identifier
+            context: Execution context
+        
+        Returns:
+            Matching UUID or None if tracking failed
+        """
+        if not self.public_works:
+            self.logger.debug("Public Works not available, skipping lineage tracking")
+            return None
+        
+        # Use RegistryAbstraction (governed access)
+        registry = self.public_works.get_registry_abstraction()
+        if not registry:
+            self.logger.debug("Registry abstraction not available, skipping lineage tracking")
+            return None
+        
+        try:
+            # Get file_id and parsed_result_id from Supabase
+            source_file_id, source_parsed_result_uuid, _ = await self._get_lineage_ids(
+                source_parsed_file_id, tenant_id
+            )
+            target_file_id, target_parsed_result_uuid, _ = await self._get_lineage_ids(
+                target_parsed_file_id, tenant_id
+            )
+            
+            # Prepare matching record
+            matching_record = {
+                "id": str(uuid.uuid4()),
+                "tenant_id": tenant_id,
+                "source_file_id": source_file_id or "",
+                "source_parsed_result_id": source_parsed_result_uuid,
+                "target_file_id": target_file_id or "",
+                "target_parsed_result_id": target_parsed_result_uuid,
+                "matching_result": matching_result,
+                "overall_confidence": matching_result.get("overall_confidence", 0.0),
+                "mapping_count": len(matching_result.get("mapping_table", []))
+            }
+            
+            # Insert via RegistryAbstraction (governed access)
+            result = await registry.insert_record(
+                table="source_target_matchings",  # Or appropriate table name
+                data=matching_record,
+                user_context={"tenant_id": tenant_id}
+            )
+            
+            if result.get("success"):
+                matching_uuid = matching_record.get("id")
+                self.logger.debug(f"Tracked source-to-target matching: {matching_uuid}")
+                return matching_uuid
+            else:
+                self.logger.warning(f"Failed to track matching: {result.get('error')}")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Failed to track matching: {e}", exc_info=True)
+            return None
+    
+    async def _handle_get_parsed_data_soa(
+        self,
+        intent: Optional[Intent] = None,
+        context: Optional[ExecutionContext] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Handle get_parsed_data SOA API (dual call pattern)."""
+        parsed_file_id = kwargs.get("parsed_file_id")
+        user_context = kwargs.get("user_context", {})
+        tenant_id = user_context.get("tenant_id", context.tenant_id if context else "default")
+        
+        if not parsed_file_id:
+            return {"success": False, "error": "parsed_file_id is required"}
+        
+        try:
+            from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
+            file_parser_service = FileParserService(public_works=self.public_works)
+            
+            exec_context = context or ExecutionContext(
+                execution_id="get_parsed_data",
+                tenant_id=tenant_id,
+                session_id=user_context.get("session_id", "default")
+            )
+            
+            parsed_data = await file_parser_service.get_parsed_file(
+                parsed_file_id=parsed_file_id,
+                tenant_id=tenant_id,
+                context=exec_context
+            )
+            
+            return {
+                "success": True,
+                "parsed_data": parsed_data
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get parsed data: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+    
+    async def _handle_get_embeddings_soa(
+        self,
+        intent: Optional[Intent] = None,
+        context: Optional[ExecutionContext] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Handle get_embeddings SOA API (dual call pattern)."""
+        parsed_file_id = kwargs.get("parsed_file_id")
+        user_context = kwargs.get("user_context", {})
+        tenant_id = user_context.get("tenant_id", context.tenant_id if context else "default")
+        
+        if not parsed_file_id:
+            return {"success": False, "error": "parsed_file_id is required"}
+        
+        try:
+            if not self.data_analyzer_service.semantic_data_abstraction:
+                return {"success": False, "error": "Semantic data abstraction not available"}
+            
+            embeddings = await self.data_analyzer_service.semantic_data_abstraction.get_semantic_embeddings(
+                filter_conditions={"parsed_file_id": parsed_file_id},
+                limit=None,
+                tenant_id=tenant_id
+            )
+            
+            return {
+                "success": True,
+                "embeddings": embeddings or []
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get embeddings: {e}", exc_info=True)
+            return {"success": False, "error": str(e), "embeddings": []}
+    
+    async def _handle_get_quality_soa(
+        self,
+        intent: Optional[Intent] = None,
+        context: Optional[ExecutionContext] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Handle get_quality SOA API (dual call pattern)."""
+        parsed_file_id = kwargs.get("parsed_file_id")
+        user_context = kwargs.get("user_context", {})
+        tenant_id = user_context.get("tenant_id", context.tenant_id if context else "default")
+        
+        if not parsed_file_id:
+            return {"success": False, "error": "parsed_file_id is required"}
+        
+        try:
+            exec_context = context or ExecutionContext(
+                execution_id="get_quality",
+                tenant_id=tenant_id,
+                session_id=user_context.get("session_id", "default")
+            )
+            
+            quality_result = await self.data_quality_service.assess_data_quality(
+                parsed_file_id=parsed_file_id,
+                source_file_id=kwargs.get("source_file_id", ""),
+                parser_type=kwargs.get("parser_type", "unknown"),
+                tenant_id=tenant_id,
+                context=exec_context
+            )
+            
+            return {
+                "success": True,
+                "quality": quality_result
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to get quality: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+    
+    async def _handle_interpret_data_soa(
+        self,
+        intent: Optional[Intent] = None,
+        context: Optional[ExecutionContext] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Handle interpret_data SOA API (dual call pattern)."""
+        if intent and context:
+            return await self._handle_interpret_data(intent, context)
+        else:
+            parsed_file_id = kwargs.get("parsed_file_id")
+            user_context = kwargs.get("user_context", {})
+            tenant_id = user_context.get("tenant_id", "default")
+            session_id = user_context.get("session_id", "default")
+            
+            from symphainy_platform.runtime.intent_model import IntentFactory
+            intent_obj = IntentFactory.create_intent(
+                intent_type="interpret_data",
+                tenant_id=tenant_id,
+                session_id=session_id,
+                parameters={"parsed_file_id": parsed_file_id}
+            )
+            
+            exec_context = ExecutionContext(
+                execution_id="interpret_data",
+                intent=intent_obj,
+                tenant_id=tenant_id,
+                session_id=session_id
+            )
+            
+            return await self._handle_interpret_data(intent_obj, exec_context)
+    
     def _define_soa_api_handlers(self) -> Dict[str, Any]:
         """
         Define Insights Orchestrator SOA APIs.
@@ -1323,5 +1625,77 @@ class InsightsOrchestrator:
                     "required": ["target_model_file_id"]
                 },
                 "description": "Create extraction configuration from target data model"
+            },
+            "get_parsed_data": {
+                "handler": self._handle_get_parsed_data_soa,
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "parsed_file_id": {
+                            "type": "string",
+                            "description": "Parsed file identifier"
+                        },
+                        "user_context": {
+                            "type": "object",
+                            "description": "Optional user context (includes tenant_id, session_id)"
+                        }
+                    },
+                    "required": ["parsed_file_id"]
+                },
+                "description": "Get parsed file data"
+            },
+            "get_embeddings": {
+                "handler": self._handle_get_embeddings_soa,
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "parsed_file_id": {
+                            "type": "string",
+                            "description": "Parsed file identifier"
+                        },
+                        "user_context": {
+                            "type": "object",
+                            "description": "Optional user context (includes tenant_id, session_id)"
+                        }
+                    },
+                    "required": ["parsed_file_id"]
+                },
+                "description": "Get semantic embeddings for parsed file"
+            },
+            "get_quality": {
+                "handler": self._handle_get_quality_soa,
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "parsed_file_id": {
+                            "type": "string",
+                            "description": "Parsed file identifier"
+                        },
+                        "user_context": {
+                            "type": "object",
+                            "description": "Optional user context (includes tenant_id, session_id)"
+                        }
+                    },
+                    "required": ["parsed_file_id"]
+                },
+                "description": "Get data quality metrics for parsed file"
+            },
+            "interpret_data": {
+                "handler": self._handle_interpret_data_soa,
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "parsed_file_id": {
+                            "type": "string",
+                            "description": "Parsed file identifier"
+                        },
+                        "user_context": {
+                            "type": "object",
+                            "description": "Optional user context (includes tenant_id, session_id)"
+                        }
+                    },
+                    "required": ["parsed_file_id"]
+                },
+                "description": "Interpret data and generate business analysis"
             }
         }

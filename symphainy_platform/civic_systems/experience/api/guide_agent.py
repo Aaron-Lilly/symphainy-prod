@@ -93,6 +93,35 @@ class RouteToPillarResponse(BaseModel):
     error: Optional[str] = None
 
 
+class DiscoverContextRequest(BaseModel):
+    """Request model for discovery context."""
+    conversation_history: List[Dict[str, str]]
+    session_id: str
+    tenant_id: str
+
+
+class DiscoverContextResponse(BaseModel):
+    """Response model for discovery context."""
+    success: bool
+    discovery_context: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
+class CommitContextRequest(BaseModel):
+    """Request model for context commit."""
+    discovery_context: Dict[str, Any]
+    user_edits: Optional[Dict[str, Any]] = None
+    session_id: str
+    tenant_id: str
+
+
+class CommitContextResponse(BaseModel):
+    """Response model for context commit."""
+    success: bool
+    committed_context: Optional[Dict[str, Any]] = None
+    error: Optional[str] = None
+
+
 # Dependency to get Guide Agent Service
 def get_guide_agent_service(request: Request) -> Any:
     """
@@ -355,3 +384,80 @@ async def route_to_pillar_liaison(
     except Exception as e:
         logger.error(f"❌ Route to pillar failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/discover-context", response_model=DiscoverContextResponse)
+async def discover_business_context(
+    request: DiscoverContextRequest,
+    http_request: Request,
+    guide_service: Any = Depends(get_guide_agent_service)
+):
+    """
+    Discover business context from conversation.
+    
+    GuideAgent analyzes conversation and extracts provisional business context.
+    """
+    try:
+        # Create execution context
+        context = await get_execution_context(
+            tenant_id=request.tenant_id,
+            session_id=request.session_id,
+            request=http_request
+        )
+        
+        # Discover business context
+        discovery_context = await guide_service.discover_business_context(
+            conversation_history=request.conversation_history,
+            context=context
+        )
+        
+        return DiscoverContextResponse(
+            success=True,
+            discovery_context=discovery_context
+        )
+    except Exception as e:
+        logger.error(f"❌ Discovery context failed: {e}")
+        return DiscoverContextResponse(
+            success=False,
+            error=str(e)
+        )
+
+
+@router.post("/commit-context", response_model=CommitContextResponse)
+async def commit_discovery_context(
+    request: CommitContextRequest,
+    http_request: Request
+):
+    """
+    Commit discovery context to authoritative context.
+    
+    Validates, applies policy, and stores committed context.
+    """
+    try:
+        from symphainy_platform.civic_systems.agentic.services.context_commit_service import ContextCommitService
+        
+        # Create execution context
+        context = await get_execution_context(
+            tenant_id=request.tenant_id,
+            session_id=request.session_id,
+            request=http_request
+        )
+        
+        # Commit discovery context
+        commit_service = ContextCommitService()
+        committed_context = await commit_service.commit_discovery_context(
+            discovery_context=request.discovery_context,
+            context=context,
+            user_edits=request.user_edits
+        )
+        
+        return CommitContextResponse(
+            success=True,
+            committed_context=committed_context
+        )
+    except Exception as e:
+        logger.error(f"❌ Context commit failed: {e}")
+        return CommitContextResponse(
+            success=False,
+            error=str(e)
+        )

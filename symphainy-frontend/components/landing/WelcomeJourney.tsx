@@ -31,6 +31,11 @@ export function WelcomeJourney({
   const [solutionStructure, setSolutionStructure] = useState<SolutionStructureResponse | null>(null);
   const [showCustomization, setShowCustomization] = useState(false);
   const [customizedPillars, setCustomizedPillars] = useState<SolutionPillar[]>([]);
+  // Discovery context state
+  const [discoveryContext, setDiscoveryContext] = useState<any>(null);
+  const [showDiscoverySummary, setShowDiscoverySummary] = useState(false);
+  const [userEdits, setUserEdits] = useState<any>({});
+  const [isCommitting, setIsCommitting] = useState(false);
 
   const handleStartJourney = () => {
     // Set a proactive message for the chat assistant by dispatching an action
@@ -290,6 +295,125 @@ export function WelcomeJourney({
             </CardContent>
           </Card>
         </div>
+
+        {/* Discovery Context Summary */}
+        {showDiscoverySummary && discoveryContext && (
+          <div className="max-w-2xl mx-auto mb-8">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Brain className="h-5 w-5" />
+                  <span>Discovered Business Context</span>
+                  <span className="text-sm font-normal text-muted-foreground">
+                    (Review and confirm)
+                  </span>
+                </CardTitle>
+                <CardDescription>
+                  Our AI agent discovered the following from your goals. Please review and confirm.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {discoveryContext.industry && (
+                  <div>
+                    <h4 className="font-semibold mb-2">Industry:</h4>
+                    <Input
+                      value={userEdits.industry || discoveryContext.industry || ''}
+                      onChange={(e) => setUserEdits({ ...userEdits, industry: e.target.value })}
+                      placeholder="Industry"
+                    />
+                    {discoveryContext.confidence?.industry && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Confidence: {(discoveryContext.confidence.industry * 100).toFixed(0)}%
+                      </p>
+                    )}
+                  </div>
+                )}
+                
+                {discoveryContext.systems && discoveryContext.systems.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold mb-2">Legacy Systems:</h4>
+                    <div className="space-y-2">
+                      {discoveryContext.systems.map((system: string, idx: number) => (
+                        <div key={idx} className="flex items-center space-x-2">
+                          <span className="px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm">
+                            {system}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    {discoveryContext.confidence?.systems && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Confidence: {(discoveryContext.confidence.systems * 100).toFixed(0)}%
+                      </p>
+                    )}
+                  </div>
+                )}
+                
+                {discoveryContext.goals && discoveryContext.goals.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold mb-2">Goals:</h4>
+                    <ul className="list-disc list-inside space-y-1 text-sm text-muted-foreground">
+                      {discoveryContext.goals.map((goal: string, idx: number) => (
+                        <li key={idx}>{goal}</li>
+                      ))}
+                    </ul>
+                    {discoveryContext.confidence?.goals && (
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Confidence: {(discoveryContext.confidence.goals * 100).toFixed(0)}%
+                      </p>
+                    )}
+                  </div>
+                )}
+                
+                {discoveryContext.constraints && discoveryContext.constraints.length > 0 && (
+                  <div>
+                    <h4 className="font-semibold mb-2">Constraints:</h4>
+                    <div className="flex flex-wrap gap-2">
+                      {discoveryContext.constraints.map((constraint: string, idx: number) => (
+                        <span
+                          key={idx}
+                          className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm"
+                        >
+                          {constraint}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                
+                <div className="flex space-x-2 pt-4">
+                  <Button
+                    onClick={handleCommitContext}
+                    disabled={isCommitting}
+                    className="flex-1"
+                  >
+                    {isCommitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Committing...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle2 className="h-4 w-4 mr-2" />
+                        Confirm & Commit Context
+                      </>
+                    )}
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setShowDiscoverySummary(false);
+                      setDiscoveryContext(null);
+                      setUserEdits({});
+                    }}
+                    variant="outline"
+                  >
+                    Edit
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* Agent Reasoning Display */}
         {solutionStructure && solutionStructure.reasoning && (

@@ -156,7 +156,8 @@ class AgentBase(ABC):
     async def process_request(
         self,
         request: Dict[str, Any],
-        context: ExecutionContext
+        context: ExecutionContext,
+        runtime_context: Optional[AgentRuntimeContext] = None
     ) -> Dict[str, Any]:
         """
         Process request with 4-layer model.
@@ -164,12 +165,16 @@ class AgentBase(ABC):
         Layers:
         1. Agent Definition (identity) - already loaded
         2. Agent Posture (behavior) - already loaded
-        3. Runtime Context (hydration) - assembled from request/context
+        3. Runtime Context (hydration) - provided by orchestrator (call site responsibility)
         4. Prompt Assembly (derived) - assembled at call time
+        
+        ARCHITECTURAL PRINCIPLE: Runtime context is assembled by orchestrator (call site),
+        not by agent. Agent treats it as read-only.
         
         Args:
             request: Request dictionary
             context: Runtime execution context
+            runtime_context: Optional pre-assembled runtime context (from orchestrator)
         
         Returns:
             Dict with non-executing artifacts
@@ -178,8 +183,14 @@ class AgentBase(ABC):
         if not self._initialized:
             await self._initialize_4_layer_model()
         
-        # Layer 3: Assemble runtime context (ephemeral, never stored)
-        runtime_context = AgentRuntimeContext.from_request(request, context)
+        # Layer 3: Use provided runtime context, or assemble if not provided (fallback)
+        if runtime_context is None:
+            # Fallback: Agent can assemble if orchestrator didn't provide (for backward compatibility)
+            self.logger.debug("Runtime context not provided by orchestrator, assembling as fallback")
+            runtime_context = await AgentRuntimeContext.from_request(request, context)
+        else:
+            # Use provided runtime context (read-only)
+            self.logger.debug(f"Using runtime context provided by orchestrator: goal={runtime_context.journey_goal[:50] if runtime_context.journey_goal else 'none'}")
         
         # Layer 4: Assemble prompt (derived from layers 1-3)
         system_message = self._assemble_system_message(runtime_context)

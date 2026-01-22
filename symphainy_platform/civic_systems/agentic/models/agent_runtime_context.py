@@ -67,7 +67,7 @@ class AgentRuntimeContext:
         )
     
     @classmethod
-    def from_request(
+    async def from_request(
         cls,
         request: Dict[str, Any],
         context: Optional[Any] = None
@@ -77,11 +77,84 @@ class AgentRuntimeContext:
         
         This is the primary way to create runtime context - from user input
         and execution context, not from stored configuration.
+        
+        Sources (in priority order):
+        1. Request dict (explicit parameters) - highest priority
+        2. ExecutionContext.metadata
+        3. Session state (via context.state_surface)
+        4. Intent.parameters (via context.intent)
+        
+        Args:
+            request: Request dictionary
+            context: ExecutionContext (optional)
+        
+        Returns:
+            AgentRuntimeContext instance
         """
+        # Start with empty defaults
+        business_context = {}
+        journey_goal = ""
+        available_artifacts = []
+        human_preferences = {}
+        session_state = None
+        
+        # Source 4: Extract from Intent.parameters (lowest priority, used as fallback)
+        if context and hasattr(context, 'intent') and context.intent:
+            intent_params = context.intent.parameters or {}
+            business_context = intent_params.get("business_context", {})
+            journey_goal = intent_params.get("journey_goal", intent_params.get("goal", ""))
+            available_artifacts = intent_params.get("available_artifacts", [])
+            human_preferences = intent_params.get("human_preferences", {})
+        
+        # Source 3: Extract from session state (via context.state_surface)
+        if context and hasattr(context, 'state_surface') and context.state_surface:
+            try:
+                session_state_data = await context.state_surface.get_session_state(
+                    context.session_id,
+                    context.tenant_id
+                )
+                if session_state_data:
+                    # Extract runtime context fields from session state
+                    if not business_context:
+                        business_context = session_state_data.get("business_context", {})
+                    if not journey_goal:
+                        journey_goal = session_state_data.get("journey_goal", session_state_data.get("goal", ""))
+                    if not available_artifacts:
+                        available_artifacts = session_state_data.get("available_artifacts", [])
+                    if not human_preferences:
+                        human_preferences = session_state_data.get("human_preferences", {})
+                    session_state = session_state_data
+            except Exception:
+                # Non-critical: if session state retrieval fails, continue with other sources
+                pass
+        
+        # Source 2: Extract from ExecutionContext.metadata
+        if context and hasattr(context, 'metadata') and context.metadata:
+            if not business_context:
+                business_context = context.metadata.get("business_context", {})
+            if not journey_goal:
+                journey_goal = context.metadata.get("journey_goal", context.metadata.get("goal", ""))
+            if not available_artifacts:
+                available_artifacts = context.metadata.get("available_artifacts", [])
+            if not human_preferences:
+                human_preferences = context.metadata.get("human_preferences", {})
+        
+        # Source 1: Extract from request dict (highest priority - overrides all)
+        if request.get("business_context"):
+            business_context = request.get("business_context", {})
+        if request.get("journey_goal") or request.get("goal"):
+            journey_goal = request.get("journey_goal", request.get("goal", ""))
+        if request.get("available_artifacts"):
+            available_artifacts = request.get("available_artifacts", [])
+        if request.get("human_preferences"):
+            human_preferences = request.get("human_preferences", {})
+        if request.get("session_state"):
+            session_state = request.get("session_state")
+        
         return cls(
-            business_context=request.get("business_context", {}),
-            journey_goal=request.get("journey_goal", request.get("goal", "")),
-            available_artifacts=request.get("available_artifacts", []),
-            human_preferences=request.get("human_preferences", {}),
-            session_state=request.get("session_state")
+            business_context=business_context,
+            journey_goal=journey_goal,
+            available_artifacts=available_artifacts,
+            human_preferences=human_preferences,
+            session_state=session_state
         )

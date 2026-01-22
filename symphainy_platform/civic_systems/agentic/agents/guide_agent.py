@@ -24,6 +24,7 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from typing import Dict, Any, Optional, List
+from datetime import datetime
 from ..agent_base import AgentBase
 from symphainy_platform.runtime.execution_context import ExecutionContext
 from utilities import get_logger, generate_event_id
@@ -534,6 +535,158 @@ class GuideAgent(AgentBase):
             },
             "confidence": result.get("intent_analysis", {}).get("confidence", 0.7)
         }
+    
+    async def discover_business_context(
+        self,
+        conversation_history: List[Dict[str, str]],
+        context: ExecutionContext
+    ) -> Dict[str, Any]:
+        """
+        Discover provisional business context from conversation.
+        
+        ARCHITECTURAL PRINCIPLE: GuideAgent may discover context, but does not own it.
+        Discovery context is provisional until committed by user/platform.
+        
+        Args:
+            conversation_history: List of conversation messages [{"role": "user", "content": "..."}, ...]
+            context: Execution context
+        
+        Returns:
+            Dict with discovery context (provisional)
+        """
+        self.logger.info("Discovering business context from conversation")
+        
+        # Build conversation text for LLM
+        conversation_text = "\n".join([
+            f"{msg.get('role', 'user').upper()}: {msg.get('content', '')}"
+            for msg in conversation_history[-10:]  # Last 10 messages
+        ])
+        
+        # Use LLM to infer business context from conversation
+        discovery_prompt = f"""You are a discovery agent helping to understand a user's business context from their conversation.
+
+Analyze the following conversation and extract:
+1. Industry/domain (e.g., Insurance, Healthcare, Finance)
+2. Legacy systems mentioned (e.g., Mainframe, Salesforce, SAP)
+3. Business goals (what they want to achieve)
+4. Constraints (regulatory, technical, business)
+5. User preferences (detail level, wants visuals, explanation style)
+
+Conversation:
+{conversation_text}
+
+Return a JSON object with:
+{{
+    "industry": "string or null",
+    "systems": ["system1", "system2"],
+    "goals": ["goal1", "goal2"],
+    "constraints": ["constraint1", "constraint2"],
+    "preferences": {{
+        "detail_level": "summary|detailed|technical",
+        "wants_visuals": true/false,
+        "explanation_style": "simple|technical|business"
+    }},
+    "confidence": {{
+        "industry": 0.0-1.0,
+        "systems": 0.0-1.0,
+        "goals": 0.0-1.0
+    }}
+}}
+
+If information is not available, use null or empty arrays. Be conservative with confidence scores."""
+        
+        try:
+            # Call LLM via AgentBase._call_llm
+            discovery_result = await self._call_llm(
+                prompt=discovery_prompt,
+                system_message="You are a discovery agent that extracts business context from conversations. Return only valid JSON.",
+                model="gpt-4o-mini",
+                max_tokens=1000,
+                temperature=0.3,  # Lower temperature for more consistent extraction
+                context=context
+            )
+            
+            # Parse LLM response (should be JSON)
+            import json
+            if isinstance(discovery_result, str):
+                # Try to extract JSON from response
+                try:
+                    discovery_data = json.loads(discovery_result)
+                except json.JSONDecodeError:
+                    # Try to find JSON in the response
+                    import re
+                    json_match = re.search(r'\{.*\}', discovery_result, re.DOTALL)
+                    if json_match:
+                        discovery_data = json.loads(json_match.group())
+                    else:
+                        self.logger.warning("Could not parse discovery result as JSON, using defaults")
+                        discovery_data = {}
+            else:
+                discovery_data = discovery_result
+            
+            # Build discovery context structure
+            discovery_context = {
+                "industry": discovery_data.get("industry"),
+                "systems": discovery_data.get("systems", []),
+                "goals": discovery_data.get("goals", []),
+                "constraints": discovery_data.get("constraints", []),
+                "preferences": discovery_data.get("preferences", {
+                    "detail_level": "detailed",
+                    "wants_visuals": True,
+                    "explanation_style": "technical"
+                }),
+                "confidence": discovery_data.get("confidence", {
+                    "industry": 0.5,
+                    "systems": 0.5,
+                    "goals": 0.5
+                }),
+                "source": "guide_agent",
+                "discovered_at": datetime.now().isoformat(),
+                "status": "provisional"
+            }
+            
+            # Store in session state (discovery namespace)
+            if context and context.state_surface:
+                session_state = await context.state_surface.get_session_state(
+                    context.session_id,
+                    context.tenant_id
+                ) or {}
+                
+                session_state["discovery_context"] = discovery_context
+                
+                await context.state_surface.store_session_state(
+                    context.session_id,
+                    context.tenant_id,
+                    session_state
+                )
+                
+                self.logger.info(f"✅ Discovery context stored in session {context.session_id}")
+            
+            return discovery_context
+            
+        except Exception as e:
+            self.logger.error(f"Failed to discover business context: {e}", exc_info=True)
+            # Return empty discovery context on error
+            return {
+                "industry": None,
+                "systems": [],
+                "goals": [],
+                "constraints": [],
+                "preferences": {
+                    "detail_level": "detailed",
+                    "wants_visuals": True,
+                    "explanation_style": "technical"
+                },
+                "confidence": {
+                    "industry": 0.0,
+                    "systems": 0.0,
+                    "goals": 0.0
+                },
+                "source": "guide_agent",
+                "discovered_at": datetime.now().isoformat(),
+                "status": "provisional",
+                "error": str(e)
+            }
     
     async def get_agent_description(self) -> str:
         """Get agent description."""

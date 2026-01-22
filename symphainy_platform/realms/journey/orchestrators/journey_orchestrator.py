@@ -21,7 +21,7 @@ if str(project_root) not in sys.path:
 
 from typing import Dict, Any, Optional
 
-from utilities import get_logger
+from utilities import get_logger, generate_event_id
 from symphainy_platform.runtime.intent_model import Intent
 from symphainy_platform.runtime.execution_context import ExecutionContext
 from ..enabling_services.workflow_conversion_service import WorkflowConversionService
@@ -64,7 +64,16 @@ class JourneyOrchestrator:
             public_works=public_works,
             visual_generation_service=self.visual_generation_service
         )
-        self.journey_liaison_agent = JourneyLiaisonAgent(public_works=public_works)
+        # Initialize agents (agentic forward pattern)
+        self.sop_generation_agent = SOPGenerationAgent(
+            agent_definition_id="sop_generation_agent",
+            public_works=public_works
+        )
+        self.journey_liaison_agent = JourneyLiaisonAgent(
+            agent_definition_id="journey_liaison_agent",
+            public_works=public_works,
+            sop_generation_agent=self.sop_generation_agent
+        )
         # Solution synthesis service for converting blueprints to solutions
         self.solution_synthesis_service = SolutionSynthesisService(public_works=public_works)
     
@@ -93,9 +102,7 @@ class JourneyOrchestrator:
             return await self._handle_create_workflow(intent, context)
         elif intent_type == "analyze_coexistence":
             return await self._handle_analyze_coexistence(intent, context)
-        elif intent_type == "create_blueprint":
-            return await self._handle_create_blueprint(intent, context)
-        # Note: create_solution_from_blueprint moved to Outcomes Realm
+        # Note: create_blueprint moved to Outcomes Realm (blueprints are Purpose-Bound Outcomes)
         elif intent_type == "generate_sop_from_chat":
             return await self._handle_generate_sop_from_chat(intent, context)
         elif intent_type == "sop_chat_message":
@@ -242,14 +249,75 @@ class JourneyOrchestrator:
         # Mode 2: Create workflow from BPMN file
         else:
             # Parse BPMN file and create workflow
-            # For now, return a placeholder - full implementation would parse BPMN
-            workflow_result = {
-                "workflow_id": f"workflow_{workflow_file_path.split('/')[-1]}",
-                "workflow_type": workflow_type,
-                "source_file": workflow_file_path,
-                "status": "created_from_file"
-            }
-            self.logger.info(f"Created workflow from file: {workflow_file_path}")
+            self.logger.info(f"Parsing BPMN file: {workflow_file_path}")
+            
+            # Get BPMN file content
+            bpmn_xml = None
+            
+            # Try to get from parsed file if workflow_file_path is a file_id
+            if self.public_works:
+                try:
+                    # Check if it's a parsed file ID
+                    from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
+                    file_parser_service = FileParserService(public_works=self.public_works)
+                    parsed_content = await file_parser_service.get_parsed_file(
+                        parsed_file_id=workflow_file_path,
+                        tenant_id=context.tenant_id,
+                        context=context
+                    )
+                    
+                    if parsed_content:
+                        # Extract BPMN XML from parsed content
+                        bpmn_xml = parsed_content.get("data") or parsed_content.get("content")
+                        if isinstance(bpmn_xml, bytes):
+                            bpmn_xml = bpmn_xml.decode('utf-8')
+                        elif isinstance(bpmn_xml, dict):
+                            # Try to get XML from metadata or content field
+                            bpmn_xml = parsed_content.get("metadata", {}).get("bpmn_xml") or str(parsed_content.get("content", ""))
+                except Exception as e:
+                    self.logger.debug(f"Could not get parsed file: {e}, trying file storage")
+            
+            # If not found, try file storage abstraction
+            if not bpmn_xml and self.public_works:
+                try:
+                    file_storage = self.public_works.get_file_storage_abstraction()
+                    if file_storage:
+                        # workflow_file_path might be a storage location
+                        file_content = await file_storage.download_file(workflow_file_path)
+                        if file_content:
+                            if isinstance(file_content, bytes):
+                                bpmn_xml = file_content.decode('utf-8')
+                            else:
+                                bpmn_xml = str(file_content)
+                except Exception as e:
+                    self.logger.warning(f"Could not get file from storage: {e}")
+            
+            # Parse BPMN XML via WorkflowConversionService
+            if bpmn_xml:
+                workflow_result = await self.workflow_conversion_service.parse_bpmn_file(
+                    bpmn_xml=bpmn_xml,
+                    workflow_id=None,  # Will be generated
+                    tenant_id=context.tenant_id,
+                    context=context
+                )
+                workflow_result["source_file"] = workflow_file_path
+                workflow_result["workflow_type"] = workflow_type
+            else:
+                # Fallback: Create basic workflow structure if BPMN not available
+                self.logger.warning(f"BPMN content not found for {workflow_file_path}, creating basic workflow structure")
+                workflow_id = generate_event_id()
+                workflow_result = {
+                    "workflow_id": workflow_id,
+                    "workflow_type": workflow_type,
+                    "source_file": workflow_file_path,
+                    "workflow_status": "created_from_file",
+                    "workflow_content": {
+                        "workflow_id": workflow_id,
+                        "workflow_name": f"Workflow from {workflow_file_path.split('/')[-1]}",
+                        "tasks": [],
+                        "sequence_flows": []
+                    }
+                }
         
         # Generate workflow visualization
         visual_result = None
@@ -339,29 +407,49 @@ class JourneyOrchestrator:
         intent: Intent,
         context: ExecutionContext
     ) -> Dict[str, Any]:
-        """Handle analyze_coexistence intent."""
+        """
+        Handle analyze_coexistence intent using agentic forward pattern.
+        
+        ARCHITECTURAL PRINCIPLE: Orchestrator delegates to Agent, Agent reasons and uses services as tools.
+        """
         workflow_id = intent.parameters.get("workflow_id")
         if not workflow_id:
             raise ValueError("workflow_id is required for analyze_coexistence intent")
         
-        # Analyze coexistence via CoexistenceAnalysisService
-        analysis_result = await self.coexistence_analysis_service.analyze_coexistence(
-            workflow_id=workflow_id,
-            tenant_id=context.tenant_id,
+        # Assemble runtime context (call site responsibility)
+        runtime_context = await self.runtime_context_service.create_runtime_context(
+            request={"type": "analyze_coexistence", "workflow_id": workflow_id},
             context=context
         )
         
-        analysis_id = analysis_result.get("analysis_id")
+        # Use CoexistenceAnalysisAgent (agentic forward pattern)
+        # Agent reasons about workflow, uses CoexistenceAnalysisService as tool via MCP
+        # Pass runtime context (read-only) to agent
+        agent_result = await self.coexistence_analysis_agent.process_request(
+            {
+                "type": "analyze_coexistence",
+                "workflow_id": workflow_id
+            },
+            context,
+            runtime_context=runtime_context
+        )
+        
+        # Extract outcome from agent result
+        analysis_result = agent_result.get("artifact", {})
+        analysis_id = analysis_result.get("analysis_id") or f"analysis_{workflow_id}_{generate_event_id()}"
         
         # Extract semantic payload
         semantic_payload = {
             "workflow_id": workflow_id,
             "analysis_id": analysis_id,
-            "status": analysis_result.get("status")
+            "status": analysis_result.get("analysis_status", "completed"),
+            "friction_points_identified": analysis_result.get("friction_points_identified", 0),
+            "human_focus_areas": analysis_result.get("human_focus_areas", [])
         }
         
         renderings = {
-            "coexistence_analysis": analysis_result
+            "coexistence_analysis": analysis_result,
+            "reasoning": agent_result.get("reasoning", "")
         }
         
         # Create artifact in Artifact Plane (Purpose-Bound Outcome)
@@ -414,92 +502,8 @@ class JourneyOrchestrator:
             ]
         }
     
-    async def _handle_create_blueprint(
-        self,
-        intent: Intent,
-        context: ExecutionContext
-    ) -> Dict[str, Any]:
-        """Handle create_blueprint intent."""
-        workflow_id = intent.parameters.get("workflow_id")
-        if not workflow_id:
-            raise ValueError("workflow_id is required for create_blueprint intent")
-        
-        current_state_workflow_id = intent.parameters.get("current_state_workflow_id")
-        
-        # Create blueprint via CoexistenceAnalysisService
-        blueprint_result = await self.coexistence_analysis_service.create_blueprint(
-            workflow_id=workflow_id,
-            tenant_id=context.tenant_id,
-            context=context,
-            current_state_workflow_id=current_state_workflow_id
-        )
-        
-        blueprint_id = blueprint_result.get("blueprint_id")
-        
-        # Extract semantic payload
-        semantic_payload = {
-            "blueprint_id": blueprint_id,
-            "workflow_id": workflow_id,
-            "components": blueprint_result.get("components", {}).keys() if isinstance(blueprint_result.get("components"), dict) else []
-        }
-        
-        # Blueprint renderings are the full blueprint (it's already structured)
-        renderings = {
-            "blueprint": blueprint_result
-        }
-        
-        # Create artifact in Artifact Plane (Purpose-Bound Outcome)
-        artifact_id = None
-        if self.artifact_plane:
-            try:
-                # Full artifact payload (semantic + renderings)
-                artifact_payload = {
-                    "result_type": "blueprint",
-                    "semantic_payload": semantic_payload,
-                    "renderings": renderings
-                }
-                
-                artifact_result = await self.artifact_plane.create_artifact(
-                    artifact_type="blueprint",
-                    artifact_id=blueprint_id,  # Use blueprint_id as artifact_id
-                    payload=artifact_payload,
-                    context=context,
-                    lifecycle_state="draft",  # Initial state
-                    owner="client",
-                    purpose="delivery",
-                    source_artifact_ids=[workflow_id] if workflow_id else None  # Blueprint depends on workflow
-                )
-                
-                artifact_id = artifact_result.get("artifact_id")
-                self.logger.info(f"✅ Blueprint registered in Artifact Plane: {artifact_id}")
-            except Exception as e:
-                self.logger.warning(f"Failed to register blueprint in Artifact Plane: {e}")
-                # Continue with structured artifact for backward compatibility
-        
-        # Create structured artifact (for backward compatibility and execution state reference)
-        structured_artifact = create_structured_artifact(
-            result_type="blueprint",
-            semantic_payload=semantic_payload,
-            renderings=renderings,
-            metadata={"artifact_id": artifact_id} if artifact_id else None  # Include artifact_id reference
-        )
-        
-        return {
-            "artifacts": {
-                "blueprint": structured_artifact
-            },
-            "events": [
-                {
-                    "type": "blueprint_created",
-                    "workflow_id": workflow_id,
-                    "blueprint_id": blueprint_id,
-                    "artifact_id": artifact_id  # Include artifact_id in event
-                }
-            ]
-        }
-    
-    # Note: create_solution_from_blueprint moved to Outcomes Realm
-    # Use create_solution intent with solution_source="blueprint" instead
+    # Note: create_blueprint moved to Outcomes Realm (blueprints are Purpose-Bound Outcomes)
+    # Use create_blueprint intent in Outcomes Realm instead
     
     async def _handle_generate_sop_from_chat(
         self,
@@ -607,6 +611,44 @@ class JourneyOrchestrator:
             ]
         }
     
+    async def _handle_generate_sop_from_structure_soa(
+        self,
+        intent: Optional[Intent] = None,
+        context: Optional[ExecutionContext] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Handle generate_sop_from_structure SOA API (dual call pattern)."""
+        sop_structure = kwargs.get("sop_structure")
+        requirements = kwargs.get("requirements", {})
+        user_context = kwargs.get("user_context", {})
+        tenant_id = user_context.get("tenant_id", context.tenant_id if context else "default")
+        
+        if not sop_structure:
+            return {"success": False, "error": "sop_structure is required"}
+        
+        try:
+            exec_context = context or ExecutionContext(
+                execution_id="generate_sop_from_structure",
+                tenant_id=tenant_id,
+                session_id=user_context.get("session_id", "default")
+            )
+            
+            # Use WorkflowConversionService to generate SOP
+            sop_result = await self.workflow_conversion_service.generate_sop_from_structure(
+                sop_structure=sop_structure,
+                tenant_id=tenant_id,
+                context=exec_context
+            )
+            
+            return {
+                "success": True,
+                "sop": sop_result.get("sop", {}),
+                "sop_id": sop_result.get("sop_id")
+            }
+        except Exception as e:
+            self.logger.error(f"Failed to generate SOP from structure: {e}", exc_info=True)
+            return {"success": False, "error": str(e)}
+    
     def _define_soa_api_handlers(self) -> Dict[str, Any]:
         """
         Define Journey Orchestrator SOA APIs.
@@ -696,6 +738,91 @@ class JourneyOrchestrator:
                     "required": []
                 },
                 "description": "Create a workflow from SOP, definition, or file"
+            },
+            "generate_sop_from_structure": {
+                "handler": self._handle_generate_sop_from_structure_soa,
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "sop_structure": {
+                            "type": "object",
+                            "description": "SOP structure (title, description, steps, checkpoints, etc.)",
+                            "properties": {
+                                "title": {"type": "string"},
+                                "description": {"type": "string"},
+                                "steps": {"type": "array"},
+                                "checkpoints": {"type": "array"},
+                                "prerequisites": {"type": "array"},
+                                "expected_outcomes": {"type": "array"}
+                            },
+                            "required": ["title", "steps"]
+                        },
+                        "requirements": {
+                            "type": "object",
+                            "description": "Original requirements (optional)"
+                        },
+                        "user_context": {
+                            "type": "object",
+                            "description": "Optional user context (includes tenant_id, session_id)"
+                        }
+                    },
+                    "required": ["sop_structure"]
+                },
+                "description": "Generate SOP from structured requirements (from agent)"
+            },
+            "get_workflow": {
+                "handler": self._handle_get_workflow_soa,
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "workflow_id": {
+                            "type": "string",
+                            "description": "Workflow identifier"
+                        },
+                        "user_context": {
+                            "type": "object",
+                            "description": "Optional user context (includes tenant_id, session_id)"
+                        }
+                    },
+                    "required": ["workflow_id"]
+                },
+                "description": "Get workflow data by workflow_id"
+            },
+            "analyze_coexistence": {
+                "handler": self._handle_analyze_coexistence_soa,
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "workflow_id": {
+                            "type": "string",
+                            "description": "Workflow identifier to analyze"
+                        },
+                        "user_context": {
+                            "type": "object",
+                            "description": "Optional user context (includes tenant_id, session_id)"
+                        }
+                    },
+                    "required": ["workflow_id"]
+                },
+                "description": "Analyze workflow for coexistence (human-positive friction removal)"
+            },
+            "get_sop": {
+                "handler": self._handle_get_sop_soa,
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "sop_id": {
+                            "type": "string",
+                            "description": "SOP identifier"
+                        },
+                        "user_context": {
+                            "type": "object",
+                            "description": "Optional user context (includes tenant_id, session_id)"
+                        }
+                    },
+                    "required": ["sop_id"]
+                },
+                "description": "Get SOP data by sop_id"
             }
         }
     
@@ -820,3 +947,167 @@ class JourneyOrchestrator:
             )
             
             return await self._handle_create_workflow(intent_obj, exec_context)
+    
+    async def _handle_get_workflow_soa(
+        self,
+        intent: Optional[Intent] = None,
+        context: Optional[ExecutionContext] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Handle get_workflow SOA API (dual call pattern)."""
+        workflow_id = kwargs.get("workflow_id")
+        user_context = kwargs.get("user_context", {})
+        tenant_id = user_context.get("tenant_id", "default")
+        session_id = user_context.get("session_id", "default")
+        solution_id = user_context.get("solution_id", "default")
+        
+        if not workflow_id:
+            raise ValueError("workflow_id is required")
+        
+        # Get workflow from execution state or artifact plane
+        exec_context = ExecutionContext(
+            execution_id="get_workflow",
+            tenant_id=tenant_id,
+            session_id=session_id,
+            solution_id=solution_id
+        )
+        
+        # Try to get workflow from execution state
+        if exec_context.state_surface:
+            execution_state = await exec_context.state_surface.get_execution_state(
+                f"workflow_{workflow_id}",
+                tenant_id
+            )
+            
+            if execution_state and execution_state.get("artifacts", {}).get("workflow"):
+                return {
+                    "success": True,
+                    "workflow": execution_state["artifacts"]["workflow"]
+                }
+        
+        # Try to get workflow from artifact plane
+        if self.artifact_plane:
+            try:
+                artifact = await self.artifact_plane.get_artifact(
+                    artifact_id=workflow_id,
+                    context=exec_context
+                )
+                if artifact and artifact.get("payload", {}).get("renderings", {}).get("workflow"):
+                    return {
+                        "success": True,
+                        "workflow": artifact["payload"]["renderings"]["workflow"]
+                    }
+            except Exception as e:
+                self.logger.warning(f"Failed to get workflow from artifact plane: {e}")
+        
+        # Fallback: Return basic structure
+        self.logger.warning(f"Workflow {workflow_id} not found, returning basic structure")
+        return {
+            "success": True,
+            "workflow": {
+                "workflow_id": workflow_id,
+                "description": "Workflow process",
+                "steps": [],
+                "status": "not_found"
+            }
+        }
+    
+    async def _handle_analyze_coexistence_soa(
+        self,
+        intent: Optional[Intent] = None,
+        context: Optional[ExecutionContext] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Handle analyze_coexistence SOA API (dual call pattern)."""
+        if intent and context:
+            return await self._handle_analyze_coexistence(intent, context)
+        else:
+            workflow_id = kwargs.get("workflow_id")
+            user_context = kwargs.get("user_context", {})
+            tenant_id = user_context.get("tenant_id", "default")
+            session_id = user_context.get("session_id", "default")
+            solution_id = user_context.get("solution_id", "default")
+            
+            from symphainy_platform.runtime.intent_model import IntentFactory
+            intent_obj = IntentFactory.create_intent(
+                intent_type="analyze_coexistence",
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id,
+                parameters={
+                    "workflow_id": workflow_id
+                }
+            )
+            
+            exec_context = ExecutionContext(
+                execution_id="analyze_coexistence",
+                intent=intent_obj,
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id
+            )
+            
+            return await self._handle_analyze_coexistence(intent_obj, exec_context)
+    
+    async def _handle_get_sop_soa(
+        self,
+        intent: Optional[Intent] = None,
+        context: Optional[ExecutionContext] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Handle get_sop SOA API (dual call pattern)."""
+        sop_id = kwargs.get("sop_id")
+        user_context = kwargs.get("user_context", {})
+        tenant_id = user_context.get("tenant_id", "default")
+        session_id = user_context.get("session_id", "default")
+        solution_id = user_context.get("solution_id", "default")
+        
+        if not sop_id:
+            raise ValueError("sop_id is required")
+        
+        # Get SOP from execution state or artifact plane
+        exec_context = ExecutionContext(
+            execution_id="get_sop",
+            tenant_id=tenant_id,
+            session_id=session_id,
+            solution_id=solution_id
+        )
+        
+        # Try to get SOP from execution state
+        if exec_context.state_surface:
+            execution_state = await exec_context.state_surface.get_execution_state(
+                f"sop_{sop_id}",
+                tenant_id
+            )
+            
+            if execution_state and execution_state.get("artifacts", {}).get("sop"):
+                return {
+                    "success": True,
+                    "sop": execution_state["artifacts"]["sop"]
+                }
+        
+        # Try to get SOP from artifact plane
+        if self.artifact_plane:
+            try:
+                artifact = await self.artifact_plane.get_artifact(
+                    artifact_id=sop_id,
+                    context=exec_context
+                )
+                if artifact and artifact.get("payload", {}).get("renderings", {}).get("sop"):
+                    return {
+                        "success": True,
+                        "sop": artifact["payload"]["renderings"]["sop"]
+                    }
+            except Exception as e:
+                self.logger.warning(f"Failed to get SOP from artifact plane: {e}")
+        
+        # Fallback: Return basic structure
+        self.logger.warning(f"SOP {sop_id} not found, returning basic structure")
+        return {
+            "success": True,
+            "sop": {
+                "sop_id": sop_id,
+                "title": "SOP",
+                "status": "not_found"
+            }
+        }
