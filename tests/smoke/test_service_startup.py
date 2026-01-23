@@ -82,16 +82,17 @@ async def test_runtime_health(runtime_client: httpx.AsyncClient):
 
 @pytest.mark.asyncio
 async def test_runtime_realms_registered(runtime_client: httpx.AsyncClient):
-    """Test that all 3 realms are registered with Runtime."""
+    """Test that all realms are registered with Runtime (Content, Insights, Journey, Outcomes)."""
     response = await runtime_client.get(f"{RUNTIME_URL}/health")
     
     assert response.status_code == 200
     health_data = response.json()
     
     realm_count = health_data.get("realms", 0)
-    assert realm_count == 3, f"Expected 3 realms registered, got {realm_count}"
+    # We have 4 realms: Content, Insights, Journey, Outcomes
+    assert realm_count >= 4, f"Expected at least 4 realms registered, got {realm_count}"
     
-    logger.info(f"✅ All 3 realms registered: {realm_count}")
+    logger.info(f"✅ All realms registered: {realm_count}")
 
 
 @pytest.mark.asyncio

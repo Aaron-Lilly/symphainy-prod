@@ -22,6 +22,9 @@ from typing import Dict, Any, Optional, List
 from utilities import get_logger
 from symphainy_platform.runtime.execution_context import ExecutionContext
 from symphainy_platform.civic_systems.platform_sdk.guide_registry import GuideRegistry
+from .schema_matching_service import SchemaMatchingService
+from .semantic_matching_service import SemanticMatchingService
+from .pattern_validation_service import PatternValidationService
 
 
 class GuidedDiscoveryService:
@@ -56,6 +59,12 @@ class GuidedDiscoveryService:
         else:
             self.guide_registry = None
             self.logger.warning("GuideRegistry not available")
+        
+        # Initialize three-phase matching services
+        # ARCHITECTURAL PRINCIPLE: Use Public Works abstractions for governed access
+        self.schema_matching_service = SchemaMatchingService(public_works=public_works)
+        self.semantic_matching_service = SemanticMatchingService(public_works=public_works)
+        self.pattern_validation_service = PatternValidationService(public_works=public_works)
     
     async def interpret_with_guide(
         self,
@@ -417,3 +426,144 @@ class GuidedDiscoveryService:
         
         matched_count = len(matched_entity_types.intersection(expected_entity_types))
         return matched_count / len(expected_entity_types)
+    
+    async def match_source_to_target(
+        self,
+        source_deterministic_embedding_id: str,
+        target_deterministic_embedding_id: str,
+        source_parsed_file_id: str,
+        target_parsed_file_id: str,
+        context: ExecutionContext
+    ) -> Dict[str, Any]:
+        """
+        Match source to target using three-phase matching.
+        
+        ARCHITECTURAL PRINCIPLE: Integrates all three matching services.
+        - Phase 1: Schema alignment (exact match via fingerprints)
+        - Phase 2: Semantic matching (fuzzy match via embeddings)
+        - Phase 3: Pattern validation (data pattern compatibility)
+        
+        Args:
+            source_deterministic_embedding_id: Source deterministic embedding ID
+            target_deterministic_embedding_id: Target deterministic embedding ID
+            source_parsed_file_id: Source parsed file ID
+            target_parsed_file_id: Target parsed file ID
+            context: Execution context
+        
+        Returns:
+            Dict with comprehensive mapping results
+        """
+        self.logger.info(
+            f"Matching source to target: source_emb={source_deterministic_embedding_id}, "
+            f"target_emb={target_deterministic_embedding_id}"
+        )
+        
+        try:
+            # Phase 1: Schema Alignment
+            schema_results = await self.schema_matching_service.match_schemas(
+                source_deterministic_embedding_id=source_deterministic_embedding_id,
+                target_deterministic_embedding_id=target_deterministic_embedding_id,
+                context=context
+            )
+            
+            # Phase 2: Semantic Matching
+            semantic_results = await self.semantic_matching_service.match_semantically(
+                source_parsed_file_id=source_parsed_file_id,
+                target_parsed_file_id=target_parsed_file_id,
+                schema_matches=schema_results,
+                context=context
+            )
+            
+            # Combine Phase 1 and Phase 2 results
+            combined_mappings = {
+                "exact_matches": schema_results.get("exact_matches", []),
+                "semantic_matches": semantic_results.get("semantic_matches", []),
+                "similarity_scores": schema_results.get("similarity_scores", {}),
+                "enhanced_confidence": semantic_results.get("enhanced_confidence", {}),
+                "unmapped_source": schema_results.get("unmapped_source", []),
+                "unmapped_target": schema_results.get("unmapped_target", [])
+            }
+            
+            # Phase 3: Pattern Validation
+            validation_results = await self.pattern_validation_service.validate_patterns(
+                source_deterministic_embedding_id=source_deterministic_embedding_id,
+                target_deterministic_embedding_id=target_deterministic_embedding_id,
+                mappings=combined_mappings,
+                context=context
+            )
+            
+            # Combine all results
+            return {
+                "mapping_table": validation_results.get("validated_mappings", []),
+                "exact_matches": schema_results.get("exact_matches", []),
+                "semantic_matches": semantic_results.get("semantic_matches", []),
+                "validated_mappings": validation_results.get("validated_mappings", []),
+                "unmapped_source": schema_results.get("unmapped_source", []),
+                "unmapped_target": schema_results.get("unmapped_target", []),
+                "suggested_mappings": semantic_results.get("suggested_mappings", []),
+                "warnings": validation_results.get("warnings", []),
+                "errors": validation_results.get("errors", []),
+                "confidence_scores": {
+                    "schema_confidence": schema_results.get("overall_confidence", 0.0),
+                    "semantic_confidence": self._calculate_semantic_confidence(semantic_results),
+                    "pattern_validation_confidence": self._calculate_validation_confidence(validation_results)
+                },
+                "overall_confidence": self._calculate_overall_confidence(
+                    schema_results, semantic_results, validation_results
+                ),
+                "phase_results": {
+                    "phase_1_schema": schema_results,
+                    "phase_2_semantic": semantic_results,
+                    "phase_3_validation": validation_results
+                }
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to match source to target: {e}", exc_info=True)
+            return {
+                "mapping_table": [],
+                "exact_matches": [],
+                "semantic_matches": [],
+                "validated_mappings": [],
+                "unmapped_source": [],
+                "unmapped_target": [],
+                "suggested_mappings": [],
+                "warnings": [],
+                "errors": [{"message": str(e), "severity": "error"}],
+                "confidence_scores": {},
+                "overall_confidence": 0.0,
+                "error": str(e)
+            }
+    
+    def _calculate_semantic_confidence(self, semantic_results: Dict[str, Any]) -> float:
+        """Calculate overall semantic confidence."""
+        semantic_matches = semantic_results.get("semantic_matches", [])
+        if not semantic_matches:
+            return 0.0
+        
+        confidences = [m.get("confidence", 0.0) for m in semantic_matches]
+        return sum(confidences) / len(confidences) if confidences else 0.0
+    
+    def _calculate_validation_confidence(self, validation_results: Dict[str, Any]) -> float:
+        """Calculate overall pattern validation confidence."""
+        validation_scores = validation_results.get("validation_scores", {})
+        if not validation_scores:
+            return 0.0
+        
+        scores = list(validation_scores.values())
+        return sum(scores) / len(scores) if scores else 0.0
+    
+    def _calculate_overall_confidence(
+        self,
+        schema_results: Dict[str, Any],
+        semantic_results: Dict[str, Any],
+        validation_results: Dict[str, Any]
+    ) -> float:
+        """Calculate overall confidence from all three phases."""
+        schema_conf = schema_results.get("overall_confidence", 0.0)
+        semantic_conf = self._calculate_semantic_confidence(semantic_results)
+        validation_conf = self._calculate_validation_confidence(validation_results)
+        
+        # Weighted average (schema: 40%, semantic: 30%, validation: 30%)
+        overall = (schema_conf * 0.4) + (semantic_conf * 0.3) + (validation_conf * 0.3)
+        return overall

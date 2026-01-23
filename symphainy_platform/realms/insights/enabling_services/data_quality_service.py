@@ -187,16 +187,29 @@ class DataQualityService:
         context: ExecutionContext
     ) -> Optional[Dict[str, Any]]:
         """Get parsed data from State Surface."""
-        # State Surface is accessed via Runtime, not Foundation
-        # For now, try to get from context if available
-        if hasattr(context, 'state_surface') and context.state_surface:
-            try:
-                parsed_data = await context.state_surface.retrieve_file(parsed_file_id)
-                return parsed_data
-            except Exception as e:
-                self.logger.debug(f"Could not retrieve parsed data: {e}")
-        
-        return None
+        # ARCHITECTURAL PRINCIPLE: Use Content Realm service for file retrieval (governed access)
+        # Runtime records reality. Smart City governs access. Realms touch data.
+        # Never use state_surface.retrieve_file() - that's an anti-pattern.
+        try:
+            if not self.public_works:
+                self.logger.warning("Public Works not available - cannot retrieve parsed file via Content Realm")
+                return None
+            
+            # Use Content Realm service (governed access)
+            from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
+            file_parser_service = FileParserService(public_works=self.public_works)
+            
+            parsed_file = await file_parser_service.get_parsed_file(
+                parsed_file_id=parsed_file_id,
+                tenant_id=tenant_id,
+                context=context
+            )
+            
+            # Return parsed content
+            return parsed_file.get("parsed_content")
+        except Exception as e:
+            self.logger.debug(f"Could not retrieve parsed data via Content Realm: {e}")
+            return None
     
     async def _get_embeddings(
         self,
@@ -204,32 +217,30 @@ class DataQualityService:
         tenant_id: str,
         context: ExecutionContext
     ) -> Optional[List[Dict[str, Any]]]:
-        """Get embeddings from ArangoDB."""
+        """
+        Get embeddings via SemanticDataAbstraction (governed access).
+        
+        ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
+        """
         if not self.public_works:
             return None
         
-        arango_adapter = self.public_works.get_arango_adapter()
-        if not arango_adapter:
+        # Use SemanticDataAbstraction (governed access)
+        semantic_data = self.public_works.get_semantic_data_abstraction()
+        if not semantic_data:
+            self.logger.warning("SemanticDataAbstraction not available")
             return None
         
         try:
-            # Query embeddings collection for this parsed_file_id
-            # Note: Embeddings may be stored with different key structure
-            # For MVP, we'll check if collection exists and query it
-            if await arango_adapter.collection_exists("embeddings"):
-                query = """
-                FOR e IN embeddings
-                FILTER e.parsed_file_id == @parsed_file_id
-                RETURN e
-                """
-                bind_vars = {"parsed_file_id": parsed_file_id}
-                
-                embeddings = await arango_adapter.execute_aql(query, bind_vars=bind_vars)
-                return embeddings if embeddings else None
+            # Query embeddings via abstraction
+            embeddings = await semantic_data.get_semantic_embeddings(
+                filter_conditions={"parsed_file_id": parsed_file_id},
+                limit=None
+            )
+            return embeddings if embeddings else None
         except Exception as e:
-            self.logger.debug(f"Could not retrieve embeddings: {e}")
-        
-        return None
+            self.logger.debug(f"Could not retrieve embeddings via abstraction: {e}")
+            return None
     
     async def _get_source_metadata(
         self,
@@ -525,21 +536,34 @@ class DataQualityService:
         if not self.public_works:
             return None
         
-        arango_adapter = self.public_works.get_arango_adapter()
-        if not arango_adapter:
+        # Use DeterministicComputeAbstraction (governed access)
+        # ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
+        deterministic_compute = self.public_works.get_deterministic_compute_abstraction()
+        if not deterministic_compute:
+            self.logger.warning("DeterministicComputeAbstraction not available")
             return None
         
         try:
-            if await arango_adapter.collection_exists("deterministic_embeddings"):
-                document = await arango_adapter.get_document(
-                    collection="deterministic_embeddings",
-                    key=deterministic_embedding_id
-                )
+            # Get deterministic embedding via abstraction
+            embedding = await deterministic_compute.get_deterministic_embedding(
+                embedding_id=deterministic_embedding_id,
+                tenant_id=tenant_id
+            )
+            
+            if embedding:
+                # Convert to expected format
+                document = {
+                    "_key": embedding.get("embedding_id"),
+                    "parsed_file_id": embedding.get("parsed_file_id"),
+                    "schema_fingerprint": embedding.get("schema_fingerprint"),
+                    "pattern_signature": embedding.get("pattern_signature")
+                }
                 return document
+            else:
+                return None
         except Exception as e:
-            self.logger.debug(f"Could not retrieve deterministic embedding: {e}")
-        
-        return None
+            self.logger.debug(f"Could not retrieve deterministic embedding via abstraction: {e}")
+            return None
     
     async def _assess_embedding_quality(
         self,

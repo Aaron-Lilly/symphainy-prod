@@ -32,8 +32,8 @@ export interface SessionCreateResponse {
 
 export interface Session {
   session_id: string;
-  tenant_id: string;
-  user_id: string;
+  tenant_id: string | null;  // null for anonymous sessions
+  user_id: string | null;     // null for anonymous sessions
   created_at: string;
   metadata?: Record<string, any>;
   state?: Record<string, any>;
@@ -129,26 +129,110 @@ export class ExperiencePlaneClient {
   }
 
   /**
-   * Get session details
+   * Create anonymous session (no authentication required)
+   * 
+   * ✅ SESSION-FIRST PATTERN: Sessions exist before authentication
    */
-  async getSession(sessionId: string, tenantId: string): Promise<Session> {
-    const url = getApiEndpointUrl(`/api/session/${sessionId}`);
+  async createAnonymousSession(): Promise<SessionCreateResponse> {
+    const url = getApiEndpointUrl('/api/session/create-anonymous');
     
     const response = await fetch(url, {
-      method: 'GET',
+      method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      // Note: tenant_id might need to be in query params or headers
-      // Adjust based on actual API implementation
+      body: JSON.stringify({}),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Failed to create anonymous session' }));
+      throw new Error(error.detail || `Failed to create anonymous session: ${response.statusText}`);
+    }
+
+    return response.json();
+  }
+
+  /**
+   * Upgrade anonymous session with authentication
+   * 
+   * ✅ SESSION-FIRST PATTERN: Authentication upgrades existing session
+   */
+  async upgradeSession(
+    sessionId: string,
+    userData: { user_id: string; tenant_id: string; access_token: string; metadata?: Record<string, any> }
+  ): Promise<Session> {
+    const url = getApiEndpointUrl(`/api/session/${sessionId}/upgrade`);
+    
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${userData.access_token}`,
+      },
+      body: JSON.stringify({
+        user_id: userData.user_id,
+        tenant_id: userData.tenant_id,
+        access_token: userData.access_token,
+        metadata: userData.metadata,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ detail: 'Failed to upgrade session' }));
+      throw new Error(error.detail || `Failed to upgrade session: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return {
+      session_id: data.session_id,
+      tenant_id: data.tenant_id,
+      user_id: data.user_id,
+      created_at: data.created_at,
+      metadata: data.metadata || {},
+    };
+  }
+
+  /**
+   * Get session details (anonymous or authenticated)
+   * 
+   * ✅ SESSION-FIRST PATTERN: Allow session calls without authentication
+   */
+  async getSession(sessionId: string, tenantId?: string): Promise<Session> {
+    const url = getApiEndpointUrl(`/api/session/${sessionId}`);
+    
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json',
+    };
+    
+    // Add Authorization header if access_token exists (optional)
+    const accessToken = typeof window !== 'undefined' ? sessionStorage.getItem("access_token") : null;
+    if (accessToken) {
+      headers['Authorization'] = `Bearer ${accessToken}`;
+    }
+    
+    // Add tenant_id as query param if provided
+    const params = new URLSearchParams();
+    if (tenantId) {
+      params.append('tenant_id', tenantId);
+    }
+    const urlWithParams = params.toString() ? `${url}?${params.toString()}` : url;
+    
+    const response = await fetch(urlWithParams, {
+      method: 'GET',
+      headers,
     });
 
     if (!response.ok) {
       if (response.status === 404) {
-        throw new Error(`Session ${sessionId} not found`);
+        // Session doesn't exist - return a structured error that can be caught
+        const error = new Error(`Session ${sessionId} not found`);
+        (error as any).status = 404;
+        throw error;
       }
-      const error = await response.json().catch(() => ({ detail: 'Failed to get session' }));
-      throw new Error(error.detail || `Failed to get session: ${response.statusText}`);
+      const errorData = await response.json().catch(() => ({ detail: 'Failed to get session' }));
+      const error = new Error(errorData.detail || `Failed to get session: ${response.statusText}`);
+      (error as any).status = response.status;
+      throw error;
     }
 
     return response.json();

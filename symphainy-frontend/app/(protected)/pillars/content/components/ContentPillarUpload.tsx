@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { UploadCloud, File, CheckCircle, AlertCircle, Loader2, Info } from 'lucide-react';
 import { ContentType, FileTypeCategory, FILE_TYPE_CONFIGS, FileMetadata } from '@/shared/types/file';
-import { useAuth } from '@/shared/agui/AuthProvider';
+import { useAuth } from '@/shared/auth/AuthProvider';
 import { toast } from 'sonner';
 
 interface UploadState {

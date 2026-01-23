@@ -1,6 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { useGlobalSession } from "@/shared/agui/GlobalSessionProvider";
+import { useAuth } from "@/shared/auth/AuthProvider";
+import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { useWebSocket } from "@/shared/agui/WebSocketProvider";
 import { OperationsService } from "@/shared/services/operations";
 import { useSessionElements } from "@/shared/hooks/useSessionElements";
@@ -33,8 +34,13 @@ export default function OperationsPillarUpdated() {
   const setAgentInfo = useSetAtom(chatbotAgentInfoAtom);
   const setMainChatbotOpen = useSetAtom(mainChatbotOpenAtom);
 
-  const { getPillarState, setPillarState, guideSessionToken } =
-    useGlobalSession();
+  const { sessionToken } = useAuth();
+  const { state, getRealmState, setRealmState } = usePlatformState();
+  const guideSessionToken = sessionToken || state.session.sessionId;
+  
+  // Compatibility wrappers for old API
+  const getPillarState = (pillar: string) => getRealmState('journey', pillar);
+  const setPillarState = (pillar: string, value: any) => setRealmState('journey', pillar, value);
 
   const pathname = usePathname();
 

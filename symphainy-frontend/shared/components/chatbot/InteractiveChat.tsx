@@ -15,14 +15,17 @@ import StreamingMessage from "./StreamingMessage";
 import { useRouter } from "next/navigation";
 import { useAtomValue, useSetAtom } from "jotai";
 import { chatbotAgentInfoAtom, mainChatbotOpenAtom } from "@/shared/atoms/chatbot-atoms";
-import { useGlobalSession } from "@/shared/agui/GlobalSessionProvider";
-import { useAuth } from "@/shared/agui/AuthProvider";
+import { useAuth } from "@/shared/auth/AuthProvider";
+import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { useUnifiedAgentChat } from "@/shared/hooks/useUnifiedAgentChat";
 
 export default function InteractiveChat() {
   const router = useRouter();
-  const { guideSessionToken } = useGlobalSession();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, sessionToken } = useAuth();
+  const { state } = usePlatformState();
+  
+  // Get session token - prefer auth token (for backward compatibility), fallback to session ID
+  const guideSessionToken = sessionToken || state.session.sessionId;
   
   const mainChatbotOpen = useAtomValue(mainChatbotOpenAtom);
   const setMainChatbotOpen = useSetAtom(mainChatbotOpenAtom);

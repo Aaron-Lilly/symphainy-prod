@@ -40,7 +40,8 @@ import {
   TargetSystem,
   PermitProcessingOptions
 } from '@/shared/services/insights/types';
-import { useGlobalSession } from '@/shared/agui/GlobalSessionProvider';
+import { useAuth } from '@/shared/auth/AuthProvider';
+import { usePlatformState } from '@/shared/state/PlatformStateProvider';
 import { toast } from 'sonner';
 
 interface PermitProcessingSectionProps {
@@ -50,7 +51,9 @@ interface PermitProcessingSectionProps {
 export function PermitProcessingSection({ 
   onProcessingComplete 
 }: PermitProcessingSectionProps) {
-  const { guideSessionToken } = useGlobalSession();
+  const { sessionToken } = useAuth();
+  const { state } = usePlatformState();
+  const guideSessionToken = sessionToken || state.session.sessionId;
   const [permitFileId, setPermitFileId] = useState<string>('');
   const [targetSystems, setTargetSystems] = useState<TargetSystem[]>([]);
   const [processingOptions, setProcessingOptions] = useState<PermitProcessingOptions>({

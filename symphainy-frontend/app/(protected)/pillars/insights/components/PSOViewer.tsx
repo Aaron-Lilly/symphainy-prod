@@ -25,7 +25,8 @@ import {
 } from 'lucide-react';
 import { InsightsService } from '@/shared/services/insights/core';
 import { PermitSemanticObject, Obligation } from '@/shared/services/insights/types';
-import { useGlobalSession } from '@/shared/agui/GlobalSessionProvider';
+import { useAuth } from '@/shared/auth/AuthProvider';
+import { usePlatformState } from '@/shared/state/PlatformStateProvider';
 import { toast } from 'sonner';
 
 interface PSOViewerProps {
@@ -34,7 +35,9 @@ interface PSOViewerProps {
 }
 
 export function PSOViewer({ psoId, onClose }: PSOViewerProps) {
-  const { guideSessionToken } = useGlobalSession();
+  const { sessionToken } = useAuth();
+  const { state } = usePlatformState();
+  const guideSessionToken = sessionToken || state.session.sessionId;
   const [pso, setPso] = useState<PermitSemanticObject | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

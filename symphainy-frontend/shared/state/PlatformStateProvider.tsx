@@ -29,15 +29,16 @@ import React, {
   useCallback,
   useRef,
 } from "react";
-import { ExperiencePlaneClient, Session, ExecutionStatus } from "@/shared/services/ExperiencePlaneClient";
+import { ExperiencePlaneClient, ExecutionStatus } from "@/shared/services/ExperiencePlaneClient";
 import { getGlobalExperiencePlaneClient } from "@/shared/services/ExperiencePlaneClient";
+import { useSessionBoundary, SessionStatus } from "./SessionBoundaryProvider";
 
 // State interfaces
 export interface SessionState {
   sessionId: string | null;
   tenantId: string | null;
   userId: string | null;
-  session: Session | null;
+  session: null; // ✅ SESSION BOUNDARY PATTERN: Session object not stored here - use SessionBoundaryProvider
   isLoading: boolean;
   error: string | null;
 }
@@ -79,11 +80,8 @@ interface PlatformStateContextType {
   // State
   state: PlatformState;
   
-  // Session actions
-  createSession: (tenantId: string, userId: string, metadata?: Record<string, any>) => Promise<string>;
-  getSession: (sessionId: string) => Promise<Session | null>;
-  setSession: (session: Session) => void;
-  clearSession: () => void;
+  // ✅ SESSION BOUNDARY PATTERN: Session management removed - use SessionBoundaryProvider instead
+  // Session actions removed - subscribe to SessionBoundaryProvider for session state
   
   // Execution actions
   submitIntent: (
@@ -114,7 +112,54 @@ const PlatformStateContext = createContext<PlatformStateContextType | undefined>
 
 export const usePlatformState = (): PlatformStateContextType => {
   const context = useContext(PlatformStateContext);
-  if (!context) {
+  
+  // SSR-safe: Return a safe default during prerendering
+  if (context === undefined) {
+    if (typeof window === 'undefined') {
+      // Server-side: Return a minimal safe default
+      return {
+        state: {
+          session: {
+            sessionId: null,
+            tenantId: null,
+            userId: null,
+            session: null,
+            isLoading: false,
+            error: null,
+          },
+          execution: {
+            executions: new Map(),
+            activeExecutions: [],
+            isLoading: false,
+            error: null,
+          },
+          realm: {
+            content: {},
+            insights: {},
+            journey: {},
+            outcomes: {},
+          },
+          ui: {
+            currentPillar: null,
+            sidebarOpen: false,
+            notifications: [],
+          },
+        },
+        submitIntent: async () => "",
+        getExecutionStatus: async () => null,
+        trackExecution: () => {},
+        untrackExecution: () => {},
+        setRealmState: () => {},
+        getRealmState: () => ({}),
+        clearRealmState: () => {},
+        setCurrentPillar: () => {},
+        setSidebarOpen: () => {},
+        addNotification: () => {},
+        removeNotification: () => {},
+        syncWithRuntime: async () => {},
+      };
+    }
+    // Client-side: This is a real error
     throw new Error("usePlatformState must be used within PlatformStateProvider");
   }
   return context;
@@ -131,16 +176,73 @@ export const PlatformStateProvider: React.FC<PlatformStateProviderProps> = ({
 }) => {
   const client = experiencePlaneClient || getGlobalExperiencePlaneClient();
   const syncIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // ✅ SESSION BOUNDARY PATTERN: Subscribe to SessionBoundaryProvider for session state
+  const { state: sessionState } = useSessionBoundary();
+  
+  // ✅ BEST PRACTICE: Check access_token directly (set by AuthProvider) to determine authentication
+  // This prevents circular dependency (AuthProvider uses usePlatformState)
+  // Pattern: AuthProvider sets access_token → PlatformStateProvider checks it → loads session if authenticated
+  // This is similar to how NextAuth and Auth0 work - session provider checks token, not auth state
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authChecked, setAuthChecked] = useState(false);
+  
+  // Check authentication status by looking for access_token (set by AuthProvider)
+  // Wait a small delay to let AuthProvider initialize first
+  useEffect(() => {
+    const checkAuth = () => {
+      const accessToken = typeof window !== 'undefined' ? sessionStorage.getItem("access_token") : null;
+      setIsAuthenticated(!!accessToken);
+      setAuthChecked(true);
+    };
+    
+    // Small delay to let AuthProvider initialize and set access_token
+    const timer = setTimeout(checkAuth, 100);
+    return () => clearTimeout(timer);
+  }, []);
+  
+  // Also listen for storage changes (when AuthProvider sets/removes access_token)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'access_token') {
+        setIsAuthenticated(!!e.newValue);
+      }
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
+
+  // ✅ SESSION BOUNDARY PATTERN: No cleanup code here
+  // SessionBoundaryProvider handles all session lifecycle management
+
+  // ✅ SESSION BOUNDARY PATTERN: Sync session state from SessionBoundaryProvider
+  // Session state is managed by SessionBoundaryProvider - we just mirror it here for backward compatibility
+  useEffect(() => {
+    setState((prev) => ({
+      ...prev,
+      session: {
+        sessionId: sessionState.sessionId,
+        tenantId: sessionState.tenantId,
+        userId: sessionState.userId,
+        session: null, // We don't store full session object here anymore
+        isLoading: sessionState.status === SessionStatus.Initializing || sessionState.status === SessionStatus.Recovering,
+        error: sessionState.error,
+      },
+    }));
+  }, [sessionState]);
 
   // Initialize state
   const [state, setState] = useState<PlatformState>({
     session: {
-      sessionId: null,
-      tenantId: null,
-      userId: null,
+      sessionId: sessionState.sessionId,
+      tenantId: sessionState.tenantId,
+      userId: sessionState.userId,
       session: null,
-      isLoading: false,
-      error: null,
+      isLoading: sessionState.status === SessionStatus.Initializing || sessionState.status === SessionStatus.Recovering,
+      error: sessionState.error,
     },
     execution: {
       executions: new Map(),
@@ -161,108 +263,12 @@ export const PlatformStateProvider: React.FC<PlatformStateProviderProps> = ({
     },
   });
 
-  // Session actions
-  const createSession = useCallback(
-    async (tenantId: string, userId: string, metadata?: Record<string, any>): Promise<string> => {
-      setState((prev) => ({
-        ...prev,
-        session: { ...prev.session, isLoading: true, error: null },
-      }));
+  // ✅ SESSION BOUNDARY PATTERN: Session management removed
+  // All session operations are handled by SessionBoundaryProvider
+  // No session methods here - components should use useSessionBoundary() instead
 
-      try {
-        const response = await client.createSession({
-          tenant_id: tenantId,
-          user_id: userId,
-          metadata,
-        });
-
-        setState((prev) => ({
-          ...prev,
-          session: {
-            sessionId: response.session_id,
-            tenantId: response.tenant_id,
-            userId: response.user_id,
-            session: {
-              session_id: response.session_id,
-              tenant_id: response.tenant_id,
-              user_id: response.user_id,
-              created_at: response.created_at,
-              metadata: response.metadata,
-            },
-            isLoading: false,
-            error: null,
-          },
-        }));
-
-        // Store in localStorage for persistence
-        localStorage.setItem("session_id", response.session_id);
-        localStorage.setItem("tenant_id", response.tenant_id);
-        localStorage.setItem("user_id", response.user_id);
-
-        return response.session_id;
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : "Failed to create session";
-        setState((prev) => ({
-          ...prev,
-          session: { ...prev.session, isLoading: false, error: errorMessage },
-        }));
-        throw error;
-      }
-    },
-    [client]
-  );
-
-  const getSession = useCallback(
-    async (sessionId: string): Promise<Session | null> => {
-      if (!state.session.tenantId) {
-        throw new Error("Tenant ID required to get session");
-      }
-
-      try {
-        const session = await client.getSession(sessionId, state.session.tenantId);
-        setState((prev) => ({
-          ...prev,
-          session: { ...prev.session, session },
-        }));
-        return session;
-      } catch (error) {
-        console.error("Failed to get session:", error);
-        return null;
-      }
-    },
-    [client, state.session.tenantId]
-  );
-
-  const setSession = useCallback((session: Session) => {
-    setState((prev) => ({
-      ...prev,
-      session: {
-        sessionId: session.session_id,
-        tenantId: session.tenant_id,
-        userId: session.user_id,
-        session,
-        isLoading: false,
-        error: null,
-      },
-    }));
-  }, []);
-
-  const clearSession = useCallback(() => {
-    setState((prev) => ({
-      ...prev,
-      session: {
-        sessionId: null,
-        tenantId: null,
-        userId: null,
-        session: null,
-        isLoading: false,
-        error: null,
-      },
-    }));
-    localStorage.removeItem("session_id");
-    localStorage.removeItem("tenant_id");
-    localStorage.removeItem("user_id");
-  }, []);
+  // ✅ SESSION BOUNDARY PATTERN: Session initialization removed
+  // SessionBoundaryProvider handles all session lifecycle management
 
   // Execution actions
   const submitIntent = useCallback(
@@ -271,8 +277,9 @@ export const PlatformStateProvider: React.FC<PlatformStateProviderProps> = ({
       parameters?: Record<string, any>,
       metadata?: Record<string, any>
     ): Promise<string> => {
-      if (!state.session.sessionId || !state.session.tenantId) {
-        throw new Error("Session required to submit intent");
+      // ✅ SESSION BOUNDARY PATTERN: Use session state from SessionBoundaryProvider
+      if (!sessionState.sessionId || !sessionState.tenantId) {
+        throw new Error("Active session required to submit intent");
       }
 
       setState((prev) => ({
@@ -283,8 +290,8 @@ export const PlatformStateProvider: React.FC<PlatformStateProviderProps> = ({
       try {
         const response = await client.submitIntent({
           intent_type: intentType,
-          tenant_id: state.session.tenantId,
-          session_id: state.session.sessionId,
+          tenant_id: sessionState.tenantId!,
+          session_id: sessionState.sessionId,
           parameters,
           metadata,
         });
@@ -293,8 +300,8 @@ export const PlatformStateProvider: React.FC<PlatformStateProviderProps> = ({
           execution_id: response.execution_id,
           status: "pending",
           intent_id: response.intent_id,
-          tenant_id: state.session.tenantId,
-          session_id: state.session.sessionId,
+          tenant_id: sessionState.tenantId!,
+          session_id: sessionState.sessionId,
           started_at: response.created_at,
         };
 
@@ -326,17 +333,18 @@ export const PlatformStateProvider: React.FC<PlatformStateProviderProps> = ({
         throw error;
       }
     },
-    [client, state.session.sessionId, state.session.tenantId]
+    [client, sessionState.sessionId, sessionState.tenantId]
   );
 
   const getExecutionStatus = useCallback(
     async (executionId: string): Promise<ExecutionStatus | null> => {
-      if (!state.session.tenantId) {
-        throw new Error("Tenant ID required to get execution status");
+      // ✅ SESSION BOUNDARY PATTERN: Use session state from SessionBoundaryProvider
+      if (!sessionState.tenantId) {
+        throw new Error("Active session required to get execution status");
       }
 
       try {
-        const status = await client.getExecutionStatus(executionId, state.session.tenantId);
+        const status = await client.getExecutionStatus(executionId, sessionState.tenantId);
         setState((prev) => {
           const executions = new Map(prev.execution.executions);
           executions.set(executionId, status);
@@ -354,7 +362,7 @@ export const PlatformStateProvider: React.FC<PlatformStateProviderProps> = ({
         return null;
       }
     },
-    [client, state.session.tenantId]
+    [client, sessionState.tenantId]
   );
 
   const trackExecution = useCallback((executionId: string) => {
@@ -481,62 +489,47 @@ export const PlatformStateProvider: React.FC<PlatformStateProviderProps> = ({
     }));
   }, []);
 
-  // Sync with Runtime
+  // ✅ SESSION BOUNDARY PATTERN: Sync with Runtime - ONLY when session is Active
+  // Sync follows session state - never leads it
   const syncWithRuntime = useCallback(async () => {
-    if (!state.session.sessionId || !state.session.tenantId) {
+    // Only sync when session is Active (authenticated and valid)
+    if (sessionState.status !== SessionStatus.Active) {
+      return;
+    }
+    
+    if (!sessionState.sessionId) {
       return;
     }
 
     try {
-      // Sync session
-      const session = await getSession(state.session.sessionId);
-      if (session) {
-        setSession(session);
-      }
-
-      // Sync active executions
+      // Sync active executions (only if we have a valid active session)
       for (const executionId of state.execution.activeExecutions) {
         await getExecutionStatus(executionId);
       }
     } catch (error) {
       console.error("Failed to sync with Runtime:", error);
+      // Don't clear session state here - SessionBoundaryProvider handles that
     }
-  }, [state.session.sessionId, state.session.tenantId, state.execution.activeExecutions, getSession, setSession, getExecutionStatus]);
+  }, [sessionState.status, sessionState.sessionId, state.execution.activeExecutions, getExecutionStatus]);
 
-  // Hydrate from localStorage on mount
+  // Periodic sync with Runtime (every 30 seconds) - ONLY if user is authenticated
+  // ✅ SESSION-FIRST: Check access_token to determine authentication
+  // Anonymous sessions exist but don't sync (no tenant_id/user_id)
   useEffect(() => {
-    const sessionId = localStorage.getItem("session_id");
-    const tenantId = localStorage.getItem("tenant_id");
-    const userId = localStorage.getItem("user_id");
-
-    if (sessionId && tenantId && userId) {
-      setState((prev) => ({
-        ...prev,
-        session: {
-          ...prev.session,
-          sessionId,
-          tenantId,
-          userId,
-        },
-      }));
-
-      // Load session details
-      client.getSession(sessionId, tenantId).then((session) => {
-        if (session) {
-          setSession(session);
-        }
-      }).catch((error) => {
-        console.error("Failed to load session:", error);
-      });
-    }
-  }, [client, setSession]);
-
-  // Periodic sync with Runtime (every 30 seconds)
-  useEffect(() => {
-    if (state.session.sessionId) {
+    // Check if user is authenticated (has access_token)
+    const accessToken = typeof window !== 'undefined' ? sessionStorage.getItem("access_token") : null;
+    
+    // Only sync if authenticated AND session has tenant_id (not anonymous)
+    if (sessionState.status === SessionStatus.Active && sessionState.sessionId && sessionState.tenantId) {
       syncIntervalRef.current = setInterval(() => {
         syncWithRuntime();
       }, 30000);
+    } else {
+      // Clear interval if no session, not authenticated, or anonymous session
+      if (syncIntervalRef.current) {
+        clearInterval(syncIntervalRef.current);
+        syncIntervalRef.current = null;
+      }
     }
 
     return () => {
@@ -544,14 +537,10 @@ export const PlatformStateProvider: React.FC<PlatformStateProviderProps> = ({
         clearInterval(syncIntervalRef.current);
       }
     };
-  }, [state.session.sessionId, syncWithRuntime]);
+  }, [sessionState.status, sessionState.sessionId, sessionState.tenantId, syncWithRuntime]);
 
   const contextValue: PlatformStateContextType = {
     state,
-    createSession,
-    getSession,
-    setSession,
-    clearSession,
     submitIntent,
     getExecutionStatus,
     trackExecution,

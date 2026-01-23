@@ -21,9 +21,10 @@ from typing import Dict, Any, Optional, List
 
 from utilities import get_logger, generate_event_id
 from symphainy_platform.runtime.execution_context import ExecutionContext
+from symphainy_platform.civic_systems.agentic.agent_base import AgentBase
 
 
-class JourneyLiaisonAgent:
+class JourneyLiaisonAgent(AgentBase):
     """
     Journey Liaison Agent - Interactive SOP generation.
     
@@ -176,54 +177,40 @@ class JourneyLiaisonAgent:
             "timestamp": context.clock.now().isoformat() if hasattr(context, 'clock') else None
         })
         
-        # Process message and update SOP structure
-        # For MVP: Simple pattern matching
-        # In full implementation: Use LLM to understand intent and extract information
+        # Process message using LLM to understand intent (no execution)
+        # ARCHITECTURAL PRINCIPLE: Liaison agents reason about conversation, don't execute
         
-        response_message = ""
+        # Use LLM to understand user intent and extract information
+        intent_analysis = await self._understand_conversation_intent(
+            message=message,
+            conversation_history=conversation_history,
+            sop_structure=sop_structure,
+            context=context
+        )
+        
+        # Update SOP structure based on LLM analysis (guidance only, not execution)
         updated = False
+        if intent_analysis.get("extracted_title"):
+            sop_structure["title"] = intent_analysis["extracted_title"]
+            updated = True
         
-        # Check if message contains title/name
-        if not sop_structure["title"]:
-            # Try to extract title from message
-            if any(word in message.lower() for word in ["sop", "procedure", "process", "for"]):
-                # Extract potential title
-                words = message.split()
-                if len(words) > 2:
-                    sop_structure["title"] = " ".join(words[:5])  # Simple extraction
-                    response_message = f"Got it! I'll create an SOP for '{sop_structure['title']}'. What are the main steps?"
-                    updated = True
-        
-        # Check if message contains steps
-        if any(word in message.lower() for word in ["step", "first", "then", "next", "after"]):
-            # Extract step information
-            step_text = message
+        if intent_analysis.get("extracted_step"):
             step_number = len(sop_structure["steps"]) + 1
             sop_structure["steps"].append({
                 "step_number": step_number,
-                "name": f"Step {step_number}",
-                "description": step_text,
-                "checkpoint": False
+                "name": intent_analysis["extracted_step"].get("name", f"Step {step_number}"),
+                "description": intent_analysis["extracted_step"].get("description", ""),
+                "checkpoint": intent_analysis["extracted_step"].get("checkpoint", False)
             })
-            response_message = f"Added step {step_number}. What's the next step? (Say 'done' when finished)"
             updated = True
         
-        # Check if user says done/finished
-        if any(word in message.lower() for word in ["done", "finished", "complete", "that's all"]):
-            if len(sop_structure["steps"]) > 0:
-                response_message = "Great! I have enough information to generate the SOP. Generating now..."
-                session_state["status"] = "ready_to_generate"
-            else:
-                response_message = "I need at least one step to generate the SOP. Can you describe the first step?"
+        # Generate guidance response (no execution)
+        response_message = intent_analysis.get("guidance_response", "How can I help you create an SOP?")
         
-        # Default response if no pattern matched
-        if not response_message:
-            if not sop_structure["title"]:
-                response_message = "What process would you like to document? Please provide a title or description."
-            elif len(sop_structure["steps"]) == 0:
-                response_message = "What are the main steps in this process? Please describe them one by one."
-            else:
-                response_message = "Got it! Any additional steps or details? (Say 'done' when finished)"
+        # Check if requirements are complete (ready to delegate)
+        if intent_analysis.get("requirements_complete", False):
+            session_state["status"] = "ready_to_generate"
+            response_message = "Great! I have enough information. Ready to generate the SOP when you say 'generate' or 'done'."
         
         # Add agent response to history
         conversation_history.append({
@@ -263,7 +250,9 @@ class JourneyLiaisonAgent:
         context: ExecutionContext
     ) -> Dict[str, Any]:
         """
-        Generate final SOP from chat session.
+        Generate final SOP from chat session by delegating to SOPGenerationAgent.
+        
+        ARCHITECTURAL PRINCIPLE: Liaison agents delegate to specialist agents, don't execute.
         
         Args:
             session_id: Chat session identifier
@@ -273,7 +262,7 @@ class JourneyLiaisonAgent:
         Returns:
             Dict with generated SOP
         """
-        self.logger.info(f"Generating SOP from chat session {session_id}")
+        self.logger.info(f"Delegating SOP generation to specialist agent for session {session_id}")
         
         # Retrieve session state
         session_state = None
@@ -289,6 +278,7 @@ class JourneyLiaisonAgent:
             raise ValueError(f"Session {session_id} not found")
         
         sop_structure = session_state.get("sop_structure", {})
+        conversation_history = session_state.get("conversation_history", [])
         
         if not sop_structure.get("title"):
             raise ValueError("SOP title is required")
@@ -296,24 +286,132 @@ class JourneyLiaisonAgent:
         if len(sop_structure.get("steps", [])) == 0:
             raise ValueError("At least one step is required")
         
-        # Generate SOP document
-        sop_id = generate_event_id()
-        sop_data = {
-            "id": sop_id,
-            "title": sop_structure["title"],
-            "description": sop_structure.get("description", ""),
-            "steps": sop_structure["steps"],
-            "checkpoints": sop_structure.get("checkpoints", []),
-            "requirements": sop_structure.get("requirements", []),
-            "source": "chat_generated",
-            "session_id": session_id,
-            "created_at": context.clock.now().isoformat() if hasattr(context, 'clock') else None
-        }
+        # Delegate to SOPGenerationAgent (specialist agent)
+        if not self.sop_generation_agent:
+            raise ValueError("SOPGenerationAgent not available - cannot generate SOP")
+        
+        # Use specialist agent to generate SOP
+        agent_result = await self.sop_generation_agent.process_request(
+            {
+                "type": "generate_sop_from_requirements",
+                "requirements": sop_structure,
+                "conversation_history": conversation_history
+            },
+            context
+        )
+        
+        # Extract SOP from agent result
+        sop_outcome = agent_result.get("artifact", {})
         
         return {
-            "sop_id": sop_id,
-            "sop_data": sop_data,
+            "sop_id": sop_outcome.get("sop_id"),
+            "sop_data": sop_outcome.get("sop_data", {}),
             "status": "generated",
             "source": "chat",
-            "session_id": session_id
+            "session_id": session_id,
+            "agent_reasoning": agent_result.get("reasoning", "")
         }
+    
+    async def _understand_conversation_intent(
+        self,
+        message: str,
+        conversation_history: List[Dict[str, Any]],
+        sop_structure: Dict[str, Any],
+        context: ExecutionContext
+    ) -> Dict[str, Any]:
+        """
+        Understand conversation intent using LLM (no execution).
+        
+        ARCHITECTURAL PRINCIPLE: Liaison agents reason about conversation, don't execute.
+        
+        Args:
+            message: User message
+            conversation_history: Conversation history
+            sop_structure: Current SOP structure
+            context: Execution context
+        
+        Returns:
+            Dict with intent analysis and guidance
+        """
+        system_message = """You are a helpful assistant guiding users through SOP creation.
+
+Your role is to:
+1. Understand what the user is saying
+2. Extract relevant information (title, steps, etc.)
+3. Provide guidance on what information is still needed
+4. Determine when requirements are complete
+
+You do NOT generate SOPs - you only guide and gather requirements."""
+        
+        conversation_context = "\n".join([
+            f"{msg.get('role', 'user')}: {msg.get('message', '')[:100]}"
+            for msg in conversation_history[-5:]
+        ])
+        
+        user_message = f"""Analyze this conversation:
+
+Current SOP Structure:
+- Title: {sop_structure.get('title', 'Not set')}
+- Steps: {len(sop_structure.get('steps', []))} steps
+- Description: {sop_structure.get('description', 'Not set')}
+
+Recent Conversation:
+{conversation_context}
+
+Current Message: {message}
+
+Analyze and provide:
+1. Extracted title (if mentioned)
+2. Extracted step (if mentioned)
+3. Guidance response (what to ask next)
+4. Requirements complete? (true/false)"""
+        
+        try:
+            analysis_text = await self._call_llm(
+                prompt=user_message,
+                system_message=system_message,
+                model="gpt-4o-mini",
+                max_tokens=400,
+                temperature=0.3,
+                context=context
+            )
+            
+            # Parse analysis (simple extraction - in full implementation, use structured output)
+            extracted_title = None
+            extracted_step = None
+            guidance_response = analysis_text
+            requirements_complete = False
+            
+            # Simple parsing
+            if "title:" in analysis_text.lower():
+                lines = analysis_text.split('\n')
+                for line in lines:
+                    if "title:" in line.lower():
+                        extracted_title = line.split(":")[-1].strip()
+            
+            if "step:" in analysis_text.lower() or "extracted step" in analysis_text.lower():
+                # Extract step information
+                extracted_step = {
+                    "name": f"Step {len(sop_structure.get('steps', [])) + 1}",
+                    "description": message,
+                    "checkpoint": False
+                }
+            
+            if "complete" in analysis_text.lower() and "true" in analysis_text.lower():
+                requirements_complete = True
+            
+            return {
+                "extracted_title": extracted_title,
+                "extracted_step": extracted_step,
+                "guidance_response": guidance_response,
+                "requirements_complete": requirements_complete
+            }
+        except Exception as e:
+            self.logger.warning(f"LLM intent understanding failed: {e}")
+            # Fallback: Simple pattern matching
+            return {
+                "extracted_title": None,
+                "extracted_step": None,
+                "guidance_response": "I'm here to help you create an SOP. What process would you like to document?",
+                "requirements_complete": False
+            }

@@ -25,7 +25,8 @@ import { CompositionGuidePanel } from './business/CompositionGuidePanel';
 import { SolutionTemplatesPanel } from './business/SolutionTemplatesPanel';
 import { SolutionBuilderPanel } from './business/SolutionBuilderPanel';
 import { FeatureRequestPanel } from './business/FeatureRequestPanel';
-import { BookOpen, Layout, Wrench, FileText } from 'lucide-react';
+import { ImplementationPreparationPanel } from './business/ImplementationPreparationPanel';
+import { BookOpen, Layout, Wrench, FileText, Rocket } from 'lucide-react';
 
 export function BusinessUserView() {
   const adminAPIManager = useAdminAPIManager();
@@ -104,6 +105,10 @@ export function BusinessUserView() {
           Feature Requests
         </TabsTrigger>
       </TabsList>
+
+      <TabsContent value="implementation" className="mt-0">
+        <ImplementationPreparationPanel adminAPIManager={adminAPIManager} />
+      </TabsContent>
 
       <TabsContent value="guide" className="mt-0">
         {compositionGuide ? (

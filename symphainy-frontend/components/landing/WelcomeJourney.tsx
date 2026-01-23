@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -8,7 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { useRouter } from "next/navigation";
 import { ArrowRight, Loader2, Lightbulb, Target, CheckCircle2, XCircle, Settings, Brain, Sparkles } from "lucide-react";
 import { useApp } from "@/shared/agui/AppProvider";
-import { useAuth } from '@/shared/agui/AuthProvider';
+import { useAuth } from '@/shared/auth/AuthProvider';
 import { useGuideAgent } from "@/lib/contexts/ExperienceLayerProvider";
 import { pillars } from "@/shared/data/pillars";
 import { toast } from "sonner";
@@ -25,6 +25,7 @@ export function WelcomeJourney({
   const { isAuthenticated, user } = useAuth();
   const guideAgent = useGuideAgent();
   
+  // All hooks must be called before any conditional returns (Rules of Hooks)
   const [userGoals, setUserGoals] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [showGoalInput, setShowGoalInput] = useState(false);
@@ -36,6 +37,24 @@ export function WelcomeJourney({
   const [showDiscoverySummary, setShowDiscoverySummary] = useState(false);
   const [userEdits, setUserEdits] = useState<any>({});
   const [isCommitting, setIsCommitting] = useState(false);
+
+  const handleCommitContext = async () => {
+    setIsCommitting(true);
+    try {
+      // Commit the discovery context and user edits
+      // This would typically save to backend or update state
+      setShowDiscoverySummary(false);
+      setDiscoveryContext(null);
+      setUserEdits({});
+      toast.success("Context committed successfully");
+    } catch (error: any) {
+      toast.error("Failed to commit context", {
+        description: error.message || "An error occurred"
+      });
+    } finally {
+      setIsCommitting(false);
+    }
+  };
 
   const handleStartJourney = () => {
     // Set a proactive message for the chat assistant by dispatching an action

@@ -118,9 +118,19 @@ export function useUnifiedAgentChat(
       // Create or reuse RuntimeClient
       if (!runtimeClientRef.current) {
         const baseUrl = getApiUrl();
+        // Get both access_token and session_id from storage
+        const accessToken = typeof window !== 'undefined' ? sessionStorage.getItem("access_token") : null;
+        const sessionId = sessionToken; // sessionToken is actually session_id
+        
+        if (!accessToken || !sessionId) {
+          console.warn("Missing access_token or session_id, cannot create RuntimeClient");
+          return;
+        }
+        
         runtimeClientRef.current = new RuntimeClient({
           baseUrl,
-          sessionToken,
+          accessToken: accessToken,
+          sessionId: sessionId,
           autoReconnect: autoConnect,
         });
 

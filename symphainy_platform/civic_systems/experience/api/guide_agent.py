@@ -20,7 +20,7 @@ if str(project_root) not in sys.path:
 
 from fastapi import APIRouter, HTTPException, Depends, Request
 from pydantic import BaseModel
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
 from utilities import get_logger
 from symphainy_platform.runtime.execution_context import ExecutionContext

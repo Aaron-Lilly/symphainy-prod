@@ -63,6 +63,20 @@ class ContentOrchestrator:
         self.file_parser_service = FileParserService(public_works=public_works)
         self.deterministic_embedding_service = DeterministicEmbeddingService(public_works=public_works)
         self.embedding_service = EmbeddingService(public_works=public_works)
+        
+        # Initialize agents (agentic forward pattern)
+        self.content_liaison_agent = ContentLiaisonAgent(
+            agent_definition_id="content_liaison_agent",
+            public_works=public_works
+        )
+        
+        # Initialize runtime context hydration service (for call site responsibility)
+        from symphainy_platform.civic_systems.agentic.services.runtime_context_hydration_service import RuntimeContextHydrationService
+        self.runtime_context_service = RuntimeContextHydrationService()
+        
+        # Initialize health monitoring and telemetry (lazy initialization)
+        self.telemetry_service = None
+        self.health_monitor = None
     
     async def handle_intent(
         self,
@@ -79,60 +93,116 @@ class ContentOrchestrator:
         Returns:
             Dict with "artifacts" and "events" keys
         """
-        intent_type = intent.intent_type
+        # Initialize health monitoring and telemetry if not already done
+        if not self.health_monitor:
+            from symphainy_platform.civic_systems.agentic.telemetry.agentic_telemetry_service import AgenticTelemetryService
+            from symphainy_platform.civic_systems.orchestrator_health import OrchestratorHealthMonitor
+            
+            if self.public_works:
+                try:
+                    self.telemetry_service = getattr(self.public_works, 'telemetry_service', None)
+                except:
+                    pass
+            
+            if not self.telemetry_service:
+                self.telemetry_service = AgenticTelemetryService()
+            
+            self.health_monitor = OrchestratorHealthMonitor(telemetry_service=self.telemetry_service)
+            await self.health_monitor.start_monitoring("content_orchestrator")
         
-        if intent_type == "ingest_file":
-            return await self._handle_ingest_file(intent, context)
-        elif intent_type == "bulk_ingest_files":
-            return await self._handle_bulk_ingest_files(intent, context)
-        elif intent_type == "bulk_parse_files":
-            return await self._handle_bulk_parse_files(intent, context)
-        elif intent_type == "bulk_extract_embeddings":
-            return await self._handle_bulk_extract_embeddings(intent, context)
-        elif intent_type == "bulk_interpret_data":
-            return await self._handle_bulk_interpret_data(intent, context)
-        elif intent_type == "get_operation_status":
-            return await self._handle_get_operation_status(intent, context)
-        elif intent_type == "register_file":
-            return await self._handle_register_file(intent, context)
-        elif intent_type == "retrieve_file_metadata":
-            return await self._handle_retrieve_file_metadata(intent, context)
-        elif intent_type == "retrieve_file":
-            return await self._handle_retrieve_file(intent, context)
-        elif intent_type == "list_files":
-            return await self._handle_list_files(intent, context)
-        elif intent_type == "save_materialization":
-            return await self._handle_save_materialization(intent, context)
-        elif intent_type == "get_file_by_id":
-            return await self._handle_get_file_by_id(intent, context)
-        elif intent_type == "archive_file":
-            return await self._handle_archive_file(intent, context)
-        elif intent_type == "purge_file":
-            return await self._handle_purge_file(intent, context)
-        elif intent_type == "restore_file":
-            return await self._handle_restore_file(intent, context)
-        elif intent_type == "validate_file":
-            return await self._handle_validate_file(intent, context)
+        from datetime import datetime
+        start_time = datetime.utcnow()
+        intent_type = intent.intent_type
+        success = True
+        error_message = None
+        result = None
+        
+        try:
+            if intent_type == "ingest_file":
+                result = await self._handle_ingest_file(intent, context)
+            elif intent_type == "bulk_ingest_files":
+                result = await self._handle_bulk_ingest_files(intent, context)
+            elif intent_type == "bulk_parse_files":
+                result = await self._handle_bulk_parse_files(intent, context)
+            elif intent_type == "bulk_extract_embeddings":
+                result = await self._handle_bulk_extract_embeddings(intent, context)
+            elif intent_type == "bulk_interpret_data":
+                result = await self._handle_bulk_interpret_data(intent, context)
+            elif intent_type == "get_operation_status":
+                result = await self._handle_get_operation_status(intent, context)
+            elif intent_type == "register_file":
+                result = await self._handle_register_file(intent, context)
+            elif intent_type == "retrieve_file_metadata":
+                result = await self._handle_retrieve_file_metadata(intent, context)
+            elif intent_type == "retrieve_file":
+                result = await self._handle_retrieve_file(intent, context)
+            elif intent_type == "list_files":
+                result = await self._handle_list_files(intent, context)
+            elif intent_type == "save_materialization":
+                result = await self._handle_save_materialization(intent, context)
+            elif intent_type == "get_file_by_id":
+                result = await self._handle_get_file_by_id(intent, context)
+            elif intent_type == "archive_file":
+                result = await self._handle_archive_file(intent, context)
+            elif intent_type == "purge_file":
+                result = await self._handle_purge_file(intent, context)
+            elif intent_type == "restore_file":
+                result = await self._handle_restore_file(intent, context)
+            elif intent_type == "validate_file":
+                result = await self._handle_validate_file(intent, context)
         elif intent_type == "preprocess_file":
-            return await self._handle_preprocess_file(intent, context)
+            result = await self._handle_preprocess_file(intent, context)
         elif intent_type == "search_files":
-            return await self._handle_search_files(intent, context)
+            result = await self._handle_search_files(intent, context)
         elif intent_type == "query_files":
-            return await self._handle_query_files(intent, context)
+            result = await self._handle_query_files(intent, context)
         elif intent_type == "update_file_metadata":
-            return await self._handle_update_file_metadata(intent, context)
+            result = await self._handle_update_file_metadata(intent, context)
         elif intent_type == "parse_content":
-            return await self._handle_parse_content(intent, context)
+            result = await self._handle_parse_content(intent, context)
         elif intent_type == "create_deterministic_embeddings":
-            return await self._handle_create_deterministic_embeddings(intent, context)
+            result = await self._handle_create_deterministic_embeddings(intent, context)
         elif intent_type == "extract_embeddings":
-            return await self._handle_extract_embeddings(intent, context)
+            result = await self._handle_extract_embeddings(intent, context)
         elif intent_type == "get_parsed_file":
-            return await self._handle_get_parsed_file(intent, context)
+            result = await self._handle_get_parsed_file(intent, context)
         elif intent_type == "get_semantic_interpretation":
-            return await self._handle_get_semantic_interpretation(intent, context)
+            result = await self._handle_get_semantic_interpretation(intent, context)
         else:
             raise ValueError(f"Unknown intent type: {intent_type}")
+        
+        return result
+            
+        except Exception as e:
+            success = False
+            error_message = str(e)
+            self.logger.error(f"Intent handling failed: {e}", exc_info=True)
+            raise
+        
+        finally:
+            # Record telemetry
+            end_time = datetime.utcnow()
+            latency_ms = (end_time - start_time).total_seconds() * 1000
+            
+            try:
+                await self.telemetry_service.record_orchestrator_execution(
+                    orchestrator_id="content_orchestrator",
+                    orchestrator_name="Content Orchestrator",
+                    intent_type=intent_type,
+                    latency_ms=latency_ms,
+                    context=context,
+                    success=success,
+                    error_message=error_message
+                )
+                
+                await self.health_monitor.record_intent_handled(
+                    orchestrator_id="content_orchestrator",
+                    intent_type=intent_type,
+                    success=success,
+                    latency_ms=latency_ms
+                )
+            except Exception as e:
+                self.logger.debug(f"Telemetry recording failed (non-critical): {e}")
     
     async def _handle_ingest_file(
         self,
@@ -160,20 +230,24 @@ class ContentOrchestrator:
         - source_metadata: Dict - Source-specific metadata (partner_id for EDI, endpoint for API, etc.)
         - ingestion_options: Dict - Ingestion-specific options
         """
-        # CRITICAL: Files are NEVER ingested directly. A boundary contract is negotiated first.
+        # CRITICAL: Files are NEVER ingested directly. A boundary contract is required.
         # Boundary contract negotiation happens in Runtime/ExecutionLifecycleManager before realm execution.
-        # Check if boundary contract info is in context (from Runtime enforcement)
+        # ExecutionLifecycleManager ALWAYS creates boundary contracts (permissive MVP if needed).
         boundary_contract_id = context.metadata.get("boundary_contract_id")
         materialization_type = context.metadata.get("materialization_type", "full_artifact")  # MVP default
         materialization_backing_store = context.metadata.get("materialization_backing_store", "gcs")  # MVP default
         
-        if boundary_contract_id:
-            self.logger.info(f"✅ Using boundary contract: {boundary_contract_id} (materialization: {materialization_type} -> {materialization_backing_store})")
-        else:
-            # MVP: Allow execution to continue without boundary contract (backwards compatibility)
-            # In full implementation: This should raise an error
-            self.logger.warning("⚠️ MVP: No boundary contract in context - files ingested directly (not aligned with 'data stays at door' principle)")
-            self.logger.warning("⚠️ This should be blocked in full implementation")
+        if not boundary_contract_id:
+            # This should never happen if ExecutionLifecycleManager is working correctly
+            # ExecutionLifecycleManager creates permissive MVP contracts automatically
+            raise ValueError(
+                "boundary_contract_id is required for ingest_file intent. "
+                "This indicates a bug in ExecutionLifecycleManager - boundary contracts should "
+                "always be created (permissive MVP contracts are acceptable). "
+                "Please ensure ExecutionLifecycleManager._create_permissive_mvp_contract() is working."
+            )
+        
+        self.logger.info(f"✅ Using boundary contract: {boundary_contract_id} (materialization: {materialization_type} -> {materialization_backing_store})")
         
         # Get ingestion abstraction from Public Works
         if not self.public_works:
@@ -1485,12 +1559,22 @@ class ContentOrchestrator:
                     except Exception as e:
                         self.logger.debug(f"Direct file download failed: {e}")
             
-            # Fallback: Try via State Surface
+            # Fallback: Try via FileManagementAbstraction (governed access)
+            # ARCHITECTURAL PRINCIPLE: Content Realm should use FileManagementAbstraction/FileStorageAbstraction,
+            # not state_surface.get_file() which is for metadata/queries, not content retrieval.
             if not file_contents and file_reference:
                 try:
-                    file_contents = await context.state_surface.get_file(file_reference)
+                    if self.public_works:
+                        file_management = self.public_works.get_file_management_abstraction()
+                        if file_management:
+                            # Get file via FileManagementAbstraction (governed access)
+                            file_contents = await file_management.get_file_by_reference(file_reference)
                 except Exception as e:
-                    self.logger.debug(f"State Surface file retrieval failed: {e}")
+                    self.logger.debug(f"FileManagementAbstraction retrieval failed: {e}")
+            
+            # If still no file_contents, log warning but don't fail (file metadata is still returned)
+            if not file_contents:
+                self.logger.warning(f"Could not retrieve file contents: {file_reference} (metadata only)")
             
             if file_contents:
                 # Convert bytes to JSON-serializable format
@@ -1854,13 +1938,17 @@ class ContentOrchestrator:
                 except Exception as e:
                     self.logger.error(f"Failed to list files using SupabaseFileAdapter: {e}", exc_info=True)
             
-            # Fallback: Use RLS policy query
-            query_result = await supabase_adapter.execute_rls_policy(
-                table="project_files",
-                operation="select",
-                user_context={"tenant_id": tenant_id_for_query},
-                data=None
-            )
+            # Fallback: Use RegistryAbstraction (governed access)
+            # ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
+            registry = self.public_works.get_registry_abstraction()
+            if registry:
+                query_result_data = await registry.query_records(
+                    table="project_files",
+                    user_context={"tenant_id": tenant_id_for_query}
+                )
+                query_result = {"success": True, "data": query_result_data}
+            else:
+                query_result = {"success": False, "data": []}
             
             if not query_result.get("success") or not query_result.get("data"):
                 return []
@@ -2221,30 +2309,38 @@ class ContentOrchestrator:
         if not storage_location:
             raise ValueError(f"Storage location not found for file: {file_reference}")
         
-        # Get file contents
-        file_contents = await context.state_surface.get_file(file_reference)
+        # Get file contents via FileStorageAbstraction (governed access)
+        # ARCHITECTURAL PRINCIPLE: Content Realm should use FileStorageAbstraction with storage_location,
+        # not state_surface.get_file() which is for metadata/queries, not content retrieval.
+        if not self.public_works:
+            raise ValueError("Public Works required for file retrieval")
+        
+        file_storage = self.public_works.get_file_storage_abstraction()
+        if not file_storage:
+            raise ValueError("FileStorageAbstraction not available")
+        
+        file_contents = await file_storage.download_file(storage_location)
         if not file_contents:
-            raise ValueError(f"File contents not found: {file_reference}")
+            raise ValueError(f"File contents not found at storage location: {storage_location}")
         
         preprocessing_results = {
             "preprocessed": True,
             "changes": []
         }
         
-        # Normalize file format (placeholder - would use actual normalization logic)
+        # Preprocessing options (MVP: Basic tracking, full implementation in future)
+        # Future enhancement: Implement actual normalization, cleaning, and metadata extraction
         if preprocessing_options.get("normalize", False):
-            preprocessing_results["changes"].append("File format normalized")
+            preprocessing_results["changes"].append("File format normalization requested (feature in development)")
         
-        # Clean file contents (placeholder - would use actual cleaning logic)
         if preprocessing_options.get("clean", False):
-            preprocessing_results["changes"].append("File contents cleaned")
+            preprocessing_results["changes"].append("File content cleaning requested (feature in development)")
         
-        # Extract additional metadata (placeholder - would use actual extraction logic)
         if preprocessing_options.get("extract_metadata", False):
-            preprocessing_results["changes"].append("Additional metadata extracted")
+            preprocessing_results["changes"].append("Additional metadata extraction requested (feature in development)")
         
-        # In production, would save preprocessed file and update metadata
-        # For now, just return preprocessing results
+        # Return preprocessing results
+        # Note: Full preprocessing implementation will save preprocessed file and update metadata
         
         return {
             "artifacts": {
@@ -2762,14 +2858,18 @@ class ContentOrchestrator:
             # Construct reference if not provided
             parsed_file_reference = f"parsed:{context.tenant_id}:{context.session_id}:{parsed_file_id}"
         
-        # Get parsed file data from State Surface
-        parsed_file_data = await context.state_surface.get_file(parsed_file_reference)
-        if not parsed_file_data:
-            raise ValueError(f"Parsed file not found: {parsed_file_reference}")
+        # Get parsed file via FileParserService (governed access, consistent with other services)
+        # ARCHITECTURAL PRINCIPLE: Content Realm should use FileParserService.get_parsed_file(),
+        # not state_surface.get_file() which is for metadata/queries, not content retrieval.
+        parsed_file = await self.file_parser_service.get_parsed_file(
+            parsed_file_id=parsed_file_id,
+            tenant_id=context.tenant_id,
+            context=context
+        )
         
-        # Parse JSON data
-        import json
-        parsed_result = json.loads(parsed_file_data.decode('utf-8'))
+        parsed_result = parsed_file.get("parsed_content")
+        if not parsed_result:
+            raise ValueError(f"Parsed file content not found: {parsed_file_id}")
         
         # Layer 1: Metadata (from parsed file)
         layer1_metadata = {
@@ -2931,9 +3031,11 @@ class ContentOrchestrator:
             self.logger.debug("Public Works not available, skipping lineage tracking")
             return
         
-        supabase_adapter = self.public_works.get_supabase_adapter()
-        if not supabase_adapter:
-            self.logger.debug("Supabase adapter not available, skipping lineage tracking")
+        # Use RegistryAbstraction (governed access)
+        # ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
+        registry = self.public_works.get_registry_abstraction()
+        if not registry:
+            self.logger.debug("Registry abstraction not available, skipping lineage tracking")
             return
         
         try:
@@ -2956,12 +3058,11 @@ class ContentOrchestrator:
                 "status": status
             }
             
-            # Insert into Supabase using execute_rls_policy
-            result = await supabase_adapter.execute_rls_policy(
+            # Insert via RegistryAbstraction (governed access)
+            result = await registry.insert_record(
                 table="parsed_results",
-                operation="insert",
-                user_context={"tenant_id": tenant_id},
-                data=parsed_result_record
+                data=parsed_result_record,
+                user_context={"tenant_id": tenant_id}
             )
             if result.get("success"):
                 self.logger.debug(f"Tracked parsed result in Supabase: {parsed_file_id}")
@@ -3001,24 +3102,25 @@ class ContentOrchestrator:
             self.logger.debug("Public Works not available, skipping lineage tracking")
             return
         
-        supabase_adapter = self.public_works.get_supabase_adapter()
-        if not supabase_adapter:
-            self.logger.debug("Supabase adapter not available, skipping lineage tracking")
+        # Use RegistryAbstraction (governed access)
+        # ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
+        registry = self.public_works.get_registry_abstraction()
+        if not registry:
+            self.logger.debug("Registry abstraction not available, skipping lineage tracking")
             return
         
         try:
             # Get parsed_result_id UUID from Supabase (lookup by parsed_result_id string)
             parsed_result_uuid = None
             if parsed_file_id:
-                # Query parsed_results table to get UUID using execute_rls_policy
-                query_result = await supabase_adapter.execute_rls_policy(
+                # Query parsed_results table via RegistryAbstraction
+                query_result_data = await registry.query_records(
                     table="parsed_results",
-                    operation="select",
-                    user_context={"tenant_id": tenant_id},
-                    data=None
+                    user_context={"tenant_id": tenant_id}
                 )
+                query_result = {"success": True, "data": query_result_data}
                 if query_result.get("success") and query_result.get("data"):
-                    # Filter in Python (Supabase client handles filtering)
+                    # Filter in Python (RegistryAbstraction returns all records, filter by parsed_result_id)
                     matching_records = [
                         r for r in query_result["data"]
                         if r.get("parsed_result_id") == parsed_file_id and r.get("tenant_id") == tenant_id
@@ -3042,12 +3144,11 @@ class ContentOrchestrator:
                 "model_name": model_name
             }
             
-            # Insert into Supabase using execute_rls_policy
-            result = await supabase_adapter.execute_rls_policy(
+            # Insert via RegistryAbstraction (governed access)
+            result = await registry.insert_record(
                 table="embeddings",
-                operation="insert",
-                user_context={"tenant_id": tenant_id},
-                data=embedding_record
+                data=embedding_record,
+                user_context={"tenant_id": tenant_id}
             )
             if result.get("success"):
                 self.logger.debug(f"Tracked embedding in Supabase: {embedding_id}")
@@ -3075,18 +3176,19 @@ class ContentOrchestrator:
         if not self.public_works:
             return None
         
-        supabase_adapter = self.public_works.get_supabase_adapter()
-        if not supabase_adapter:
+        # Use RegistryAbstraction (governed access)
+        # ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
+        registry = self.public_works.get_registry_abstraction()
+        if not registry:
             return None
         
         try:
-            # Query parsed_results table to get file_id using execute_rls_policy
-            query_result = await supabase_adapter.execute_rls_policy(
+            # Query parsed_results table via RegistryAbstraction
+            query_result_data = await registry.query_records(
                 table="parsed_results",
-                operation="select",
-                user_context={"tenant_id": tenant_id},
-                data=None
+                user_context={"tenant_id": tenant_id}
             )
+            query_result = {"success": True, "data": query_result_data}
             if query_result.get("success") and query_result.get("data"):
                 # Filter in Python (Supabase client handles filtering)
                 matching_records = [
@@ -3189,6 +3291,60 @@ class ContentOrchestrator:
                     "required": ["parsed_file_id", "deterministic_embedding_id"]
                 },
                 "description": "Extract embeddings from parsed content"
+            },
+            "get_files": {
+                "handler": self._handle_get_files_soa,
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "session_id": {
+                            "type": "string",
+                            "description": "Optional session identifier to filter files"
+                        },
+                        "user_context": {
+                            "type": "object",
+                            "description": "Optional user context (includes tenant_id, session_id)"
+                        }
+                    },
+                    "required": []
+                },
+                "description": "Get list of ingested files"
+            },
+            "get_parsed_files": {
+                "handler": self._handle_get_parsed_files_soa,
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "session_id": {
+                            "type": "string",
+                            "description": "Optional session identifier to filter parsed files"
+                        },
+                        "user_context": {
+                            "type": "object",
+                            "description": "Optional user context (includes tenant_id, session_id)"
+                        }
+                    },
+                    "required": []
+                },
+                "description": "Get list of parsed files"
+            },
+            "get_embeddings": {
+                "handler": self._handle_get_embeddings_soa,
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "parsed_file_id": {
+                            "type": "string",
+                            "description": "Parsed file identifier"
+                        },
+                        "user_context": {
+                            "type": "object",
+                            "description": "Optional user context (includes tenant_id, session_id)"
+                        }
+                    },
+                    "required": ["parsed_file_id"]
+                },
+                "description": "Get embeddings for a parsed file"
             }
         }
     
@@ -3334,3 +3490,119 @@ class ContentOrchestrator:
             )
             
             return await self._handle_extract_embeddings(intent_obj, exec_context)
+    
+    async def _handle_get_files_soa(
+        self,
+        intent: Optional[Intent] = None,
+        context: Optional[ExecutionContext] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Handle get_files SOA API (dual call pattern)."""
+        session_id = kwargs.get("session_id")
+        user_context = kwargs.get("user_context", {})
+        tenant_id = user_context.get("tenant_id", "default")
+        solution_id = user_context.get("solution_id", "default")
+        
+        exec_context = ExecutionContext(
+            execution_id="get_files",
+            tenant_id=tenant_id,
+            session_id=session_id or "default",
+            solution_id=solution_id
+        )
+        
+        # Get files from execution state or storage
+        files = []
+        
+        if exec_context.state_surface:
+            # Try to get files from session state
+            if session_id:
+                session_state = await exec_context.state_surface.get_session_state(
+                    session_id,
+                    tenant_id
+                )
+                if session_state:
+                    files = session_state.get("ingested_files", [])
+        
+        return {
+            "success": True,
+            "files": files
+        }
+    
+    async def _handle_get_parsed_files_soa(
+        self,
+        intent: Optional[Intent] = None,
+        context: Optional[ExecutionContext] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Handle get_parsed_files SOA API (dual call pattern)."""
+        session_id = kwargs.get("session_id")
+        user_context = kwargs.get("user_context", {})
+        tenant_id = user_context.get("tenant_id", "default")
+        solution_id = user_context.get("solution_id", "default")
+        
+        exec_context = ExecutionContext(
+            execution_id="get_parsed_files",
+            tenant_id=tenant_id,
+            session_id=session_id or "default",
+            solution_id=solution_id
+        )
+        
+        # Get parsed files from execution state or storage
+        parsed_files = []
+        
+        if exec_context.state_surface:
+            # Try to get parsed files from session state
+            if session_id:
+                session_state = await exec_context.state_surface.get_session_state(
+                    session_id,
+                    tenant_id
+                )
+                if session_state:
+                    parsed_files = session_state.get("parsed_files", [])
+        
+        return {
+            "success": True,
+            "parsed_files": parsed_files
+        }
+    
+    async def _handle_get_embeddings_soa(
+        self,
+        intent: Optional[Intent] = None,
+        context: Optional[ExecutionContext] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Handle get_embeddings SOA API (dual call pattern)."""
+        parsed_file_id = kwargs.get("parsed_file_id")
+        user_context = kwargs.get("user_context", {})
+        tenant_id = user_context.get("tenant_id", "default")
+        session_id = user_context.get("session_id", "default")
+        solution_id = user_context.get("solution_id", "default")
+        
+        if not parsed_file_id:
+            raise ValueError("parsed_file_id is required")
+        
+        exec_context = ExecutionContext(
+            execution_id="get_embeddings",
+            tenant_id=tenant_id,
+            session_id=session_id,
+            solution_id=solution_id
+        )
+        
+        # Get embeddings from execution state or storage
+        embeddings = {}
+        
+        if exec_context.state_surface:
+            # Try to get embeddings from execution state
+            execution_state = await exec_context.state_surface.get_execution_state(
+                f"embeddings_{parsed_file_id}",
+                tenant_id
+            )
+            
+            if execution_state and execution_state.get("artifacts", {}).get("embeddings"):
+                embeddings = execution_state["artifacts"]["embeddings"]
+        
+        return {
+            "success": True,
+            "parsed_file_id": parsed_file_id,
+            "embeddings": embeddings
+        }

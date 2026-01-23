@@ -392,7 +392,13 @@ class FileParserService:
         context: ExecutionContext
     ) -> Dict[str, Any]:
         """
-        Get parsed file data.
+        Get parsed file data via Content Realm (governed access).
+        
+        ARCHITECTURAL PRINCIPLE: This is the correct way to retrieve parsed files.
+        - Runtime records reality (doesn't retrieve files)
+        - Smart City governs access (policy evaluation happens here)
+        - Content Realm retrieves data (this method)
+        - Agents never retrieve files directly
         
         Args:
             parsed_file_id: Parsed file identifier
@@ -400,15 +406,57 @@ class FileParserService:
             context: Execution context
         
         Returns:
-            Dict with parsed file data
+            Dict with parsed file data:
+            {
+                "parsed_file_id": str,
+                "parsed_content": Any,  # Actual parsed content (dict, list, str, etc.)
+                "metadata": Dict[str, Any]
+            }
         """
-        self.logger.info(f"Getting parsed file: {parsed_file_id} for tenant: {tenant_id}")
+        self.logger.info(f"Getting parsed file via Content Realm: {parsed_file_id} for tenant: {tenant_id}")
         
-        # For MVP: Return placeholder
-        # In full implementation: Get via FileManagementAbstraction
+        if not self.public_works:
+            raise ValueError("Public Works required for file retrieval")
         
-        return {
-            "parsed_file_id": parsed_file_id,
-            "data": {},
-            "metadata": {}
-        }
+        # Get FileManagementAbstraction from Public Works
+        file_management = self.public_works.get_file_management_abstraction()
+        if not file_management:
+            raise ValueError("FileManagementAbstraction not available")
+        
+        try:
+            # Retrieve parsed file via FileManagementAbstraction (governed access)
+            # This goes through proper governance boundaries
+            parsed_file_data = await file_management.get_parsed_file(
+                parsed_file_id=parsed_file_id,
+                tenant_id=tenant_id
+            )
+            
+            # Parse content if needed
+            parsed_content = parsed_file_data.get("parsed_content") or parsed_file_data.get("data")
+            
+            # Handle different content formats
+            if isinstance(parsed_content, bytes):
+                try:
+                    import json
+                    parsed_content = json.loads(parsed_content.decode('utf-8'))
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    parsed_content = parsed_content.decode('utf-8', errors='ignore')
+            elif isinstance(parsed_content, str):
+                try:
+                    import json
+                    parsed_content = json.loads(parsed_content)
+                except json.JSONDecodeError:
+                    pass  # Keep as string
+            
+            return {
+                "parsed_file_id": parsed_file_id,
+                "parsed_content": parsed_content,
+                "metadata": parsed_file_data.get("metadata", {})
+            }
+            
+        except Exception as e:
+            self.logger.error(
+                f"Failed to retrieve parsed file {parsed_file_id} via Content Realm: {e}",
+                exc_info=True
+            )
+            raise

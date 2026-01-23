@@ -31,8 +31,8 @@ import {
 } from "../atoms";
 import { useAtomValue } from "jotai";
 import { useChatbotRouteReset } from "@/shared/hooks/useChatbotRouteReset";
-import { useAuth } from "@/shared/agui/AuthProvider";
-import { useGlobalSession } from "@/shared/agui/GlobalSessionProvider";
+import { useAuth } from "@/shared/auth/AuthProvider";
+import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 
 interface MainLayoutProps {
   children: React.ReactNode;
@@ -43,8 +43,11 @@ export default function MainLayout({ children }: MainLayoutProps) {
   useChatbotRouteReset();
   
   // ✅ Check authentication status - only render chat panel when authenticated
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
-  const { guideSessionToken } = useGlobalSession();
+  const { isAuthenticated, isLoading: authLoading, sessionToken } = useAuth();
+  const { state } = usePlatformState();
+  
+  // Get session token - prefer auth token (for backward compatibility), fallback to session ID
+  const guideSessionToken = sessionToken || state.session.sessionId;
   
   // Get current route to highlight the active tab
   const pathname = usePathname();
@@ -55,10 +58,12 @@ export default function MainLayout({ children }: MainLayoutProps) {
   const authRoutes = ['/login', '/register'];
   const isAuthRoute = authRoutes.includes(pathname);
   
-  // ✅ CRITICAL: Verify that guideSessionToken matches auth_token
-  // This prevents rendering chat with an invalid or mismatched token
-  const authToken = typeof window !== 'undefined' ? localStorage.getItem("auth_token") : null;
-  const tokenMatches = authToken && guideSessionToken && authToken === guideSessionToken;
+  // ✅ CRITICAL: Verify that both access_token and session_id exist
+  // access_token is for authentication, session_id is for session state
+  const accessToken = typeof window !== 'undefined' ? sessionStorage.getItem("access_token") : null;
+  const sessionId = typeof window !== 'undefined' ? sessionStorage.getItem("session_id") : null;
+  // Both tokens must exist and match what we have
+  const tokenMatches = accessToken && sessionId && guideSessionToken === sessionId;
   
   // ✅ STRICT AUTH CHECK: Only render chat when:
   // 1. NOT on authentication routes (/login, /register) - landing page (/) is allowed

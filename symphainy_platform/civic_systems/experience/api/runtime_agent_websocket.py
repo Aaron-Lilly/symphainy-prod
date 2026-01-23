@@ -73,7 +73,8 @@ def get_guide_agent_service(request: Request) -> GuideAgentService:
 @router.websocket("/agent")
 async def runtime_agent_websocket(
     websocket: WebSocket,
-    session_token: Optional[str] = Query(None, description="Session token for authentication")
+    access_token: Optional[str] = Query(None, description="Access token for authentication (from Supabase)"),
+    session_id: Optional[str] = Query(None, description="Session ID for session state (from Runtime)")
 ):
     """
     Runtime Agent WebSocket endpoint - owned by Experience Plane.
@@ -152,24 +153,20 @@ async def runtime_agent_websocket(
         await websocket.accept()
         
         # Register connection with connection manager
-        if not await connection_manager.connect(websocket, connection_id, user_id, tenant_id, session_token):
+        if not await connection_manager.connect(websocket, connection_id, user_id, tenant_id, session_id):
             # Connection rejected (at capacity)
             return
         
-        logger.info(f"Authenticated WebSocket connection: {connection_id} (user: {user_id}, tenant: {tenant_id})")
+        logger.info(f"Authenticated WebSocket connection: {connection_id} (user: {user_id}, tenant: {tenant_id}, session: {session_id})")
         
-        # Get Runtime client and Guide Agent Service
-        if not hasattr(app.state, "runtime_client"):
-            connection_manager.disconnect(connection_id)
-            await websocket.close(code=1011, reason="Runtime client not initialized")
-            return
+        # Get Runtime client and Guide Agent Service (already validated above)
         
         if not hasattr(app.state, "guide_agent_service"):
             connection_manager.disconnect(connection_id)
             await websocket.close(code=1011, reason="Guide Agent Service not initialized")
             return
         
-        runtime_client = app.state.runtime_client
+        # Runtime client already retrieved above for session validation
         guide_service = app.state.guide_agent_service
         
         # Get State Surface for persistent conversation context storage

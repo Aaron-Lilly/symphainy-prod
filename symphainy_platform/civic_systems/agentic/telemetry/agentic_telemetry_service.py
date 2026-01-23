@@ -353,3 +353,197 @@ class AgenticTelemetryService:
         except Exception as e:
             self.logger.error(f"Exception retrieving agent metrics: {e}", exc_info=True)
             return {}
+    
+    async def record_orchestrator_execution(
+        self,
+        orchestrator_id: str,
+        orchestrator_name: str,
+        intent_type: str,
+        latency_ms: float,
+        context: ExecutionContext,
+        success: bool = True,
+        error_message: Optional[str] = None
+    ) -> bool:
+        """
+        Record orchestrator execution for telemetry.
+        
+        Args:
+            orchestrator_id: Orchestrator identifier
+            orchestrator_name: Orchestrator name
+            intent_type: Intent type handled
+            latency_ms: Latency in milliseconds
+            context: Execution context
+            success: Whether execution succeeded
+            error_message: Optional error message
+        
+        Returns:
+            True if recording successful
+        """
+        if not self.supabase_adapter:
+            self.logger.debug("Supabase adapter not available, skipping orchestrator telemetry")
+            return False
+        
+        try:
+            execution_record = {
+                "id": None,
+                "orchestrator_id": orchestrator_id,
+                "orchestrator_name": orchestrator_name,
+                "tenant_id": context.tenant_id,
+                "session_id": context.session_id,
+                "execution_id": context.execution_id,
+                "intent_type": intent_type,
+                "latency_ms": latency_ms,
+                "success": success,
+                "error_message": error_message,
+                "created_at": self.clock.now().isoformat() if self.clock else datetime.utcnow().isoformat()
+            }
+            
+            result = await self.supabase_adapter.execute_rls_policy(
+                table="orchestrator_execution_log",
+                operation="insert",
+                user_context={"tenant_id": context.tenant_id},
+                data=execution_record
+            )
+            
+            if result.get("success"):
+                self.logger.debug(f"✅ Recorded orchestrator execution: {orchestrator_id}/{intent_type}")
+                return True
+            else:
+                self.logger.warning(f"Failed to record orchestrator execution: {result.get('error')}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Exception recording orchestrator execution: {e}", exc_info=True)
+            return False
+    
+    async def record_orchestrator_health(
+        self,
+        orchestrator_id: str,
+        orchestrator_name: str,
+        health_status: Dict[str, Any],
+        tenant_id: Optional[str] = None
+    ) -> bool:
+        """
+        Record orchestrator health metrics.
+        
+        Args:
+            orchestrator_id: Orchestrator identifier
+            orchestrator_name: Orchestrator name
+            health_status: Health status dictionary
+            tenant_id: Optional tenant identifier
+        
+        Returns:
+            True if recording successful
+        """
+        if not self.supabase_adapter:
+            self.logger.debug("Supabase adapter not available, skipping health recording")
+            return False
+        
+        try:
+            health_record = {
+                "id": None,
+                "orchestrator_id": orchestrator_id,
+                "orchestrator_name": orchestrator_name,
+                "health_status": health_status,
+                "tenant_id": tenant_id or "platform",
+                "created_at": self.clock.now().isoformat() if self.clock else datetime.utcnow().isoformat()
+            }
+            
+            result = await self.supabase_adapter.execute_rls_policy(
+                table="orchestrator_health_metrics",
+                operation="insert",
+                user_context={"tenant_id": tenant_id or "platform"},
+                data=health_record
+            )
+            
+            if result.get("success"):
+                self.logger.debug(f"✅ Recorded orchestrator health: {orchestrator_id}")
+                return True
+            else:
+                self.logger.warning(f"Failed to record orchestrator health: {result.get('error')}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Exception recording orchestrator health: {e}", exc_info=True)
+            return False
+    
+    async def get_orchestrator_metrics(
+        self,
+        orchestrator_id: str,
+        tenant_id: Optional[str] = None,
+        time_range: Optional[Tuple[datetime, datetime]] = None
+    ) -> Dict[str, Any]:
+        """
+        Get orchestrator metrics for time range.
+        
+        Args:
+            orchestrator_id: Orchestrator identifier
+            tenant_id: Optional tenant identifier
+            time_range: Optional time range (start, end)
+        
+        Returns:
+            Dict with metrics:
+            {
+                "intent_count": int,
+                "avg_latency_ms": float,
+                "success_rate": float,
+                "error_rate": float,
+                "intent_types": Dict[str, int]
+            }
+        """
+        if not self.supabase_adapter:
+            self.logger.warning("Supabase adapter not available, cannot retrieve metrics")
+            return {}
+        
+        try:
+            filters = {"orchestrator_id": orchestrator_id}
+            if tenant_id:
+                filters["tenant_id"] = tenant_id
+            
+            if time_range:
+                start_time, end_time = time_range
+                filters["created_at__gte"] = start_time.isoformat()
+                filters["created_at__lte"] = end_time.isoformat()
+            
+            result = await self.supabase_adapter.execute_rls_policy(
+                table="orchestrator_execution_log",
+                operation="select",
+                user_context={"tenant_id": tenant_id or "platform"},
+                filters=filters
+            )
+            
+            if not result.get("success") or not result.get("data"):
+                return {
+                    "intent_count": 0,
+                    "avg_latency_ms": 0.0,
+                    "success_rate": 0.0,
+                    "error_rate": 0.0,
+                    "intent_types": {}
+                }
+            
+            records = result["data"]
+            
+            intent_count = len(records)
+            latencies = [r.get("latency_ms", 0) for r in records if r.get("latency_ms")]
+            avg_latency_ms = sum(latencies) / len(latencies) if latencies else 0.0
+            success_count = sum(1 for r in records if r.get("success", True))
+            success_rate = success_count / intent_count if intent_count > 0 else 0.0
+            error_rate = 1.0 - success_rate
+            
+            # Count intent types
+            intent_types = {}
+            for record in records:
+                intent_type = record.get("intent_type", "unknown")
+                intent_types[intent_type] = intent_types.get(intent_type, 0) + 1
+            
+            return {
+                "intent_count": intent_count,
+                "avg_latency_ms": avg_latency_ms,
+                "success_rate": success_rate,
+                "error_rate": error_rate,
+                "intent_types": intent_types
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Exception retrieving orchestrator metrics: {e}", exc_info=True)
+            return {}

@@ -28,7 +28,7 @@ import {
   TrendingUp
 } from 'lucide-react';
 // Removed deprecated ExperienceLayerProvider import
-import { useAuth } from '@/shared/agui/AuthProvider';
+import { useAuth } from '@/shared/auth/AuthProvider';
 
 // ============================================================================
 // COMPONENT INTERFACES

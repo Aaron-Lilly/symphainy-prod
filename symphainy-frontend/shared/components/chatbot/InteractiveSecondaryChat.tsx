@@ -15,8 +15,8 @@ import StreamingMessage from "./StreamingMessage";
 import { useRouter } from "next/navigation";
 import { useAtomValue, useSetAtom } from "jotai";
 import { chatbotAgentInfoAtom, mainChatbotOpenAtom } from "@/shared/atoms/chatbot-atoms";
-import { useGlobalSession } from "@/shared/agui/GlobalSessionProvider";
-import { useAuth } from "@/shared/agui/AuthProvider";
+import { useAuth } from "@/shared/auth/AuthProvider";
+import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { SecondaryChatbotAgent } from "@/shared/types/secondaryChatbot";
 import BusinessAnalysisDisplay from "@/components/insights/BusinessAnalysisDisplay";
 import { useUnifiedAgentChat, PillarType } from "@/shared/hooks/useUnifiedAgentChat";
@@ -25,8 +25,11 @@ export default function InteractiveSecondaryChat() {
   const agentInfo = useAtomValue(chatbotAgentInfoAtom);
   const setMainChatbotOpen = useSetAtom(mainChatbotOpenAtom);
   const mainChatbotOpen = useAtomValue(mainChatbotOpenAtom);
-  const { guideSessionToken } = useGlobalSession();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, sessionToken } = useAuth();
+  const { state } = usePlatformState();
+  
+  // Get session token - prefer auth token (for backward compatibility), fallback to session ID
+  const guideSessionToken = sessionToken || state.session.sessionId;
   const router = useRouter();
   
   const [message, setMessage] = useState("");

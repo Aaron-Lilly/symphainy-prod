@@ -16,8 +16,8 @@ for _ in range(10):  # Max 10 levels up
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from fastapi import APIRouter, HTTPException, Depends, Request
-from typing import Dict, Any
+from fastapi import APIRouter, HTTPException, Depends, Request, Query
+from typing import Dict, Any, Optional
 
 from utilities import get_logger
 from ..models.session_model import SessionCreateRequest, SessionCreateResponse
@@ -53,18 +53,19 @@ def get_traffic_cop_sdk(request: Request) -> TrafficCopSDK:
 @router.get("/{session_id}")
 async def get_session(
     session_id: str,
+    tenant_id: Optional[str] = Query(None, description="Tenant ID (optional for anonymous sessions)"),
     runtime_client: RuntimeClient = Depends(get_runtime_client)
 ):
     """
-    Get session details.
+    Get session details (anonymous or authenticated).
     
     Flow:
-    1. Query Runtime for session details
+    1. Query Runtime for session details (tenant_id optional for anonymous)
     2. Return session information
     """
     try:
-        # Query Runtime for session
-        session_data = await runtime_client.get_session(session_id)
+        # Query Runtime for session (tenant_id is optional for anonymous sessions)
+        session_data = await runtime_client.get_session(session_id, tenant_id)
         
         if not session_data:
             raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
@@ -136,4 +137,108 @@ async def create_session(
         raise
     except Exception as e:
         logger.error(f"Failed to create session: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.post("/create-anonymous", response_model=SessionCreateResponse)
+async def create_anonymous_session(
+    request: Optional[Dict[str, Any]] = None,
+    runtime_client: RuntimeClient = Depends(get_runtime_client),
+    traffic_cop_sdk: TrafficCopSDK = Depends(get_traffic_cop_sdk)
+):
+    """
+    Create anonymous session (no authentication required).
+    
+    Flow:
+    1. Prepare anonymous session intent (via Traffic Cop SDK)
+    2. Submit intent to Runtime
+    3. Runtime validates and creates anonymous session
+    4. Return session_id
+    
+    This is the session-first pattern: sessions exist before authentication.
+    """
+    try:
+        # Create anonymous session intent (no tenant_id, user_id)
+        session_intent_data = await traffic_cop_sdk.create_anonymous_session_intent(
+            metadata=request.get("metadata") if request else None
+        )
+        
+        # Convert to dict for Runtime
+        session_intent = {
+            "intent_type": "create_session",
+            "tenant_id": None,  # Anonymous - no tenant
+            "user_id": None,    # Anonymous - no user
+            "session_id": session_intent_data.session_id,
+            "execution_contract": session_intent_data.execution_contract,
+            "metadata": (request.get("metadata") if request else {}) or {}
+        }
+        
+        # Submit to Runtime
+        result = await runtime_client.create_session(session_intent)
+        
+        session_id = result.get("session_id") or session_intent_data.session_id
+        
+        return SessionCreateResponse(
+            session_id=session_id,
+            tenant_id=None,  # Empty for anonymous
+            user_id=None,    # Empty for anonymous
+            created_at=result.get("created_at", "")
+        )
+    except Exception as e:
+        logger.error(f"Failed to create anonymous session: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+@router.patch("/{session_id}/upgrade", response_model=SessionCreateResponse)
+async def upgrade_session(
+    session_id: str,
+    request: Dict[str, Any],  # { user_id, tenant_id, access_token, metadata }
+    runtime_client: RuntimeClient = Depends(get_runtime_client),
+    security_guard_sdk: SecurityGuardSDK = Depends(get_security_guard_sdk)
+):
+    """
+    Upgrade anonymous session with authentication.
+    
+    Flow:
+    1. Validate access_token (user is authenticated)
+    2. Get existing session (must exist, may be anonymous)
+    3. Upgrade session with user_id, tenant_id
+    4. Return upgraded session
+    
+    This upgrades an existing anonymous session with identity after authentication.
+    """
+    try:
+        # 1. Validate authentication
+        access_token = request.get("access_token")
+        if not access_token:
+            raise HTTPException(status_code=401, detail="Access token required")
+        
+        auth_result = await security_guard_sdk.validate_token(access_token)
+        if not auth_result:
+            raise HTTPException(status_code=401, detail="Invalid access token")
+        
+        # 2. Get existing session (may be anonymous)
+        session_data = await runtime_client.get_session(session_id, None)  # Try without tenant_id first
+        
+        if not session_data:
+            raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+        
+        # 3. Upgrade session (add user_id, tenant_id)
+        upgraded = await runtime_client.upgrade_session(
+            session_id=session_id,
+            user_id=auth_result.user_id,
+            tenant_id=auth_result.tenant_id,
+            metadata=request.get("metadata")
+        )
+        
+        return SessionCreateResponse(
+            session_id=session_id,
+            tenant_id=auth_result.tenant_id,
+            user_id=auth_result.user_id,
+            created_at=upgraded.get("created_at", "")
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to upgrade session: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")

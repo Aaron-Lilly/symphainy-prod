@@ -47,9 +47,19 @@ export default function ChatAssistant() {
     if (!guideSessionToken) return;
 
     const baseUrl = getApiUrl();
+    // Get both access_token and session_id from storage
+    const accessToken = typeof window !== 'undefined' ? sessionStorage.getItem("access_token") : null;
+    const sessionId = guideSessionToken; // guideSessionToken is actually session_id
+    
+    if (!accessToken || !sessionId) {
+      console.warn("Missing access_token or session_id, cannot create RuntimeClient");
+      return;
+    }
+    
     const client = new RuntimeClient({
       baseUrl,
-      sessionToken: guideSessionToken,
+      accessToken: accessToken,
+      sessionId: sessionId,
       autoReconnect: true,
     });
     runtimeClientRef.current = client;

@@ -76,6 +76,14 @@ class JourneyOrchestrator:
         )
         # Solution synthesis service for converting blueprints to solutions
         self.solution_synthesis_service = SolutionSynthesisService(public_works=public_works)
+        
+        # Initialize runtime context hydration service (for call site responsibility)
+        from symphainy_platform.civic_systems.agentic.services.runtime_context_hydration_service import RuntimeContextHydrationService
+        self.runtime_context_service = RuntimeContextHydrationService()
+        
+        # Initialize health monitoring and telemetry (lazy initialization)
+        self.telemetry_service = None
+        self.health_monitor = None
     
     async def handle_intent(
         self,
@@ -92,23 +100,79 @@ class JourneyOrchestrator:
         Returns:
             Dict with "artifacts" and "events" keys
         """
-        intent_type = intent.intent_type
+        # Initialize health monitoring and telemetry if not already done
+        if not self.health_monitor:
+            from symphainy_platform.civic_systems.agentic.telemetry.agentic_telemetry_service import AgenticTelemetryService
+            from symphainy_platform.civic_systems.orchestrator_health import OrchestratorHealthMonitor
+            
+            if self.public_works:
+                try:
+                    self.telemetry_service = getattr(self.public_works, 'telemetry_service', None)
+                except:
+                    pass
+            
+            if not self.telemetry_service:
+                self.telemetry_service = AgenticTelemetryService()
+            
+            self.health_monitor = OrchestratorHealthMonitor(telemetry_service=self.telemetry_service)
+            await self.health_monitor.start_monitoring("journey_orchestrator")
         
-        if intent_type == "optimize_process":
-            return await self._handle_optimize_process(intent, context)
-        elif intent_type == "generate_sop":
-            return await self._handle_generate_sop(intent, context)
-        elif intent_type == "create_workflow":
-            return await self._handle_create_workflow(intent, context)
-        elif intent_type == "analyze_coexistence":
-            return await self._handle_analyze_coexistence(intent, context)
-        # Note: create_blueprint moved to Outcomes Realm (blueprints are Purpose-Bound Outcomes)
-        elif intent_type == "generate_sop_from_chat":
-            return await self._handle_generate_sop_from_chat(intent, context)
-        elif intent_type == "sop_chat_message":
-            return await self._handle_sop_chat_message(intent, context)
-        else:
-            raise ValueError(f"Unknown intent type: {intent_type}")
+        from datetime import datetime
+        start_time = datetime.utcnow()
+        intent_type = intent.intent_type
+        success = True
+        error_message = None
+        result = None
+        
+        try:
+            if intent_type == "optimize_process":
+                result = await self._handle_optimize_process(intent, context)
+            elif intent_type == "generate_sop":
+                result = await self._handle_generate_sop(intent, context)
+            elif intent_type == "create_workflow":
+                result = await self._handle_create_workflow(intent, context)
+            elif intent_type == "analyze_coexistence":
+                result = await self._handle_analyze_coexistence(intent, context)
+            # Note: create_blueprint moved to Outcomes Realm (blueprints are Purpose-Bound Outcomes)
+            elif intent_type == "generate_sop_from_chat":
+                result = await self._handle_generate_sop_from_chat(intent, context)
+            elif intent_type == "sop_chat_message":
+                result = await self._handle_sop_chat_message(intent, context)
+            else:
+                raise ValueError(f"Unknown intent type: {intent_type}")
+            
+            return result
+            
+        except Exception as e:
+            success = False
+            error_message = str(e)
+            self.logger.error(f"Intent handling failed: {e}", exc_info=True)
+            raise
+        
+        finally:
+            # Record telemetry
+            end_time = datetime.utcnow()
+            latency_ms = (end_time - start_time).total_seconds() * 1000
+            
+            try:
+                await self.telemetry_service.record_orchestrator_execution(
+                    orchestrator_id="journey_orchestrator",
+                    orchestrator_name="Journey Orchestrator",
+                    intent_type=intent_type,
+                    latency_ms=latency_ms,
+                    context=context,
+                    success=success,
+                    error_message=error_message
+                )
+                
+                await self.health_monitor.record_intent_handled(
+                    orchestrator_id="journey_orchestrator",
+                    intent_type=intent_type,
+                    success=success,
+                    latency_ms=latency_ms
+                )
+            except Exception as e:
+                self.logger.debug(f"Telemetry recording failed (non-critical): {e}")
     
     async def _handle_optimize_process(
         self,

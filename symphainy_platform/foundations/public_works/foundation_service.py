@@ -103,12 +103,17 @@ class PublicWorksFoundationService:
         self.openai_adapter: Optional[Any] = None  # OpenAIAdapter
         self.huggingface_adapter: Optional[Any] = None  # HuggingFaceAdapter
         
+        # Layer 0: DuckDB Adapter
+        self.duckdb_adapter: Optional[Any] = None  # DuckDBAdapter
+        
         # Layer 1: Infrastructure Abstractions
         self.state_abstraction: Optional[StateManagementAbstraction] = None
         self.service_discovery_abstraction: Optional[ServiceDiscoveryAbstraction] = None
         self.semantic_search_abstraction: Optional[SemanticSearchAbstraction] = None
         self.knowledge_discovery_abstraction: Optional[Any] = None  # KnowledgeDiscoveryAbstraction
         self.semantic_data_abstraction: Optional[Any] = None  # SemanticDataAbstraction
+        self.deterministic_compute_abstraction: Optional[Any] = None  # DeterministicComputeAbstraction
+        self.registry_abstraction: Optional[Any] = None  # RegistryAbstraction
         self.auth_abstraction: Optional[AuthAbstraction] = None
         self.tenant_abstraction: Optional[TenantAbstraction] = None
         self.file_storage_abstraction: Optional[FileStorageAbstraction] = None
@@ -495,6 +500,49 @@ class PublicWorksFoundationService:
                 self.logger.warning("ArangoDB adapter connection failed")
         else:
             self.logger.warning("ArangoDB configuration not provided, ArangoDB adapter not created")
+        
+        # DuckDB adapter (for deterministic compute)
+        await self._initialize_duckdb()
+    
+    async def _initialize_duckdb(self):
+        """Initialize DuckDB adapter and abstraction."""
+        from .adapters.duckdb_adapter import DuckDBAdapter
+        from .abstractions.deterministic_compute_abstraction import DeterministicComputeAbstraction
+        
+        duckdb_config = self.config.get("duckdb", {})
+        if duckdb_config:
+            database_path = duckdb_config.get(
+                "database_path",
+                "/app/data/duckdb/main.duckdb"  # Default path
+            )
+            
+            self.duckdb_adapter = DuckDBAdapter(
+                database_path=database_path,
+                read_only=duckdb_config.get("read_only", False)
+            )
+            
+            # Connect
+            if await self.duckdb_adapter.connect():
+                self.logger.info(f"DuckDB adapter connected: {database_path}")
+                
+                # Create abstraction (file_storage_abstraction will be set later in _create_abstractions)
+                self.deterministic_compute_abstraction = DeterministicComputeAbstraction(
+                    duckdb_adapter=self.duckdb_adapter,
+                    file_storage_abstraction=None  # Will be set later in _create_abstractions
+                )
+                
+                # Initialize schema (create tables if needed)
+                await self.deterministic_compute_abstraction.initialize_schema()
+                
+                self.logger.info("Deterministic Compute Abstraction created")
+            else:
+                self.logger.warning("DuckDB adapter connection failed")
+                self.duckdb_adapter = None
+                self.deterministic_compute_abstraction = None
+        else:
+            self.logger.info("DuckDB configuration not provided, DuckDB adapter not created")
+            self.duckdb_adapter = None
+            self.deterministic_compute_abstraction = None
     
     async def _create_abstractions(self):
         """Create all infrastructure abstractions (Layer 1)."""
@@ -552,6 +600,16 @@ class PublicWorksFoundationService:
         )
         self.logger.info("Semantic data abstraction created")
         
+        # Deterministic compute abstraction (created after DuckDB adapter)
+        # Note: DuckDB adapter is initialized in _create_adapters, but abstraction
+        # needs file_storage_abstraction which is created here. So we update it here.
+        if self.duckdb_adapter and self.deterministic_compute_abstraction:
+            # Update abstraction with file_storage_abstraction (was None during initialization)
+            self.deterministic_compute_abstraction.file_storage = self.file_storage_abstraction
+            self.logger.info("Deterministic compute abstraction updated with file storage")
+        elif not self.duckdb_adapter:
+            self.logger.warning("Deterministic compute abstraction not created (DuckDB adapter missing)")
+        
         # Auth abstraction
         if self.supabase_adapter:
             self.auth_abstraction = AuthAbstraction(
@@ -560,6 +618,16 @@ class PublicWorksFoundationService:
             self.logger.info("Auth abstraction created")
         else:
             self.logger.warning("Auth abstraction not created (Supabase adapter missing)")
+        
+        # Registry abstraction (for lineage, metadata, registry operations)
+        if self.supabase_adapter:
+            from .abstractions.registry_abstraction import RegistryAbstraction
+            self.registry_abstraction = RegistryAbstraction(
+                supabase_adapter=self.supabase_adapter
+            )
+            self.logger.info("Registry abstraction created")
+        else:
+            self.logger.warning("Registry abstraction not created (Supabase adapter missing)")
         
         # Tenant abstraction
         if self.supabase_adapter:

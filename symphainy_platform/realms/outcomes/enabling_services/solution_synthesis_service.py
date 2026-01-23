@@ -49,19 +49,19 @@ class SolutionSynthesisService:
     
     async def create_solution_from_artifact(
         self,
-        solution_source: str,  # "roadmap" or "poc"
+        solution_source: str,  # "roadmap", "poc", or "blueprint"
         source_id: str,
         source_data: Any,
         tenant_id: str,
         context: ExecutionContext
     ) -> Dict[str, Any]:
         """
-        Create platform solution from roadmap or POC artifact.
+        Create platform solution from roadmap, POC, or blueprint artifact.
         
         Uses Solution Builder to create solution, then registers it.
         
         Args:
-            solution_source: Source type ("roadmap" or "poc")
+            solution_source: Source type ("roadmap", "poc", or "blueprint")
             source_id: Source artifact ID
             source_data: Source artifact data
             tenant_id: Tenant ID
@@ -98,6 +98,34 @@ class SolutionSynthesisService:
             # Extract objectives as goals
             objectives = proposal.get("objectives", [])
             goals = objectives
+        
+        elif solution_source == "blueprint":
+            blueprint = source_data.get("blueprint", {}) or source_data
+            
+            # Extract goals from blueprint roadmap
+            roadmap = blueprint.get("roadmap", {})
+            phases = roadmap.get("phases", [])
+            for phase in phases:
+                phase_name = phase.get("name", f"Phase {phase.get('phase', '')}")
+                goals.append(f"Complete {phase_name}")
+                # Add phase objectives as sub-goals
+                for objective in phase.get("objectives", []):
+                    goals.append(f"  - {objective}")
+            
+            # Extract constraints from coexistence analysis
+            coexistence_state = blueprint.get("coexistence_state", {})
+            integration_points = coexistence_state.get("integration_points", [])
+            for point in integration_points:
+                system_name = point.get("system_name", "External System")
+                constraints.append(f"Integration: {system_name}")
+            
+            # Add responsibility matrix constraints
+            responsibility_matrix = blueprint.get("responsibility_matrix", {})
+            responsibilities = responsibility_matrix.get("responsibilities", [])
+            for resp in responsibilities:
+                if resp.get("external_systems"):
+                    for ext_sys in resp["external_systems"]:
+                        constraints.append(f"External dependency: {ext_sys}")
             
             # Extract constraints from financials
             financials = proposal.get("financials", {})

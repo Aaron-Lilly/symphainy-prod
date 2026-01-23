@@ -26,9 +26,9 @@ import {
   Download,
   RefreshCw
 } from 'lucide-react';
-import { useAuth } from '@/shared/agui/AuthProvider';
+import { useAuth } from '@/shared/auth/AuthProvider';
+import { usePlatformState } from '@/shared/state/PlatformStateProvider';
 import { useInsightsOrchestrator } from "@/shared/hooks/usePillarOrchestrator";
-import { useGlobalSession } from '@/shared/agui/GlobalSessionProvider';
 import { toast } from 'sonner';
 
 interface InsightData {
@@ -51,8 +51,12 @@ interface InsightsDashboardNewProps {
 }
 
 export function InsightsDashboard({ contentData, onInsightSelected }: InsightsDashboardNewProps) {
-  const { isAuthenticated, user } = useAuth();
-  const { guideSessionToken } = useGlobalSession();
+  const { isAuthenticated, user, sessionToken } = useAuth();
+  const { state } = usePlatformState();
+  
+  // Get session token - prefer auth token (for backward compatibility), fallback to session ID
+  const guideSessionToken = sessionToken || state.session.sessionId;
+  
   const { 
     orchestrator, 
     isInitialized: orchestratorInitialized, 

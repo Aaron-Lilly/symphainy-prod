@@ -3,7 +3,8 @@ export enum ContentType {
   STRUCTURED = "structured",
   UNSTRUCTURED = "unstructured",
   HYBRID = "hybrid",
-  WORKFLOW_SOP = "workflow_sop"  // ⭐ NEW: Workflow & SOP Documentation
+  WORKFLOW_SOP = "workflow_sop",  // ⭐ NEW: Workflow & SOP Documentation
+  DATA_MODEL = "data_model"  // ⭐ NEW: Target Data Model (JSON Schema, YAML)
 }
 
 // File Type Category (Secondary)
@@ -12,6 +13,7 @@ export enum FileTypeCategory {
   SPREADSHEET = "spreadsheet",
   BINARY = "binary",
   DATA_FORMAT = "data_format",
+  DATA_MODEL = "data_model",  // Data model schemas (JSON Schema, YAML)
   
   // Unstructured
   DOCUMENT = "document",
@@ -36,6 +38,7 @@ export interface FileTypeConfig {
   mimeTypes: string[];
   requiresCopybook?: boolean;
   processingPillar?: "content_pillar" | "operations_pillar" | "journey_pillar";
+  parsingType?: string;  // ⭐ NEW: Special parsing type (e.g., "data_model")
   description?: string;
   icon?: string;
 }
@@ -176,6 +179,22 @@ export const FILE_TYPE_CONFIGS: FileTypeConfig[] = [
     ],
     description: "Documents with embedded structured data",
     icon: "🔀"
+  },
+  
+  // ⭐ NEW: Data Model (Target Data Model Schemas)
+  {
+    contentType: ContentType.DATA_MODEL,
+    category: FileTypeCategory.DATA_MODEL,
+    label: "Data Model",
+    extensions: [".json", ".yaml", ".yml"],
+    mimeTypes: [
+      "application/json",
+      "application/yaml",
+      "text/yaml"
+    ],
+    parsingType: "data_model",  // Special parsing type for target schemas
+    description: "Target data model schemas (JSON Schema, YAML). Used for source-to-target matching in Insights pillar.",
+    icon: "📊"
   }
 ];
 

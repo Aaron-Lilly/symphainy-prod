@@ -32,7 +32,7 @@ class RateLimitStore:
     
     async def check_rate_limit(
         self,
-        tenant_id: str,
+        tenant_id: Optional[str],  # Optional for anonymous sessions
         user_id: Optional[str],
         action: str,
         limit: int,
@@ -57,7 +57,7 @@ class RateLimitStore:
     
     async def record_request(
         self,
-        tenant_id: str,
+        tenant_id: Optional[str],  # Optional for anonymous sessions
         user_id: Optional[str],
         action: str
     ) -> None:
@@ -212,6 +212,8 @@ class TrafficCopPrimitives:
         """
         Validate session creation execution contract (Primitive).
         
+        Supports both anonymous sessions (tenant_id=None, user_id=None) and authenticated sessions.
+        
         Args:
             execution_contract: Execution contract prepared by SDK
             rate_limit_store: Rate limit store instance
@@ -221,7 +223,7 @@ class TrafficCopPrimitives:
         """
         try:
             # 1. Check required fields
-            required_fields = ["action", "session_id", "tenant_id", "user_id"]
+            required_fields = ["action", "session_id"]
             for field in required_fields:
                 if field not in execution_contract:
                     return False
@@ -230,21 +232,30 @@ class TrafficCopPrimitives:
             if execution_contract.get("action") != "create_session":
                 return False
             
-            # 3. Check rate limiting
-            tenant_id = execution_contract.get("tenant_id")
-            user_id = execution_contract.get("user_id")
-            within_limit = await TrafficCopPrimitives.check_rate_limit(
-                tenant_id=tenant_id,
-                user_id=user_id,
-                action="create_session",
-                rate_limit_store=rate_limit_store,
-                execution_contract=execution_contract
+            # 3. Check if anonymous session (tenant_id and user_id can be None)
+            is_anonymous = (
+                execution_contract.get("session_type") == "anonymous" or
+                execution_contract.get("tenant_id") is None or
+                execution_contract.get("user_id") is None
             )
             
-            if not within_limit:
-                return False
+            # 4. Check rate limiting (skip for anonymous sessions in MVP)
+            if not is_anonymous:
+                tenant_id = execution_contract.get("tenant_id")
+                user_id = execution_contract.get("user_id")
+                within_limit = await TrafficCopPrimitives.check_rate_limit(
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                    action="create_session",
+                    rate_limit_store=rate_limit_store,
+                    execution_contract=execution_contract
+                )
+                
+                if not within_limit:
+                    return False
             
             # MVP: Default allow (for MVP showcase)
+            # Anonymous sessions always allowed (no rate limiting in MVP)
             return True
             
         except Exception as e:

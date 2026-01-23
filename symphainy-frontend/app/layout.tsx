@@ -3,6 +3,7 @@ import "../styles/globals.css";
 import React from "react";
 import AppProviders from "@/shared/state/AppProviders";
 import { Toaster } from "sonner";
+import Script from "next/script";
 
 /**
  * Root Layout

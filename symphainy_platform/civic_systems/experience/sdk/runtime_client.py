@@ -46,20 +46,24 @@ class RuntimeClient:
         self.logger = get_logger(self.__class__.__name__)
         self.client = httpx.AsyncClient(timeout=30.0)
     
-    async def get_session(self, session_id: str, tenant_id: str) -> Dict[str, Any]:
+    async def get_session(self, session_id: str, tenant_id: Optional[str] = None) -> Dict[str, Any]:
         """
-        Get session details from Runtime.
+        Get session details from Runtime (anonymous or authenticated).
         
         Args:
             session_id: Session identifier
-            tenant_id: Tenant identifier
+            tenant_id: Tenant identifier (optional for anonymous sessions)
             
         Returns:
             Session data dictionary
         """
+        params = {}
+        if tenant_id:
+            params["tenant_id"] = tenant_id
+        
         response = await self.client.get(
             f"{self.runtime_url}/api/session/{session_id}",
-            params={"tenant_id": tenant_id}
+            params=params if params else None
         )
         response.raise_for_status()
         return response.json()
@@ -67,22 +71,26 @@ class RuntimeClient:
     async def get_session_state(
         self,
         session_id: str,
-        tenant_id: str
+        tenant_id: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """
-        Get session state from Runtime.
+        Get session state from Runtime (anonymous or authenticated).
         
         Args:
             session_id: Session identifier
-            tenant_id: Tenant identifier
+            tenant_id: Tenant identifier (optional for anonymous sessions)
             
         Returns:
             Session state dictionary, or None if not found
         """
         try:
+            params = {}
+            if tenant_id:
+                params["tenant_id"] = tenant_id
+            
             response = await self.client.get(
                 f"{self.runtime_url}/api/session/{session_id}/state",
-                params={"tenant_id": tenant_id}
+                params=params if params else None
             )
             response.raise_for_status()
             return response.json()
@@ -116,6 +124,40 @@ class RuntimeClient:
             return response.json()
         except Exception as e:
             self.logger.error(f"Failed to create session: {e}", exc_info=True)
+            raise
+    
+    async def upgrade_session(
+        self,
+        session_id: str,
+        user_id: str,
+        tenant_id: str,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Upgrade anonymous session with user_id and tenant_id.
+        
+        Args:
+            session_id: Existing session identifier (anonymous)
+            user_id: User identifier to attach
+            tenant_id: Tenant identifier to attach
+            metadata: Optional metadata to add
+        
+        Returns:
+            Updated session state
+        """
+        try:
+            response = await self.client.patch(
+                f"{self.runtime_url}/api/session/{session_id}/upgrade",
+                json={
+                    "user_id": user_id,
+                    "tenant_id": tenant_id,
+                    "metadata": metadata or {}
+                }
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            self.logger.error(f"Failed to upgrade session: {e}", exc_info=True)
             raise
     
     async def submit_intent(

@@ -29,8 +29,8 @@ from symphainy_platform.foundations.public_works.protocols.state_protocol import
 class SessionIntent:
     """Session creation intent with execution contract."""
     session_id: str
-    tenant_id: str
-    user_id: str
+    tenant_id: Optional[str]  # Optional for anonymous sessions
+    user_id: Optional[str]    # Optional for anonymous sessions
     execution_contract: Dict[str, Any]  # Prepared for Runtime validation
 
 
@@ -119,6 +119,44 @@ class TrafficCopSDK:
             session_id=session_id,
             tenant_id=tenant_id,
             user_id=user_id,
+            execution_contract=execution_contract
+        )
+    
+    async def create_anonymous_session_intent(
+        self,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> SessionIntent:
+        """
+        Create anonymous session intent (SDK - prepares execution contract for anonymous sessions).
+        
+        This prepares an anonymous session creation intent (no tenant_id, user_id).
+        Anonymous sessions are ephemeral and non-privileged, used for continuity before authentication.
+        
+        Args:
+            metadata: Optional session metadata
+        
+        Returns:
+            SessionIntent with execution contract (tenant_id=None, user_id=None)
+        """
+        # Generate session ID
+        session_id = generate_event_id()
+        
+        # Prepare execution contract for anonymous session (no rate limit policies needed)
+        execution_contract = {
+            "action": "create_session",
+            "session_type": "anonymous",
+            "session_id": session_id,
+            "tenant_id": None,  # Anonymous - no tenant
+            "user_id": None,    # Anonymous - no user
+            "metadata": metadata or {},
+            "rate_limit_policies": [],  # Anonymous sessions have no rate limits (MVP)
+            "timestamp": self.clock.now_iso()
+        }
+        
+        return SessionIntent(
+            session_id=session_id,
+            tenant_id=None,  # Anonymous
+            user_id=None,    # Anonymous
             execution_contract=execution_contract
         )
     

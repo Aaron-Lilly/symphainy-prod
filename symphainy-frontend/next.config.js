@@ -18,6 +18,11 @@ const nextConfig = {
     // your project has ESLint errors.
     ignoreDuringBuilds: true,
   },
+  // Skip prerendering errors for archived pages (they use old providers)
+  // These pages will be dynamically rendered at runtime instead
+  experimental: {
+    missingSuspenseWithCSRBailout: false,
+  },
   // API proxy configuration to route API calls to backend
   // Option C: Configure via NEXT_PUBLIC_BACKEND_URL or NEXT_PUBLIC_API_URL environment variable
   async rewrites() {
@@ -46,6 +51,9 @@ const nextConfig = {
   generateBuildId: async () => {
     return `build-${Date.now()}`;
   },
+  // Exclude archived pages from build (they use old providers)
+  // These pages will be dynamically rendered at runtime if accessed
+  pageExtensions: ['tsx', 'ts', 'jsx', 'js'],
   webpack: (config, { isServer }) => {
     // Test files are excluded via tsconfig.json exclude and .dockerignore
     // Only modify if config exists and has resolve

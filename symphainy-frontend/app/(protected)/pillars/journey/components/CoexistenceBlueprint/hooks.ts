@@ -1,7 +1,7 @@
 // CoexistenceBlueprint Hooks
 "use client";
 import React, { useState, useCallback } from "react";
-import { useGlobalSession } from "@/shared/agui/GlobalSessionProvider";
+import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { OperationsService } from "@/shared/services/operations";
 import { 
   CoexistenceBlueprintProps, 
@@ -14,7 +14,7 @@ import {
 } from "./types";
 
 export function useCoexistenceBlueprint(props: CoexistenceBlueprintProps): CoexistenceBlueprintState & CoexistenceBlueprintActions {
-  const { setPillarState } = useGlobalSession();
+  const { setRealmState } = usePlatformState();
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -235,8 +235,8 @@ export function useCoexistenceBlueprint(props: CoexistenceBlueprintProps): Coexi
         setOptimizedWorkflow(response.optimized_workflow || null);
         setBlueprint(response.blueprint || null);
 
-        // Save to global session
-        setPillarState('operations', {
+        // Save to realm state
+        setRealmState('journey', 'operations', {
           optimizedSop: response.optimized_sop,
           optimizedWorkflow: response.optimized_workflow,
           blueprint: response.blueprint,
@@ -251,7 +251,7 @@ export function useCoexistenceBlueprint(props: CoexistenceBlueprintProps): Coexi
     } finally {
       setLoading(false);
     }
-  }, [props.sessionToken, props.sopText, props.workflowData, getSafeFormattedContent, setPillarState]);
+  }, [props.sessionToken, props.sopText, props.workflowData, getSafeFormattedContent, setRealmState]);
 
   // Handle blueprint saving
   const handleSaveBlueprint = useCallback(async () => {
@@ -273,8 +273,8 @@ export function useCoexistenceBlueprint(props: CoexistenceBlueprintProps): Coexi
       
       console.log("Blueprint saved with ID:", response.blueprint_id);
       
-      // Update global session
-      setPillarState('operations', {
+      // Update realm state
+      setRealmState('journey', 'operations', {
         savedBlueprintId: response.blueprint_id,
         blueprintSaved: true,
       });
@@ -284,7 +284,7 @@ export function useCoexistenceBlueprint(props: CoexistenceBlueprintProps): Coexi
     } finally {
       setLoading(false);
     }
-  }, [blueprint, setPillarState]);
+  }, [blueprint, setRealmState]);
 
   return {
     loading,

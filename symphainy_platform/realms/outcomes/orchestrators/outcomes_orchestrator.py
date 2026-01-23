@@ -30,6 +30,22 @@ from ..enabling_services.poc_generation_service import POCGenerationService
 from ..enabling_services.solution_synthesis_service import SolutionSynthesisService
 from ..enabling_services.report_generator_service import ReportGeneratorService
 from ..enabling_services.visual_generation_service import VisualGenerationService
+from ..enabling_services.export_service import ExportService
+from symphainy_platform.realms.journey.enabling_services.coexistence_analysis_service import CoexistenceAnalysisService
+from ..agents.outcomes_synthesis_agent import OutcomesSynthesisAgent
+from ..agents.poc_generation_agent import POCGenerationAgent
+from ..agents.outcomes_liaison_agent import OutcomesLiaisonAgent
+
+# Optional agent imports - make them optional to allow testing without full implementation
+try:
+    from ..agents.blueprint_creation_agent import BlueprintCreationAgent
+except ImportError:
+    BlueprintCreationAgent = None  # Will be checked before use
+
+try:
+    from ..agents.roadmap_generation_agent import RoadmapGenerationAgent
+except ImportError:
+    RoadmapGenerationAgent = None  # Will be checked before use
 
 
 class OutcomesOrchestrator:
@@ -83,6 +99,31 @@ class OutcomesOrchestrator:
         self.solution_synthesis_service = SolutionSynthesisService(public_works=public_works)
         self.report_generator_service = ReportGeneratorService(public_works=public_works)
         self.visual_generation_service = VisualGenerationService(public_works=public_works)
+        self.export_service = ExportService(public_works=public_works)
+        
+        # Initialize agents (agentic forward pattern)
+        self.outcomes_synthesis_agent = OutcomesSynthesisAgent(public_works=public_works)
+        self.blueprint_creation_agent = BlueprintCreationAgent(public_works=public_works) if BlueprintCreationAgent else None
+        self.roadmap_generation_agent = RoadmapGenerationAgent(public_works=public_works) if RoadmapGenerationAgent else None
+        self.poc_generation_agent = POCGenerationAgent(public_works=public_works)
+        self.outcomes_liaison_agent = OutcomesLiaisonAgent(
+            agent_definition_id="outcomes_liaison_agent",
+            public_works=public_works
+        )
+        
+        # CoexistenceAnalysisService (used as tool by BlueprintCreationAgent)
+        self.coexistence_analysis_service = CoexistenceAnalysisService(
+            public_works=public_works,
+            visual_generation_service=self.visual_generation_service
+        )
+        
+        # Initialize runtime context hydration service (for call site responsibility)
+        from symphainy_platform.civic_systems.agentic.services.runtime_context_hydration_service import RuntimeContextHydrationService
+        self.runtime_context_service = RuntimeContextHydrationService()
+        
+        # Initialize health monitoring and telemetry (lazy initialization)
+        self.telemetry_service = None
+        self.health_monitor = None
     
     async def handle_intent(
         self,
@@ -99,18 +140,80 @@ class OutcomesOrchestrator:
         Returns:
             Dict with "artifacts" and "events" keys
         """
-        intent_type = intent.intent_type
+        # Initialize health monitoring and telemetry if not already done
+        if not self.health_monitor:
+            from symphainy_platform.civic_systems.agentic.telemetry.agentic_telemetry_service import AgenticTelemetryService
+            from symphainy_platform.civic_systems.orchestrator_health import OrchestratorHealthMonitor
+            
+            if self.public_works:
+                try:
+                    self.telemetry_service = getattr(self.public_works, 'telemetry_service', None)
+                except:
+                    pass
+            
+            if not self.telemetry_service:
+                self.telemetry_service = AgenticTelemetryService()
+            
+            self.health_monitor = OrchestratorHealthMonitor(telemetry_service=self.telemetry_service)
+            await self.health_monitor.start_monitoring("outcomes_orchestrator")
         
-        if intent_type == "synthesize_outcome":
-            return await self._handle_synthesize_outcome(intent, context)
-        elif intent_type == "generate_roadmap":
-            return await self._handle_generate_roadmap(intent, context)
-        elif intent_type == "create_poc":
-            return await self._handle_create_poc(intent, context)
-        elif intent_type == "create_solution":
-            return await self._handle_create_solution(intent, context)
-        else:
-            raise ValueError(f"Unknown intent type: {intent_type}")
+        from datetime import datetime
+        start_time = datetime.utcnow()
+        intent_type = intent.intent_type
+        success = True
+        error_message = None
+        result = None
+        
+        try:
+            if intent_type == "synthesize_outcome":
+                result = await self._handle_synthesize_outcome(intent, context)
+            elif intent_type == "generate_roadmap":
+                result = await self._handle_generate_roadmap(intent, context)
+            elif intent_type == "create_poc":
+                result = await self._handle_create_poc(intent, context)
+            elif intent_type == "create_blueprint":
+                result = await self._handle_create_blueprint(intent, context)
+            elif intent_type == "create_solution":
+                result = await self._handle_create_solution(intent, context)
+            elif intent_type == "export_to_migration_engine":
+                result = await self._handle_export_to_migration_engine(intent, context)
+            elif intent_type == "export_artifact":
+                result = await self._handle_export_artifact(intent, context)
+            else:
+                raise ValueError(f"Unknown intent type: {intent_type}")
+            
+            return result
+            
+        except Exception as e:
+            success = False
+            error_message = str(e)
+            self.logger.error(f"Intent handling failed: {e}", exc_info=True)
+            raise
+        
+        finally:
+            # Record telemetry
+            end_time = datetime.utcnow()
+            latency_ms = (end_time - start_time).total_seconds() * 1000
+            
+            try:
+                await self.telemetry_service.record_orchestrator_execution(
+                    orchestrator_id="outcomes_orchestrator",
+                    orchestrator_name="Outcomes Orchestrator",
+                    intent_type=intent_type,
+                    latency_ms=latency_ms,
+                    context=context,
+                    success=success,
+                    error_message=error_message
+                )
+                
+                await self.health_monitor.record_intent_handled(
+                    orchestrator_id="outcomes_orchestrator",
+                    intent_type=intent_type,
+                    success=success,
+                    latency_ms=latency_ms
+                )
+            except Exception as e:
+                self.logger.debug(f"Telemetry recording failed (non-critical): {e}")
     
     async def _handle_synthesize_outcome(
         self,
@@ -118,9 +221,9 @@ class OutcomesOrchestrator:
         context: ExecutionContext
     ) -> Dict[str, Any]:
         """
-        Handle synthesize_outcome intent - synthesize outputs from other realms.
+        Handle synthesize_outcome intent using agentic forward pattern.
         
-        Reads pillar summaries from State Surface and generates summary visualization.
+        ARCHITECTURAL PRINCIPLE: Orchestrator delegates to Agent, Agent reasons and uses services as tools.
         """
         # Read session state to get pillar summaries
         session_state = await context.state_surface.get_session_state(
@@ -136,7 +239,34 @@ class OutcomesOrchestrator:
         insights_summary = session_state.get("insights_pillar_summary", {})
         journey_summary = session_state.get("journey_pillar_summary", {})
         
-        # Generate summary report
+        # Use OutcomesSynthesisAgent (agentic forward pattern)
+        # Agent reasons about synthesis, uses ReportGeneratorService as tool via MCP
+        synthesis_result = await self.outcomes_synthesis_agent.process_request(
+            {
+                "type": "synthesize_outcome",
+                "content_summary": content_summary,
+                "insights_summary": insights_summary,
+                "journey_summary": journey_summary
+            },
+            context
+        )
+        
+        # Generate realm-specific summary visuals using agent
+        visuals_result = await self.outcomes_synthesis_agent.process_request(
+            {
+                "type": "generate_summary_visuals",
+                "content_summary": content_summary,
+                "insights_summary": insights_summary,
+                "journey_summary": journey_summary
+            },
+            context
+        )
+        
+        # Extract results
+        synthesis = synthesis_result.get("artifact", {})
+        realm_visuals = visuals_result.get("artifact", {})
+        
+        # Generate summary report (for backward compatibility)
         summary_result = await self.report_generator_service.generate_pillar_summary(
             content_summary=content_summary,
             insights_summary=insights_summary,
@@ -169,12 +299,14 @@ class OutcomesOrchestrator:
             "status": summary_result.get("status")
         }
         
-        # Collect renderings
+        # Collect renderings (use agent results)
         renderings = {
-            "synthesis": summary_result,
+            "synthesis": synthesis if synthesis else summary_result,
             "content_summary": content_summary,
             "insights_summary": insights_summary,
-            "journey_summary": journey_summary
+            "journey_summary": journey_summary,
+            "realm_visuals": realm_visuals,  # Realm-specific visual data (tutorial format)
+            "reasoning": synthesis_result.get("reasoning", "")
         }
         
         if visual_result and visual_result.get("success"):
@@ -208,36 +340,34 @@ class OutcomesOrchestrator:
         context: ExecutionContext
     ) -> Dict[str, Any]:
         """
-        Handle generate_roadmap intent - generate strategic roadmap from pillar outputs.
+        Handle generate_roadmap intent using agentic forward pattern.
+        
+        ARCHITECTURAL PRINCIPLE: Orchestrator delegates to Agent, Agent reasons and uses services as tools.
         """
-        # Read session state to get pillar summaries
-        session_state = await context.state_surface.get_session_state(
-            context.session_id,
-            context.tenant_id
-        )
+        goals = intent.parameters.get("goals", [])
+        if not goals or len(goals) == 0:
+            raise ValueError("Goals are required for roadmap generation")
         
-        if not session_state:
-            session_state = {}
-        
-        # Extract pillar summaries
-        content_summary = session_state.get("content_pillar_summary", {})
-        insights_summary = session_state.get("insights_pillar_summary", {})
-        journey_summary = session_state.get("journey_pillar_summary", {})
-        
-        # Additional context from intent parameters
-        additional_context = intent.parameters.get("additional_context", {})
         roadmap_options = intent.parameters.get("roadmap_options", {})
         
-        # Generate roadmap
-        roadmap_result = await self.roadmap_generation_service.generate_roadmap(
-            content_summary=content_summary,
-            insights_summary=insights_summary,
-            journey_summary=journey_summary,
-            additional_context=additional_context,
-            roadmap_options=roadmap_options,
-            tenant_id=context.tenant_id,
-            context=context
+        # Use RoadmapGenerationAgent (agentic forward pattern)
+        # Agent reasons about goals, designs phases, uses RoadmapGenerationService as tool via MCP
+        agent_result = await self.roadmap_generation_agent.process_request(
+            {
+                "type": "generate_roadmap",
+                "goals": goals,
+                "roadmap_options": roadmap_options
+            },
+            context
         )
+        
+        # Extract roadmap from agent result
+        roadmap_result = agent_result.get("artifact", {})
+        
+        # Ensure roadmap_id exists
+        roadmap_id = roadmap_result.get("roadmap_id") or f"roadmap_{generate_event_id()}"
+        if not roadmap_result.get("roadmap_id"):
+            roadmap_result["roadmap_id"] = roadmap_id
         
         # Generate roadmap visualization
         visual_result = None
@@ -249,9 +379,6 @@ class OutcomesOrchestrator:
             )
         except Exception as e:
             self.logger.warning(f"Failed to generate roadmap visualization: {e}")
-        
-        # Extract roadmap_id
-        roadmap_id = roadmap_result.get("roadmap_id")
         
         # Collect full artifact payload for Artifact Plane
         artifact_payload = {
@@ -349,36 +476,35 @@ class OutcomesOrchestrator:
         context: ExecutionContext
     ) -> Dict[str, Any]:
         """
-        Handle create_poc intent - create POC proposal from pillar outputs.
+        Handle create_poc intent using agentic forward pattern.
+        
+        ARCHITECTURAL PRINCIPLE: Orchestrator delegates to Agent, Agent reasons and uses services as tools.
         """
-        # Read session state to get pillar summaries
-        session_state = await context.state_surface.get_session_state(
-            context.session_id,
-            context.tenant_id
-        )
+        description = intent.parameters.get("description", "")
+        if not description:
+            raise ValueError("Description is required for POC creation")
         
-        if not session_state:
-            session_state = {}
-        
-        # Extract pillar summaries
-        content_summary = session_state.get("content_pillar_summary", {})
-        insights_summary = session_state.get("insights_pillar_summary", {})
-        journey_summary = session_state.get("journey_pillar_summary", {})
-        
-        # Additional context from intent parameters
-        additional_context = intent.parameters.get("additional_context", {})
         poc_options = intent.parameters.get("poc_options", {})
         
-        # Generate POC proposal
-        poc_result = await self.poc_generation_service.generate_poc_proposal(
-            content_summary=content_summary,
-            insights_summary=insights_summary,
-            journey_summary=journey_summary,
-            additional_context=additional_context,
-            poc_options=poc_options,
-            tenant_id=context.tenant_id,
-            context=context
+        # Use POCGenerationAgent (agentic forward pattern)
+        # Agent reasons about POC requirements, designs scope, uses POCGenerationService as tool via MCP
+        agent_result = await self.poc_generation_agent.process_request(
+            {
+                "type": "create_poc",
+                "description": description,
+                "poc_options": poc_options
+            },
+            context
         )
+        
+        # Extract POC proposal from agent result
+        poc_result = agent_result.get("artifact", {})
+        
+        # Ensure poc_id/proposal_id exists
+        proposal_id = poc_result.get("poc_id") or poc_result.get("proposal_id") or f"poc_{generate_event_id()}"
+        if not poc_result.get("poc_id") and not poc_result.get("proposal_id"):
+            poc_result["poc_id"] = proposal_id
+            poc_result["proposal_id"] = proposal_id
         
         # Generate POC visualization
         visual_result = None
@@ -390,9 +516,6 @@ class OutcomesOrchestrator:
             )
         except Exception as e:
             self.logger.warning(f"Failed to generate POC visualization: {e}")
-        
-        # Extract proposal_id from POC result
-        proposal_id = poc_result.get("proposal_id")
         
         # Collect full artifact payload for Artifact Plane
         artifact_payload = {
@@ -811,3 +934,322 @@ class OutcomesOrchestrator:
             )
             
             return await self._handle_create_poc(intent_obj, exec_context)
+    
+    async def _handle_export_to_migration_engine_soa(
+        self,
+        intent: Optional[Intent] = None,
+        context: Optional[ExecutionContext] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Handle export_to_migration_engine SOA API (dual call pattern)."""
+        if intent and context:
+            return await self._handle_export_to_migration_engine(intent, context)
+        else:
+            solution_id = kwargs.get("solution_id")
+            export_format = kwargs.get("export_format", "json")
+            include_mappings = kwargs.get("include_mappings", True)
+            include_rules = kwargs.get("include_rules", True)
+            include_staged_data = kwargs.get("include_staged_data", False)
+            user_context = kwargs.get("user_context", {})
+            tenant_id = user_context.get("tenant_id", "default")
+            session_id = user_context.get("session_id", "default")
+            
+            from symphainy_platform.runtime.intent_model import IntentFactory
+            intent_obj = IntentFactory.create_intent(
+                intent_type="export_to_migration_engine",
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id,
+                parameters={
+                    "solution_id": solution_id,
+                    "export_format": export_format,
+                    "include_mappings": include_mappings,
+                    "include_rules": include_rules,
+                    "include_staged_data": include_staged_data
+                }
+            )
+            
+            exec_context = ExecutionContext(
+                execution_id="export_to_migration_engine",
+                intent=intent_obj,
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id
+            )
+            
+            return await self._handle_export_to_migration_engine(intent_obj, exec_context)
+    
+    async def _handle_create_blueprint(
+        self,
+        intent: Intent,
+        context: ExecutionContext
+    ) -> Dict[str, Any]:
+        """
+        Handle create_blueprint intent using agentic forward pattern.
+        
+        ARCHITECTURAL PRINCIPLE: 
+        - Blueprints are Purpose-Bound Outcomes, belong in Outcomes Realm
+        - Orchestrator delegates to Agent, Agent reasons and uses services as tools
+        """
+        workflow_id = intent.parameters.get("workflow_id")
+        if not workflow_id:
+            raise ValueError("workflow_id is required for create_blueprint intent")
+        
+        current_state_workflow_id = intent.parameters.get("current_state_workflow_id")
+        
+        # Use BlueprintCreationAgent (agentic forward pattern)
+        # Agent reasons about transformation, designs phases, uses CoexistenceAnalysisService as tool via MCP
+        if not self.blueprint_creation_agent:
+            raise NotImplementedError("BlueprintCreationAgent not available - file not implemented")
+        agent_result = await self.blueprint_creation_agent.process_request(
+            {
+                "type": "create_blueprint",
+                "workflow_id": workflow_id,
+                "current_state_workflow_id": current_state_workflow_id
+            },
+            context
+        )
+        
+        # Extract blueprint from agent result
+        blueprint_result = agent_result.get("artifact", {})
+        
+        # Ensure blueprint_id exists
+        blueprint_id = blueprint_result.get("blueprint_id") or f"blueprint_{workflow_id}_{generate_event_id()}"
+        if not blueprint_result.get("blueprint_id"):
+            blueprint_result["blueprint_id"] = blueprint_id
+        
+        # Store in Artifact Plane (same pattern as roadmap/POC)
+        artifact_payload = {
+            "blueprint": blueprint_result,
+            "current_state": blueprint_result.get("current_state", {}),
+            "coexistence_state": blueprint_result.get("coexistence_state", {}),
+            "roadmap": blueprint_result.get("roadmap", {}),
+            "responsibility_matrix": blueprint_result.get("responsibility_matrix", {}),
+            "sections": blueprint_result.get("sections", [])
+        }
+        
+        if self.artifact_plane:
+            try:
+                artifact_result = await self.artifact_plane.create_artifact(
+                    artifact_type="blueprint",
+                    artifact_id=blueprint_id,
+                    payload=artifact_payload,
+                    context=context,
+                    metadata={
+                        "regenerable": True,
+                        "retention_policy": "session"
+                    }
+                )
+                
+                stored_artifact_id = artifact_result.get("artifact_id", blueprint_id)
+                
+                return {
+                    "artifacts": {
+                        "blueprint_id": stored_artifact_id,
+                        "blueprint": {
+                            "result_type": "blueprint",
+                            "semantic_payload": {
+                                "blueprint_id": stored_artifact_id,
+                                "execution_id": context.execution_id,
+                                "session_id": context.session_id
+                            },
+                            "renderings": {}
+                        }
+                    },
+                    "events": [
+                        {
+                            "type": "blueprint_created",
+                            "blueprint_id": stored_artifact_id,
+                            "session_id": context.session_id
+                        }
+                    ]
+                }
+            except Exception as e:
+                self.logger.error(f"Failed to store blueprint in Artifact Plane: {e}", exc_info=True)
+                # Fall through to fallback
+        
+        # Fallback (should not happen in production)
+        self.logger.warning("Artifact Plane not available, falling back to execution state storage")
+        return {
+            "artifacts": {
+                "blueprint": blueprint_result,
+                "blueprint_id": blueprint_id
+            },
+            "events": [
+                {
+                    "type": "blueprint_created",
+                    "blueprint_id": blueprint_id,
+                    "session_id": context.session_id
+                }
+            ]
+        }
+    
+    async def _handle_export_artifact(
+        self,
+        intent: Intent,
+        context: ExecutionContext
+    ) -> Dict[str, Any]:
+        """Handle export_artifact intent."""
+        from ..enabling_services.export_service import ExportService
+        
+        export_service = ExportService(public_works=self.public_works)
+        
+        artifact_type = intent.parameters.get("artifact_type")
+        artifact_id = intent.parameters.get("artifact_id")
+        export_format = intent.parameters.get("export_format", "json")
+        
+        if not artifact_type or not artifact_id:
+            raise ValueError("artifact_type and artifact_id are required")
+        
+        if artifact_type not in ["blueprint", "poc", "roadmap"]:
+            raise ValueError(f"Invalid artifact_type: {artifact_type}. Must be 'blueprint', 'poc', or 'roadmap'")
+        
+        export_result = await export_service.export_artifact(
+            artifact_type=artifact_type,
+            artifact_id=artifact_id,
+            export_format=export_format,
+            context=context
+        )
+        
+        return {
+            "artifacts": {
+                "export": export_result
+            },
+            "events": [
+                {
+                    "type": "artifact_exported",
+                    "artifact_type": artifact_type,
+                    "artifact_id": artifact_id,
+                    "export_format": export_format
+                }
+            ]
+        }
+    
+    async def _handle_create_blueprint_soa(
+        self,
+        intent: Optional[Intent] = None,
+        context: Optional[ExecutionContext] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Handle create_blueprint SOA API (dual call pattern)."""
+        if intent and context:
+            return await self._handle_create_blueprint(intent, context)
+        else:
+            workflow_id = kwargs.get("workflow_id")
+            current_state_workflow_id = kwargs.get("current_state_workflow_id")
+            user_context = kwargs.get("user_context", {})
+            tenant_id = user_context.get("tenant_id", "default")
+            session_id = user_context.get("session_id", "default")
+            solution_id = user_context.get("solution_id", "default")
+            
+            from symphainy_platform.runtime.intent_model import IntentFactory
+            intent_obj = IntentFactory.create_intent(
+                intent_type="create_blueprint",
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id,
+                parameters={
+                    "workflow_id": workflow_id,
+                    "current_state_workflow_id": current_state_workflow_id
+                }
+            )
+            
+            exec_context = ExecutionContext(
+                execution_id="create_blueprint",
+                intent=intent_obj,
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id
+            )
+            
+            return await self._handle_create_blueprint(intent_obj, exec_context)
+    
+    async def _handle_get_pillar_summaries_soa(
+        self,
+        intent: Optional[Intent] = None,
+        context: Optional[ExecutionContext] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Handle get_pillar_summaries SOA API (dual call pattern)."""
+        session_id = kwargs.get("session_id")
+        user_context = kwargs.get("user_context", {})
+        tenant_id = user_context.get("tenant_id", "default")
+        solution_id = user_context.get("solution_id", "default")
+        
+        if not session_id:
+            raise ValueError("session_id is required")
+        
+        exec_context = ExecutionContext(
+            execution_id="get_pillar_summaries",
+            tenant_id=tenant_id,
+            session_id=session_id,
+            solution_id=solution_id
+        )
+        
+        # Get session state
+        if exec_context.state_surface:
+            session_state = await exec_context.state_surface.get_session_state(
+                session_id,
+                tenant_id
+            )
+            
+            if session_state:
+                return {
+                    "success": True,
+                    "pillar_summaries": {
+                        "content": session_state.get("content_pillar_summary", {}),
+                        "insights": session_state.get("insights_pillar_summary", {}),
+                        "journey": session_state.get("journey_pillar_summary", {})
+                    }
+                }
+        
+        # Return empty summaries if not found
+        return {
+            "success": True,
+            "pillar_summaries": {
+                "content": {},
+                "insights": {},
+                "journey": {}
+            }
+        }
+    
+    async def _handle_export_artifact_soa(
+        self,
+        intent: Optional[Intent] = None,
+        context: Optional[ExecutionContext] = None,
+        **kwargs
+    ) -> Dict[str, Any]:
+        """Handle export_artifact SOA API (dual call pattern)."""
+        if intent and context:
+            return await self._handle_export_artifact(intent, context)
+        else:
+            artifact_type = kwargs.get("artifact_type")
+            artifact_id = kwargs.get("artifact_id")
+            export_format = kwargs.get("export_format", "json")
+            user_context = kwargs.get("user_context", {})
+            tenant_id = user_context.get("tenant_id", "default")
+            session_id = user_context.get("session_id", "default")
+            solution_id = user_context.get("solution_id", "default")
+            
+            from symphainy_platform.runtime.intent_model import IntentFactory
+            intent_obj = IntentFactory.create_intent(
+                intent_type="export_artifact",
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id,
+                parameters={
+                    "artifact_type": artifact_type,
+                    "artifact_id": artifact_id,
+                    "export_format": export_format
+                }
+            )
+            
+            exec_context = ExecutionContext(
+                execution_id="export_artifact",
+                intent=intent_obj,
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id=solution_id
+            )
+            
+            return await self._handle_export_artifact(intent_obj, exec_context)

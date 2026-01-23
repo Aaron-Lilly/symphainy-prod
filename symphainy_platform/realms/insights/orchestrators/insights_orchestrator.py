@@ -101,40 +101,99 @@ class InsightsOrchestrator:
         Returns:
             Dict with "artifacts" and "events" keys
         """
-        intent_type = intent.intent_type
+        # Initialize health monitoring and telemetry if not already done
+        if not self.health_monitor:
+            from symphainy_platform.civic_systems.agentic.telemetry.agentic_telemetry_service import AgenticTelemetryService
+            from symphainy_platform.civic_systems.orchestrator_health import OrchestratorHealthMonitor
+            
+            # Get telemetry service from public works if available
+            if self.public_works:
+                try:
+                    self.telemetry_service = getattr(self.public_works, 'telemetry_service', None)
+                except:
+                    pass
+            
+            # If not available, create a basic one (will skip recording if no Supabase)
+            if not self.telemetry_service:
+                self.telemetry_service = AgenticTelemetryService()
+            
+            self.health_monitor = OrchestratorHealthMonitor(telemetry_service=self.telemetry_service)
+            await self.health_monitor.start_monitoring("insights_orchestrator")
         
-        if intent_type == "analyze_content":
-            return await self._handle_analyze_content(intent, context)
-        elif intent_type == "interpret_data":
-            return await self._handle_interpret_data(intent, context)
-        elif intent_type == "map_relationships":
-            return await self._handle_map_relationships(intent, context)
-        elif intent_type == "query_data":
-            return await self._handle_query_data(intent, context)
-        elif intent_type == "calculate_metrics":
-            return await self._handle_calculate_metrics(intent, context)
-        elif intent_type == "assess_data_quality":
-            return await self._handle_assess_data_quality(intent, context)
-        elif intent_type == "interpret_data_self_discovery":
-            return await self._handle_self_discovery(intent, context)
-        elif intent_type == "interpret_data_guided":
-            return await self._handle_guided_discovery(intent, context)
-        elif intent_type == "analyze_structured_data":
-            return await self._handle_analyze_structured(intent, context)
-        elif intent_type == "analyze_unstructured_data":
-            return await self._handle_analyze_unstructured(intent, context)
-        elif intent_type == "visualize_lineage":
-            return await self._handle_visualize_lineage(intent, context)
-        elif intent_type == "extract_structured_data":
-            return await self._handle_extract_structured_data(intent, context)
-        elif intent_type == "discover_extraction_pattern":
-            return await self._handle_discover_extraction_pattern(intent, context)
-        elif intent_type == "create_extraction_config":
-            return await self._handle_create_extraction_config(intent, context)
-        elif intent_type == "match_source_to_target":
-            return await self._handle_match_source_to_target(intent, context)
-        else:
-            raise ValueError(f"Unknown intent type: {intent_type}")
+        from datetime import datetime
+        start_time = datetime.utcnow()
+        intent_type = intent.intent_type
+        success = True
+        error_message = None
+        result = None
+        
+        try:
+            if intent_type == "analyze_content":
+                result = await self._handle_analyze_content(intent, context)
+            elif intent_type == "interpret_data":
+                result = await self._handle_interpret_data(intent, context)
+            elif intent_type == "map_relationships":
+                result = await self._handle_map_relationships(intent, context)
+            elif intent_type == "query_data":
+                result = await self._handle_query_data(intent, context)
+            elif intent_type == "calculate_metrics":
+                result = await self._handle_calculate_metrics(intent, context)
+            elif intent_type == "assess_data_quality":
+                result = await self._handle_assess_data_quality(intent, context)
+            elif intent_type == "interpret_data_self_discovery":
+                result = await self._handle_self_discovery(intent, context)
+            elif intent_type == "interpret_data_guided":
+                result = await self._handle_guided_discovery(intent, context)
+            elif intent_type == "analyze_structured_data":
+                result = await self._handle_analyze_structured(intent, context)
+            elif intent_type == "analyze_unstructured_data":
+                result = await self._handle_analyze_unstructured(intent, context)
+            elif intent_type == "visualize_lineage":
+                result = await self._handle_visualize_lineage(intent, context)
+            elif intent_type == "extract_structured_data":
+                result = await self._handle_extract_structured_data(intent, context)
+            elif intent_type == "discover_extraction_pattern":
+                result = await self._handle_discover_extraction_pattern(intent, context)
+            elif intent_type == "create_extraction_config":
+                result = await self._handle_create_extraction_config(intent, context)
+            elif intent_type == "match_source_to_target":
+                result = await self._handle_match_source_to_target(intent, context)
+            else:
+                raise ValueError(f"Unknown intent type: {intent_type}")
+            
+            return result
+            
+        except Exception as e:
+            success = False
+            error_message = str(e)
+            self.logger.error(f"Intent handling failed: {e}", exc_info=True)
+            raise
+        
+        finally:
+            # Record telemetry
+            from datetime import datetime
+            end_time = datetime.utcnow()
+            latency_ms = (end_time - start_time).total_seconds() * 1000
+            
+            try:
+                await self.telemetry_service.record_orchestrator_execution(
+                    orchestrator_id="insights_orchestrator",
+                    orchestrator_name="Insights Orchestrator",
+                    intent_type=intent_type,
+                    latency_ms=latency_ms,
+                    context=context,
+                    success=success,
+                    error_message=error_message
+                )
+                
+                await self.health_monitor.record_intent_handled(
+                    orchestrator_id="insights_orchestrator",
+                    intent_type=intent_type,
+                    success=success,
+                    latency_ms=latency_ms
+                )
+            except Exception as e:
+                self.logger.debug(f"Telemetry recording failed (non-critical): {e}")
     
     async def _handle_analyze_content(
         self,

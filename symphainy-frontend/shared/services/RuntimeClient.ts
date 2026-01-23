@@ -81,7 +81,8 @@ export type ConnectionHandler = () => void;
 
 export interface RuntimeClientConfig {
   baseUrl: string;
-  sessionToken: string;
+  accessToken: string;  // Access token for authentication (from Supabase)
+  sessionId: string;    // Session ID for session state (from Runtime)
   autoReconnect?: boolean;
   reconnectAttempts?: number;
   reconnectDelay?: number;
@@ -132,8 +133,9 @@ export class RuntimeClient {
         const wsUrl = this._buildWebSocketUrl();
         
         console.log('🔌 [RuntimeClient] Connecting to Runtime Foundation:', {
-          url: wsUrl.replace(/\?session_token=.*/, '?session_token=***'),
-          hasToken: !!this.config.sessionToken,
+          url: wsUrl.replace(/access_token=[^&]*/, 'access_token=***').replace(/session_id=[^&]*/, 'session_id=***'),
+          hasAccessToken: !!this.config.accessToken,
+          hasSessionId: !!this.config.sessionId,
         });
 
         this.ws = new WebSocket(wsUrl);
@@ -171,7 +173,17 @@ export class RuntimeClient {
           });
           this._notifyDisconnect();
 
-          // Auto-reconnect if not intentionally disconnected
+          // ✅ SESSION BOUNDARY PATTERN: Do NOT retry on 403/401 (session invalid)
+          // These are session invalidation signals, not connection errors
+          const isSessionInvalid = event.code === 403 || event.code === 401;
+          
+          if (isSessionInvalid) {
+            console.info('ℹ️ [RuntimeClient] Session invalid (403/401) - not retrying. SessionBoundaryProvider will handle recovery.');
+            // Don't retry - SessionBoundaryProvider will handle session recovery
+            return;
+          }
+
+          // Auto-reconnect only for non-session errors and if not intentionally disconnected
           if (!this.isIntentionallyDisconnected && this.config.autoReconnect) {
             this._attemptReconnect();
           }
@@ -338,8 +350,11 @@ export class RuntimeClient {
   // Private methods
 
   private _buildWebSocketUrl(): string {
-    const baseUrl = this.config.baseUrl.replace(/^http/, 'ws');
-    return `${baseUrl}/api/runtime/agent?session_token=${this.config.sessionToken}`;
+    const baseUrl = this.config.baseUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    const protocol = this.config.baseUrl.startsWith('https') ? 'wss' : 'ws';
+    // Use both access_token (for authentication) and session_id (for session state)
+    // Note: Backend expects session_token parameter, not session_id
+    return `${protocol}://${baseUrl}/api/runtime/agent?access_token=${encodeURIComponent(this.config.accessToken)}&session_token=${encodeURIComponent(this.config.sessionId)}`;
   }
 
   private _handleEvent(event: RuntimeEvent): void {

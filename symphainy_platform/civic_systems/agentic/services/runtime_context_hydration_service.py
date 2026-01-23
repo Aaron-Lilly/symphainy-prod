@@ -55,12 +55,16 @@ class RuntimeContextHydrationService:
         """
         Create authoritative runtime context from committed sources.
         
+        ARCHITECTURAL PRINCIPLE: Runtime context is optional.
+        If no committed context exists (e.g., user bypassed landing page),
+        returns empty defaults. Agents should handle empty context gracefully.
+        
         Args:
             request: Request dictionary (may contain explicit context fields)
             context: Execution context
         
         Returns:
-            AgentRuntimeContext (authoritative, read-only)
+            AgentRuntimeContext (authoritative, read-only, may be empty)
         """
         self.logger.debug(f"Creating runtime context for session {context.session_id}")
         

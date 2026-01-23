@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 
 // Force dynamic rendering to avoid SSR issues
 export const dynamic = 'force-dynamic';
-import { useAuth } from "@/shared/agui/AuthProvider";
+import { useAuth } from "@/shared/auth/AuthProvider";
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { useJourneyAPIManager } from "@/shared/hooks/useJourneyAPIManager";
 import { chatbotAgentInfoAtom, mainChatbotOpenAtom } from "@/shared/atoms/chatbot-atoms";

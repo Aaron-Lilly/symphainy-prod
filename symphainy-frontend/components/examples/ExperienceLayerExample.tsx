@@ -8,7 +8,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { useAuth } from '@/shared/agui/AuthProvider';
+import { useAuth } from '@/shared/auth/AuthProvider';
 import { useGuideAgent } from '@/shared/agui/GuideAgentProvider';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -50,10 +50,8 @@ export const ExperienceLayerExample: React.FC = () => {
     setError(null);
 
     try {
-      const response = await login(email, password);
-      if (!response.success) {
-        setError(response.message || 'Login failed');
-      }
+      await login(email, password);
+      // Login successful - AuthProvider handles state updates
     } catch (err) {
       setError('Login failed');
     } finally {

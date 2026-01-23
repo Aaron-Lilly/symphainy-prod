@@ -1,7 +1,7 @@
 // WizardActive Hooks
 "use client";
 import React, { useState, useEffect } from "react";
-import { useGlobalSession } from "@/shared/agui/GlobalSessionProvider";
+import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { chatbotAgentInfoAtom, mainChatbotOpenAtom } from "@/shared/atoms/chatbot-atoms";
 import { useSetAtom } from "jotai";
 import { OperationsService } from "@/shared/services/operations";
@@ -19,7 +19,7 @@ import {
 export function useWizardActive({ onBack }: WizardActiveProps): WizardActiveState & WizardActiveActions {
   const setAgentInfo = useSetAtom(chatbotAgentInfoAtom);
   const setMainChatbotOpen = useSetAtom(mainChatbotOpenAtom);
-  const { setPillarState } = useGlobalSession();
+  const { setRealmState } = usePlatformState();
 
   const [chatHistory, setChatHistory] = useState<ChatTurn[]>([]);
   const [input, setInput] = useState("");
@@ -93,8 +93,8 @@ export function useWizardActive({ onBack }: WizardActiveProps): WizardActiveStat
       setPublishedWorkflow(response.workflow);
       setPublished(true);
 
-      // Save to global session for experience pillar
-      setPillarState('operations', {
+      // Save to realm state for journey realm
+      setRealmState('journey', 'operations', {
         sopText: response.sop,
         workflowData: response.workflow,
         published: true,

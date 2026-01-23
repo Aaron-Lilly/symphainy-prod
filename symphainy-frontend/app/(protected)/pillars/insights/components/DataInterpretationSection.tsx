@@ -74,14 +74,12 @@ export function DataInterpretationSection({
     }
   };
 
-  // Load available guides (placeholder - would come from a guides service)
+  // Load available guides (now loads from Content Pillar - Data Model files)
   const loadAvailableGuides = async () => {
-    // TODO: Load guides from a guides service/API
-    // For now, use placeholder data
-    setAvailableGuides([
-      { id: 'guide_1', name: 'Standard Schema Template', description: 'Common data structure template' },
-      { id: 'guide_2', name: 'Custom Business Model', description: 'Company-specific data model' },
-    ]);
+    // Guides are now loaded from Content Pillar files with content_type === DATA_MODEL
+    // This is handled by InsightsFileSelector with filterDataModel={true}
+    // No need for placeholder data anymore
+    setAvailableGuides([]);
   };
 
   // Handle self-discovery interpretation
@@ -359,27 +357,20 @@ export function DataInterpretationSection({
               </CardHeader>
               <CardContent className="space-y-4">
                 <div>
-                  <label className="text-sm font-medium mb-2 block">Select Guide</label>
-                  <Select
-                    value={selectedGuideId}
-                    onValueChange={setSelectedGuideId}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Choose a guide for interpretation" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {availableGuides.map((guide) => (
-                        <SelectItem key={guide.id} value={guide.id}>
-                          <div className="flex flex-col">
-                            <span className="font-medium">{guide.name}</span>
-                            {guide.description && (
-                              <span className="text-xs text-gray-500">{guide.description}</span>
-                            )}
-                          </div>
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <label className="text-sm font-medium mb-2 block">Select Target Data Model</label>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Choose a data model file uploaded in Content Pillar (JSON Schema, YAML)
+                  </p>
+                  <InsightsFileSelector
+                    onSourceSelected={(sourceId, sourceType, contentType) => {
+                      // For guided discovery, sourceId is the target model file_id
+                      setSelectedGuideId(sourceId);
+                    }}
+                    contentType="structured"
+                    selectedSourceId={selectedGuideId}
+                    selectedSourceType="file"
+                    filterDataModel={true}  // ⭐ Filter to show only Data Model files
+                  />
                 </div>
                 <Button
                   onClick={handleGuidedDiscovery}

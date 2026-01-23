@@ -27,7 +27,7 @@ import { useAuth } from '@/shared/auth/AuthProvider';
 import { usePlatformState } from '@/shared/state/PlatformStateProvider';
 import { useContentAPIManager } from '@/shared/managers/ContentAPIManager';
 import { toast } from 'sonner';
-import { FileMetadata, FileStatus } from '@/shared/types/file';
+import { FileMetadata, FileStatus, ContentType } from '@/shared/types/file';
 
 interface FileStats {
   total: number;
@@ -452,9 +452,16 @@ export function FileDashboard({
                           <div className="flex items-center">
                             <File className="h-4 w-4 text-gray-400 mr-2" />
                             <div className="flex flex-col">
-                              <span className="text-sm font-medium text-gray-900">
-                                {file.ui_name || file.original_filename || file.uuid}
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-medium text-gray-900">
+                                  {file.ui_name || file.original_filename || file.uuid}
+                                </span>
+                                {file.content_type === ContentType.DATA_MODEL && (
+                                  <Badge variant="outline" className="text-xs bg-purple-50 text-purple-700 border-purple-200">
+                                    📊 Data Model
+                                  </Badge>
+                                )}
+                              </div>
                               {file.original_filename && file.original_filename !== file.ui_name && (
                                 <span className="text-xs text-gray-500">
                                   {file.original_filename}

@@ -25,7 +25,10 @@ import re
 
 from utilities import get_logger
 from symphainy_platform.civic_systems.smart_city.sdk.security_guard_sdk import SecurityGuardSDK
+from symphainy_platform.civic_systems.smart_city.sdk.traffic_cop_sdk import TrafficCopSDK
 from ..middleware.rate_limiter import rate_limit_login, rate_limit_register
+from ..sdk.runtime_client import RuntimeClient
+from datetime import datetime
 
 
 router = APIRouter(prefix="/api/auth", tags=["authentication"])
@@ -37,6 +40,18 @@ def get_security_guard_sdk(request: Request) -> SecurityGuardSDK:
     if not hasattr(request.app.state, "security_guard_sdk"):
         raise RuntimeError("Security Guard SDK not initialized. Check Experience service startup.")
     return request.app.state.security_guard_sdk
+
+
+def get_traffic_cop_sdk(request: Request) -> TrafficCopSDK:
+    """Dependency to get Traffic Cop SDK."""
+    if not hasattr(request.app.state, "traffic_cop_sdk"):
+        raise RuntimeError("Traffic Cop SDK not initialized. Check Experience service startup.")
+    return request.app.state.traffic_cop_sdk
+
+
+def get_runtime_client() -> RuntimeClient:
+    """Dependency to get Runtime client."""
+    return RuntimeClient(runtime_url="http://runtime:8000")
 
 
 class LoginRequest(BaseModel):
@@ -77,6 +92,7 @@ class AuthResponse(BaseModel):
     success: bool
     access_token: Optional[str] = None
     refresh_token: Optional[str] = None
+    session_id: Optional[str] = None  # Separate session_id (not the same as access_token)
     user_id: Optional[str] = None
     tenant_id: Optional[str] = None
     roles: Optional[list] = None
@@ -90,12 +106,15 @@ async def login(
     http_request: Request,
     request: LoginRequest,
     security_guard: SecurityGuardSDK = Depends(get_security_guard_sdk),
+    traffic_cop: TrafficCopSDK = Depends(get_traffic_cop_sdk),
+    runtime_client: RuntimeClient = Depends(get_runtime_client),
     _rate_limit: None = Depends(rate_limit_login)  # FastAPI dependency for rate limiting
 ):
     """
-    Login user.
+    Login user and auto-create session.
     
-    Uses Security Guard SDK to authenticate user.
+    Uses Security Guard SDK to authenticate user, then automatically creates a session.
+    Returns both access_token (for authentication) and session_id (for session state).
     """
     try:
         # Use auth_abstraction directly to get both validation and tokens in one call
@@ -132,13 +151,44 @@ async def login(
         
         access_token = auth_data.get("access_token")
         refresh_token = auth_data.get("refresh_token")
+        user_id = auth_result.user_id if auth_result else auth_data.get("user_id")
+        tenant_id = auth_result.tenant_id if auth_result else auth_data.get("tenant_id")
+        
+        # Auto-create session after successful authentication
+        session_id = None
+        try:
+            # Create session intent via Traffic Cop SDK
+            session_intent = await traffic_cop.create_session_intent(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                metadata={"authenticated_at": datetime.now().isoformat()}
+            )
+            
+            # Create session in Runtime (will validate via Traffic Cop Primitives)
+            session_result = await runtime_client.create_session({
+                "intent_type": "create_session",
+                "tenant_id": session_intent.tenant_id,
+                "user_id": session_intent.user_id,
+                "session_id": session_intent.session_id,
+                "execution_contract": session_intent.execution_contract,
+                "metadata": {}
+            })
+            
+            session_id = session_result.get("session_id") or session_intent.session_id
+            logger.info(f"Session created automatically on login: {session_id} for user {user_id}")
+            
+        except Exception as session_error:
+            # Log but don't fail login if session creation fails
+            logger.error(f"Failed to create session on login: {session_error}", exc_info=True)
+            # Continue without session_id - frontend can create session separately if needed
         
         return AuthResponse(
             success=True,
             access_token=access_token,
             refresh_token=refresh_token,
-            user_id=auth_result.user_id if auth_result else auth_data.get("user_id"),
-            tenant_id=auth_result.tenant_id if auth_result else auth_data.get("tenant_id"),
+            session_id=session_id,  # Separate session_id (not the same as access_token)
+            user_id=user_id,
+            tenant_id=tenant_id,
             roles=auth_result.roles if auth_result else [],
             permissions=auth_result.permissions if auth_result else []
         )

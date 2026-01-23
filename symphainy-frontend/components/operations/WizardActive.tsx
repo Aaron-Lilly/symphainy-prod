@@ -6,8 +6,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 import { Loader2, ArrowLeft, Send, CheckCircle, FileText, Share2 } from "lucide-react";
 import { wizardChat, wizardPublish, startWizard } from "@/lib/api/operations";
-import { useGlobalSession } from "@/shared/agui/GlobalSessionProvider";
-import { useAuth } from "@/shared/agui/AuthProvider";
+import { useAuth } from "@/shared/auth/AuthProvider";
+import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { chatbotAgentInfoAtom, mainChatbotOpenAtom } from "@/shared/atoms/chatbot-atoms";
 import { useSetAtom } from "jotai";
 
@@ -23,10 +23,10 @@ interface WizardActiveProps {
 export default function WizardActive({ onBack }: WizardActiveProps) {
   const setAgentInfo = useSetAtom(chatbotAgentInfoAtom);
   const setMainChatbotOpen = useSetAtom(mainChatbotOpenAtom);
-  const { setPillarState } = useGlobalSession();
-
-  const { guideSessionToken } = useGlobalSession();
-  const { user } = useAuth();
+  const { setRealmState } = usePlatformState();
+  const { user, sessionToken: authSessionToken } = useAuth();
+  const { state } = usePlatformState();
+  const guideSessionToken = authSessionToken || state.session.sessionId;
   const [chatHistory, setChatHistory] = useState<ChatTurn[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -35,7 +35,7 @@ export default function WizardActive({ onBack }: WizardActiveProps) {
   const [published, setPublished] = useState(false);
   const [publishedSop, setPublishedSop] = useState<any | null>(null);
   const [publishedWorkflow, setPublishedWorkflow] = useState<any | null>(null);
-  const [sessionToken, setSessionToken] = useState<string | null>(null);
+  const [wizardSessionToken, setWizardSessionToken] = useState<string | null>(null);
   const [wizardStarted, setWizardStarted] = useState(false);
 
   useEffect(() => {
@@ -57,7 +57,7 @@ export default function WizardActive({ onBack }: WizardActiveProps) {
         const response = await startWizard(guideSessionToken || undefined, userId);
         // Extract session token from response
         const token = (response as any).session_token || (response as any).wizard_session_id || (response as any).data?.session_token || guideSessionToken || `wizard-${Math.random().toString(36).slice(2)}`;
-        setSessionToken(token);
+        setWizardSessionToken(token);
         setWizardStarted(true);
         // Add welcome message if provided
         if (response.message || response.data?.message) {
@@ -75,12 +75,12 @@ export default function WizardActive({ onBack }: WizardActiveProps) {
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || !sessionToken) return;
+    if (!input.trim() || !wizardSessionToken) return;
     setLoading(true);
     setError(null);
     try {
       setChatHistory((h) => [...h, { role: 'user', content: input }]);
-      const resp = await wizardChat(sessionToken, input);
+      const resp = await wizardChat(wizardSessionToken, input);
       setChatHistory((h) => [...h, { role: 'agent', content: resp.message || resp.data?.message || 'Response received' }]);
       if (resp.data?.draft_sop) setDraftSop(resp.data.draft_sop);
       setInput("");
@@ -92,7 +92,7 @@ export default function WizardActive({ onBack }: WizardActiveProps) {
   };
 
   const handlePublish = async () => {
-    if (!sessionToken) {
+    if (!wizardSessionToken) {
       setError("Wizard session not started");
       return;
     }
@@ -100,13 +100,13 @@ export default function WizardActive({ onBack }: WizardActiveProps) {
     setError(null);
     try {
       const userId = user?.id || undefined;
-      const resp = await wizardPublish(sessionToken, userId);
+      const resp = await wizardPublish(wizardSessionToken, userId);
       setPublishedSop((resp as any).data?.sop || (resp as any).sop);
       setPublishedWorkflow((resp as any).data?.workflow || (resp as any).workflow);
       setPublished(true);
 
       // Save to global session for experience pillar
-      setPillarState('operations', {
+      setRealmState('journey', 'operations', {
         sopText: (resp as any).data?.sop || (resp as any).sop,
         workflowData: (resp as any).data?.workflow || (resp as any).workflow,
         published: true,

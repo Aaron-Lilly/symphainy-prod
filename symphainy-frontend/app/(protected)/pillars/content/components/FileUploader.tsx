@@ -45,6 +45,11 @@ const CONTENT_TYPE_OPTIONS = [
     type: ContentType.WORKFLOW_SOP,
     label: 'Workflow & SOP Documentation',
     description: 'Workflow diagrams and Standard Operating Procedure documents (processed in Operations Pillar)'
+  },
+  {
+    type: ContentType.DATA_MODEL,
+    label: 'Data Model',
+    description: 'Target data model schemas (JSON Schema, YAML). Used for source-to-target matching in Insights pillar.'
   }
 ];
 

@@ -123,6 +123,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({
 export const useApp = () => {
   const context = useContext(AppContext);
   if (context === undefined) {
+    // During SSR, return a default context instead of throwing
+    if (typeof window === 'undefined') {
+      return {
+        state: initialState,
+        dispatch: () => {}, // No-op dispatch for SSR
+      };
+    }
     throw new Error("useApp must be used within an AppProvider");
   }
   return context;

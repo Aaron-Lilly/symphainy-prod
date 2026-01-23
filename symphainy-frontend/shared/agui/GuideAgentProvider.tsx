@@ -9,7 +9,7 @@
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useAuth } from '../auth/AuthProvider';
-import { usePlatformState } from '../state/PlatformStateProvider';
+import { useSessionBoundary, SessionStatus } from '../state/SessionBoundaryProvider';
 import { RuntimeClient, RuntimeEventType } from '@/shared/services/RuntimeClient';
 import { getRuntimeWebSocketUrl, getApiUrl } from '@/shared/config/api-config';
 
@@ -123,8 +123,8 @@ const GuideAgentContext = createContext<GuideAgentContextType | undefined>(undef
 
 export const GuideAgentProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { isAuthenticated, user } = useAuth();
-  const { state: platformState } = usePlatformState();
-  const sessionToken = platformState.session.sessionId;
+  const { state: sessionState } = useSessionBoundary();
+  const sessionToken = sessionState.sessionId;
   const [runtimeClient, setRuntimeClient] = useState<RuntimeClient | null>(null);
 
   const [agentState, setAgentState] = useState<GuideAgentState>({
@@ -137,9 +137,23 @@ export const GuideAgentProvider: React.FC<{ children: ReactNode }> = ({ children
     conversationId: null,
   });
 
-  // Initialize Guide Agent
+  // ✅ SESSION BOUNDARY PATTERN: Only initialize when session is Active
   const initializeGuideAgent = async () => {
-    if (!isAuthenticated || !sessionToken) {
+    // Only connect when session is Active (authenticated and valid)
+    if (sessionState.status !== SessionStatus.Active || !sessionToken) {
+      // Disconnect if session becomes invalid
+      if (runtimeClient) {
+        runtimeClient.disconnect();
+        setRuntimeClient(null);
+        setAgentState(prev => ({
+          ...prev,
+          isConnected: false,
+          isInitialized: false,
+          error: sessionState.status === SessionStatus.Invalid 
+            ? "Session invalid - reconnecting..." 
+            : null,
+        }));
+      }
       return;
     }
 
@@ -149,9 +163,19 @@ export const GuideAgentProvider: React.FC<{ children: ReactNode }> = ({ children
       // Create Runtime Client if not exists
       if (!runtimeClient) {
         const baseUrl = getApiUrl();
+        // Get both access_token and session_id from storage
+        const accessToken = typeof window !== 'undefined' ? sessionStorage.getItem("access_token") : null;
+        const sessionId = sessionToken; // sessionToken is actually session_id from PlatformState
+        
+        if (!accessToken || !sessionId) {
+          console.warn("Missing access_token or session_id, cannot create RuntimeClient");
+          return;
+        }
+        
         const client = new RuntimeClient({
           baseUrl,
-          sessionToken: sessionToken,
+          accessToken: accessToken,
+          sessionId: sessionId,
           autoReconnect: true,
         });
         setRuntimeClient(client);
@@ -411,10 +435,25 @@ export const GuideAgentProvider: React.FC<{ children: ReactNode }> = ({ children
   useEffect(() => {
     if (typeof window !== 'undefined' && isAuthenticated && sessionToken) {
       const baseUrl = getApiUrl();
+      // Get both access_token and session_id from storage
+      const accessToken = typeof window !== 'undefined' ? sessionStorage.getItem("access_token") : null;
+      // ✅ SESSION BOUNDARY PATTERN: Only create client when session is Active
+      if (sessionState.status !== SessionStatus.Active || !sessionToken) {
+        return;
+      }
+
+      const sessionId = sessionToken;
+      
+      if (!accessToken || !sessionId) {
+        console.warn("Missing access_token or session_id, cannot create RuntimeClient");
+        return;
+      }
+      
       const client = new RuntimeClient({
         baseUrl,
-        sessionToken: sessionToken,
-        autoReconnect: true,
+        accessToken: accessToken,
+        sessionId: sessionId,
+        autoReconnect: true, // Still allow reconnect for network errors (not 403/401)
       });
       setRuntimeClient(client);
 
@@ -423,14 +462,14 @@ export const GuideAgentProvider: React.FC<{ children: ReactNode }> = ({ children
         client.disconnect();
       };
     }
-  }, [isAuthenticated, sessionToken]);
+  }, [sessionState.status, sessionToken]);
 
-  // Initialize when authenticated and WebSocket client is ready
+  // ✅ SESSION BOUNDARY PATTERN: Initialize when session is Active and WebSocket client is ready
   useEffect(() => {
-    if (isAuthenticated && sessionToken && runtimeClient && !agentState.isInitialized) {
+    if (sessionState.status === SessionStatus.Active && sessionToken && runtimeClient && !agentState.isInitialized) {
       initializeGuideAgent();
     }
-  }, [isAuthenticated, sessionToken, runtimeClient, agentState.isInitialized]);
+  }, [sessionState.status, sessionToken, runtimeClient, agentState.isInitialized]);
 
   const contextValue: GuideAgentContextType = {
     state: agentState,

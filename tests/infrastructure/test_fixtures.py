@@ -152,25 +152,49 @@ async def test_redis(test_infrastructure) -> AsyncGenerator[RedisAdapter, None]:
     Get Redis adapter connected to test Redis.
     
     Cleans test database before and after test.
+    Falls back to main Redis if test infrastructure not available.
     """
-    adapter = RedisAdapter(
-        host=TEST_REDIS_HOST,
-        port=TEST_REDIS_PORT,
-        db=TEST_REDIS_DB  # Test database
-    )
-    await adapter.connect()
-    
-    # Clean test database before test
-    await adapter.flushdb()
-    
-    yield adapter
-    
-    # Cleanup
+    # Try test infrastructure first
     try:
+        adapter = RedisAdapter(
+            host=TEST_REDIS_HOST,
+            port=TEST_REDIS_PORT,
+            db=TEST_REDIS_DB  # Test database
+        )
+        await adapter.connect()
+        
+        # Clean test database before test
         await adapter.flushdb()
-        await adapter.disconnect()
-    except Exception:
-        pass  # Ignore cleanup errors
+        
+        yield adapter
+        
+        # Cleanup
+        try:
+            await adapter.flushdb()
+            await adapter.disconnect()
+        except Exception:
+            pass  # Ignore cleanup errors
+    except Exception as e:
+        # Fallback to main Redis if test infrastructure not available
+        logger.warning(f"Test Redis not available ({e}), falling back to main Redis")
+        try:
+            # Use main Redis (port 6379) with test database
+            adapter = RedisAdapter(
+                host="localhost",
+                port=6379,
+                db=TEST_REDIS_DB  # Use test database number on main Redis
+            )
+            await adapter.connect()
+            # Clean test database before test
+            await adapter.flushdb()
+            yield adapter
+            try:
+                await adapter.flushdb()
+                await adapter.disconnect()
+            except Exception:
+                pass
+        except Exception as fallback_error:
+            pytest.skip(f"Redis not available: {fallback_error}")
 
 
 @pytest.fixture
@@ -179,26 +203,48 @@ async def test_arango(test_infrastructure) -> AsyncGenerator[ArangoAdapter, None
     Get ArangoDB adapter connected to test ArangoDB.
     
     Uses test database and ensures it exists.
+    Falls back to main ArangoDB if test infrastructure not available.
     """
-    adapter = ArangoAdapter(
-        url=TEST_ARANGO_URL,
-        username=TEST_ARANGO_USERNAME,
-        password=TEST_ARANGO_PASSWORD,
-        database=TEST_ARANGO_DATABASE
-    )
-    await adapter.connect()
-    
-    # Ensure test database exists
-    if not await adapter.database_exists(TEST_ARANGO_DATABASE):
-        await adapter.create_database(TEST_ARANGO_DATABASE)
-    
-    yield adapter
-    
-    # Cleanup: Disconnect (keep database for performance)
+    # Try test infrastructure first
     try:
-        await adapter.disconnect()
-    except Exception:
-        pass  # Ignore cleanup errors
+        adapter = ArangoAdapter(
+            url=TEST_ARANGO_URL,
+            username=TEST_ARANGO_USERNAME,
+            password=TEST_ARANGO_PASSWORD,
+            database=TEST_ARANGO_DATABASE
+        )
+        await adapter.connect()
+        
+        # Ensure test database exists
+        if not await adapter.database_exists(TEST_ARANGO_DATABASE):
+            await adapter.create_database(TEST_ARANGO_DATABASE)
+        
+        yield adapter
+        
+        # Cleanup: Disconnect (keep database for performance)
+        try:
+            await adapter.disconnect()
+        except Exception:
+            pass  # Ignore cleanup errors
+    except Exception as e:
+        # Fallback to main ArangoDB if test infrastructure not available
+        logger.warning(f"Test ArangoDB not available ({e}), falling back to main ArangoDB")
+        try:
+            # Use main ArangoDB (port 8529) with main database
+            adapter = ArangoAdapter(
+                url="http://localhost:8529",
+                username="root",
+                password=os.getenv("ARANGO_ROOT_PASSWORD", "changeme"),
+                database="symphainy_platform"  # Use main database
+            )
+            await adapter.connect()
+            yield adapter
+            try:
+                await adapter.disconnect()
+            except Exception:
+                pass
+        except Exception as fallback_error:
+            pytest.skip(f"ArangoDB not available: {fallback_error}")
 
 
 @pytest.fixture

@@ -173,19 +173,76 @@ class OperationsOrchestrator:
         # Mode 2: Create workflow from BPMN file
         else:
             # Parse BPMN file and create workflow
-            # For now, return a placeholder - full implementation would parse BPMN
-            workflow_result = {
-                "workflow_id": f"workflow_{workflow_file_path.split('/')[-1]}",
-                "workflow_type": workflow_type,
-                "source_file": workflow_file_path,
-                "status": "created_from_file",
-                "steps": [],  # Placeholder - would be parsed from BPMN
-                "metadata": {
-                    "created_date": context.created_at.isoformat() if hasattr(context, 'created_at') else None,
-                    "source": "bpmn_file"
+            self.logger.info(f"Parsing BPMN file: {workflow_file_path}")
+            
+            # Get BPMN file content
+            bpmn_xml = None
+            
+            # Try to get from parsed file if workflow_file_path is a file_id
+            if self.public_works:
+                try:
+                    from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
+                    file_parser_service = FileParserService(public_works=self.public_works)
+                    parsed_content = await file_parser_service.get_parsed_file(
+                        parsed_file_id=workflow_file_path,
+                        tenant_id=context.tenant_id,
+                        context=context
+                    )
+                    
+                    if parsed_content:
+                        bpmn_xml = parsed_content.get("data") or parsed_content.get("content")
+                        if isinstance(bpmn_xml, bytes):
+                            bpmn_xml = bpmn_xml.decode('utf-8')
+                        elif isinstance(bpmn_xml, dict):
+                            bpmn_xml = parsed_content.get("metadata", {}).get("bpmn_xml") or str(parsed_content.get("content", ""))
+                except Exception as e:
+                    self.logger.debug(f"Could not get parsed file: {e}, trying file storage")
+            
+            # If not found, try file storage abstraction
+            if not bpmn_xml and self.public_works:
+                try:
+                    file_storage = self.public_works.get_file_storage_abstraction()
+                    if file_storage:
+                        file_content = await file_storage.download_file(workflow_file_path)
+                        if file_content:
+                            if isinstance(file_content, bytes):
+                                bpmn_xml = file_content.decode('utf-8')
+                            else:
+                                bpmn_xml = str(file_content)
+                except Exception as e:
+                    self.logger.warning(f"Could not get file from storage: {e}")
+            
+            # Parse BPMN XML via WorkflowConversionService
+            if bpmn_xml:
+                workflow_result = await self.workflow_conversion_service.parse_bpmn_file(
+                    bpmn_xml=bpmn_xml,
+                    workflow_id=None,
+                    tenant_id=context.tenant_id,
+                    context=context
+                )
+                workflow_result["source_file"] = workflow_file_path
+                workflow_result["workflow_type"] = workflow_type
+            else:
+                # Fallback: Create basic workflow structure
+                self.logger.warning(f"BPMN content not found for {workflow_file_path}, creating basic workflow structure")
+                from utilities import generate_event_id
+                workflow_id = generate_event_id()
+                workflow_result = {
+                    "workflow_id": workflow_id,
+                    "workflow_type": workflow_type,
+                    "source_file": workflow_file_path,
+                    "workflow_status": "created_from_file",
+                    "workflow_content": {
+                        "workflow_id": workflow_id,
+                        "workflow_name": f"Workflow from {workflow_file_path.split('/')[-1]}",
+                        "tasks": [],
+                        "sequence_flows": []
+                    },
+                    "metadata": {
+                        "created_date": context.created_at.isoformat() if hasattr(context, 'created_at') else None,
+                        "source": "bpmn_file"
+                    }
                 }
-            }
-            self.logger.info(f"Created workflow from file: {workflow_file_path}")
         
         # Generate workflow visualization if visual generation service is available
         visual_result = None

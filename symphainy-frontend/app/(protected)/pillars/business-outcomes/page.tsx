@@ -28,7 +28,7 @@ import RoadmapTimeline from "@/components/experience/RoadmapTimeline";
 import { Button } from "@/components/ui/button";
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { useOutcomesAPIManager } from "@/shared/hooks/useOutcomesAPIManager";
-import { Loader, AlertTriangle, FileText, Play, Download, Upload, MessageCircle } from "lucide-react";
+import { Loader, AlertTriangle, FileText, Play, Download, Upload, MessageCircle, Eye } from "lucide-react";
 import { FileMetadata, FileType, FileStatus } from "@/shared/types/file";
 import { useSetAtom } from "jotai";
 import { chatbotAgentInfoAtom, mainChatbotOpenAtom } from "@/shared/atoms/chatbot-atoms";
@@ -37,6 +37,9 @@ import { StateHandler, LoadingIndicator, ErrorDisplay, SuccessDisplay } from "@/
 
 // Import new micro-modular components
 import InsightsTab from "./components/InsightsTab";
+import SummaryVisualization from "./components/SummaryVisualization";
+import ArtifactGenerationOptions from "./components/ArtifactGenerationOptions";
+import GeneratedArtifactsDisplay from "./components/GeneratedArtifactsDisplay";
 // ExperienceService will be dynamically imported when needed
 
 const GraphComponent = dynamicImport(
@@ -83,6 +86,10 @@ export default function BusinessOutcomesPillarPage() {
   const [sessionState, setSessionState] = useState<any | null>(null);
   const [isGeneratingOutputs, setIsGeneratingOutputs] = useState(false);
   const [businessOutcomesOutputs, setBusinessOutcomesOutputs] = useState<any>(null);
+  const [workflowId, setWorkflowId] = useState<string | null>(null);
+  const [summaryVisuals, setSummaryVisuals] = useState<any>(null);
+  const [showArtifactsModal, setShowArtifactsModal] = useState(false);
+  const [artifacts, setArtifacts] = useState<any>({});
 
   // Get files from Content realm state
   useEffect(() => {
@@ -117,6 +124,13 @@ export default function BusinessOutcomesPillarPage() {
         const journeyState = state.realm.journey;
         if (journeyState && Object.keys(journeyState).length > 0) {
           setOperationsData(journeyState); // Keep variable name for compatibility
+          
+          // Extract workflow ID for blueprint generation
+          const workflows = journeyState.workflows || {};
+          const workflowIds = Object.keys(workflows);
+          if (workflowIds.length > 0) {
+            setWorkflowId(workflowIds[0]); // Use first workflow for now
+          }
         }
         
       } catch (error: any) {
@@ -132,6 +146,35 @@ export default function BusinessOutcomesPillarPage() {
       setSessionToken(state.session.sessionId);
     }
   }, [state.realm.insights, state.realm.journey, state.session.sessionId]);
+
+  // Check if we have data from other pillars (declare before useEffects)
+  const hasInsights = !!insightsData;
+  const hasOperations = !!operationsData;
+  const hasSourceFiles = businessOutcomesFiles.length > 0 || additionalFiles.length > 0;
+
+  // Load summary visualization on mount
+  useEffect(() => {
+    const loadSummary = async () => {
+      if (!state.session.sessionId) return;
+      
+      try {
+        const synthesisResult = await outcomesAPIManager.synthesizeOutcome();
+        if (synthesisResult.success && synthesisResult.synthesis) {
+          // Extract realm visuals from synthesis (if available)
+          const realmVisuals = (synthesisResult.synthesis as any).realm_visuals;
+          if (realmVisuals) {
+            setSummaryVisuals(realmVisuals);
+          }
+        }
+      } catch (error: any) {
+        console.error("[BusinessOutcomes] Error loading summary:", error);
+      }
+    };
+
+    if (state.session.sessionId && hasInsights && hasOperations) {
+      loadSummary();
+    }
+  }, [state.session.sessionId, hasInsights, hasOperations, outcomesAPIManager]);
 
   // Set up Business Outcomes Liaison Agent as secondary option (not default)
   useEffect(() => {
@@ -265,10 +308,33 @@ export default function BusinessOutcomesPillarPage() {
     }
   };
 
-  // Check if we have data from other pillars
-  const hasInsights = !!insightsData;
-  const hasOperations = !!operationsData;
-  const hasSourceFiles = businessOutcomesFiles.length > 0 || additionalFiles.length > 0;
+  // Handler functions for artifact generation
+  const handleArtifactGenerated = (artifactType: string, artifact: any) => {
+    setArtifacts((prev: any) => ({ ...prev, [artifactType]: artifact }));
+  };
+
+  const handleCreateBlueprint = async (workflowId: string) => {
+    // TODO: Implement blueprint creation
+    console.log("Create blueprint", workflowId);
+    return { success: false, error: "Not implemented" };
+  };
+
+  const handleCreatePOC = async () => {
+    // TODO: Implement POC creation
+    console.log("Create POC");
+    return { success: false, error: "Not implemented" };
+  };
+
+  const handleGenerateRoadmap = async () => {
+    // TODO: Implement roadmap generation
+    console.log("Generate roadmap");
+    return { success: false, error: "Not implemented" };
+  };
+
+  const handleExportArtifact = async (artifactType: string, artifactId: string, format: string) => {
+    // TODO: Implement artifact export
+    console.log("Export artifact", artifactType, artifactId, format);
+  };
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -288,6 +354,72 @@ export default function BusinessOutcomesPillarPage() {
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
+
+      {/* Phase 1: Summary Visualization */}
+      {hasInsights && hasOperations && (
+        <div className="mb-8">
+          <SummaryVisualization
+            realmVisuals={summaryVisuals}
+            synthesis={businessOutcomesOutputs?.synthesis}
+          />
+        </div>
+      )}
+
+      {/* Phase 2: Artifact Generation Options */}
+      {hasInsights && hasOperations && (
+        <div className="mb-8">
+          <Card>
+            <CardHeader>
+              <CardTitle>Generate Artifacts</CardTitle>
+              <CardDescription>
+                Create coexistence blueprints, POC proposals, or strategic roadmaps
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ArtifactGenerationOptions
+                solutionId={businessOutcomesOutputs?.synthesis?.solution_id}
+                workflowId={workflowId || undefined}
+                onArtifactGenerated={handleArtifactGenerated}
+                onCreateBlueprint={handleCreateBlueprint}
+                onCreatePOC={handleCreatePOC}
+                onGenerateRoadmap={handleGenerateRoadmap}
+              />
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Phase 3: View Generated Artifacts Button */}
+      {(artifacts.blueprint || artifacts.poc || artifacts.roadmap) && (
+        <div className="mb-8">
+          <Button
+            onClick={() => setShowArtifactsModal(true)}
+            className="w-full"
+            variant="outline"
+          >
+            <Eye className="w-4 h-4 mr-2" />
+            View Generated Artifacts
+          </Button>
+        </div>
+      )}
+
+      {/* Generated Artifacts Modal */}
+      <GeneratedArtifactsDisplay
+        artifacts={artifacts}
+        onExport={handleExportArtifact}
+        isOpen={showArtifactsModal}
+        onClose={() => setShowArtifactsModal(false)}
+        onLoadArtifact={async (artifactType, artifactId) => {
+          // Load artifact from Artifact Plane or execution state
+          // For now, return the artifact data if already loaded
+          const artifact = artifacts[artifactType];
+          if (artifact && artifact.data) {
+            return artifact.data;
+          }
+          // TODO: Load from Artifact Plane via API
+          return null;
+        }}
+      />
 
       {/* Main Content */}
       <Tabs defaultValue="journey" className="space-y-6">
@@ -328,28 +460,6 @@ export default function BusinessOutcomesPillarPage() {
                     <div className="text-sm text-gray-600">Operations Blueprint</div>
                   </div>
                 </div>
-
-                {hasInsights && hasOperations && (
-                  <div className="mt-6">
-                    <Button
-                      onClick={handleGenerateExperienceOutputs}
-                      disabled={isGeneratingOutputs}
-                      className="w-full"
-                    >
-                      {isGeneratingOutputs ? (
-                        <>
-                          <Loader className="w-4 h-4 mr-2 animate-spin" />
-                          Generating Business Outcomes...
-                        </>
-                      ) : (
-                        <>
-                          <Play className="w-4 h-4 mr-2" />
-                          Generate Strategic Roadmap & POC
-                        </>
-                      )}
-                    </Button>
-                  </div>
-                )}
               </div>
             </CardContent>
           </Card>
@@ -487,128 +597,7 @@ export default function BusinessOutcomesPillarPage() {
         </TabsContent>
       </Tabs>
 
-      {/* Roadmap Section - Always Visible */}
-      <div className="mt-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>Strategic Roadmap</CardTitle>
-            <CardDescription>
-              Phased timeline and milestones for your strategic plan
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {roadmapResult?.roadmap ? (
-              <RoadmapTimeline roadmapData={typeof roadmapResult.roadmap === 'string' ? roadmapResult.roadmap : JSON.stringify(roadmapResult.roadmap)} />
-            ) : (
-              <div className="text-center py-12">
-                <p className="text-muted-foreground mb-4">
-                  No roadmap generated yet. Complete Insights and Operations pillar analysis, then click "Generate Strategic Roadmap & POC" above.
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* POC Proposal Section - Always Visible */}
-      <div className="mt-8">
-        <Card>
-          <CardHeader>
-            <CardTitle>Proof of Concept Proposal</CardTitle>
-            <CardDescription>
-              Comprehensive POC proposal based on your analysis
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {pocProposal?.proposal ? (
-              <div className="space-y-6">
-                {typeof pocProposal.proposal === 'string' ? (
-                  <div className="prose max-w-none">
-                    <ReactMarkdown className="text-sm text-gray-700 leading-relaxed">
-                      {pocProposal.proposal}
-                    </ReactMarkdown>
-                  </div>
-                ) : (
-                  <>
-                    {pocProposal.proposal.objectives && (
-                      <div>
-                        <h3 className="text-lg font-semibold mb-2">Objectives</h3>
-                        <ul className="list-disc pl-5 space-y-1">
-                          {Array.isArray(pocProposal.proposal.objectives) ? (
-                            pocProposal.proposal.objectives.map((obj: any, idx: number) => (
-                              <li key={idx} className="text-sm text-gray-700">
-                                {typeof obj === 'string' ? obj : obj.description || JSON.stringify(obj)}
-                              </li>
-                            ))
-                          ) : (
-                            <li className="text-sm text-gray-700">{JSON.stringify(pocProposal.proposal.objectives)}</li>
-                          )}
-                        </ul>
-                      </div>
-                    )}
-                    {pocProposal.proposal.scope && (
-                      <div>
-                        <h3 className="text-lg font-semibold mb-2">Scope</h3>
-                        <div className="prose max-w-none text-sm text-gray-700">
-                          {typeof pocProposal.proposal.scope === 'string' ? (
-                            <ReactMarkdown>{pocProposal.proposal.scope}</ReactMarkdown>
-                          ) : (
-                            <pre className="whitespace-pre-wrap">{JSON.stringify(pocProposal.proposal.scope, null, 2)}</pre>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                    {pocProposal.proposal.timeline && (
-                      <div>
-                        <h3 className="text-lg font-semibold mb-2">Timeline</h3>
-                        <div className="prose max-w-none text-sm text-gray-700">
-                          {typeof pocProposal.proposal.timeline === 'string' ? (
-                            <ReactMarkdown>{pocProposal.proposal.timeline}</ReactMarkdown>
-                          ) : (
-                            <pre className="whitespace-pre-wrap">{JSON.stringify(pocProposal.proposal.timeline, null, 2)}</pre>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                    {pocProposal.proposal.success_criteria && (
-                      <div>
-                        <h3 className="text-lg font-semibold mb-2">Success Criteria</h3>
-                        <ul className="list-disc pl-5 space-y-1">
-                          {Array.isArray(pocProposal.proposal.success_criteria) ? (
-                            pocProposal.proposal.success_criteria.map((criteria: any, idx: number) => (
-                              <li key={idx} className="text-sm text-gray-700">
-                                {typeof criteria === 'string' ? criteria : criteria.description || JSON.stringify(criteria)}
-                              </li>
-                            ))
-                          ) : (
-                            <li className="text-sm text-gray-700">{JSON.stringify(pocProposal.proposal.success_criteria)}</li>
-                          )}
-                        </ul>
-                      </div>
-                    )}
-                    {pocProposal.proposal.description && (
-                      <div>
-                        <h3 className="text-lg font-semibold mb-2">Description</h3>
-                        <div className="prose max-w-none">
-                          <ReactMarkdown className="text-sm text-gray-700 leading-relaxed">
-                            {pocProposal.proposal.description}
-                          </ReactMarkdown>
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            ) : (
-              <div className="text-center py-12">
-                <p className="text-muted-foreground mb-4">
-                  No POC proposal generated yet. Complete Insights and Operations pillar analysis, then click "Generate Strategic Roadmap & POC" above.
-                </p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      {/* Legacy Roadmap/POC sections removed - now in GeneratedArtifactsDisplay modal */}
     </div>
   );
 }

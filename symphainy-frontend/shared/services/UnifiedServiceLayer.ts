@@ -82,14 +82,23 @@ export function useUnifiedServiceLayer(
       // Create Runtime Client if auto-connect is enabled
       let runtimeClient: RuntimeClient | null = null;
       if (config.autoConnectWebSocket !== false && config.baseURL) {
-        runtimeClient = new RuntimeClient({
-          baseUrl: config.baseURL,
-          sessionToken: config.sessionToken,
-          autoReconnect: true,
-        });
-        runtimeClientRef.current = runtimeClient;
-        // Connect
-        await runtimeClient.connect();
+        // Get both access_token and session_id from storage
+        const accessToken = typeof window !== 'undefined' ? sessionStorage.getItem("access_token") : null;
+        const sessionId = config.sessionToken; // sessionToken is actually session_id
+        
+        if (!accessToken || !sessionId) {
+          console.warn("Missing access_token or session_id, cannot create RuntimeClient");
+        } else {
+          runtimeClient = new RuntimeClient({
+            baseUrl: config.baseURL,
+            accessToken: accessToken,
+            sessionId: sessionId,
+            autoReconnect: true,
+          });
+          runtimeClientRef.current = runtimeClient;
+          // Connect
+          await runtimeClient.connect();
+        }
       }
 
       setServiceLayer({
@@ -179,9 +188,18 @@ export class UnifiedServiceLayerFactory {
       // Create Runtime Client if auto-connect is enabled
       let runtimeClient: RuntimeClient | null = null;
       if (config.autoConnectWebSocket !== false && config.baseURL) {
+        // Get both access_token and session_id from storage
+        const accessToken = typeof window !== 'undefined' ? sessionStorage.getItem("access_token") : null;
+        const sessionId = config.sessionToken; // sessionToken is actually session_id
+        
+        if (!accessToken || !sessionId) {
+          throw new Error('Missing access_token or session_id, cannot create RuntimeClient');
+        }
+        
         runtimeClient = new RuntimeClient({
           baseUrl: config.baseURL,
-          sessionToken: config.sessionToken,
+          accessToken: accessToken,
+          sessionId: sessionId,
           autoReconnect: true,
         });
         // Connect

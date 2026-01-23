@@ -398,6 +398,15 @@ export class ContentAPIManager {
         throw new Error("Session required to parse file");
       }
 
+      // Check if file has content_type === DATA_MODEL and set parsing_type accordingly
+      const files = platformState.state.realm.content.files || [];
+      const file = files.find((f: any) => (f.uuid === fileId || f.file_id === fileId));
+      const finalParseOptions = { ...parseOptions };
+      
+      if (file?.content_type === "data_model") {
+        finalParseOptions.parsing_type = "data_model";
+      }
+
       // Submit parse_content intent
       const executionId = await platformState.submitIntent(
         "parse_content",
@@ -405,7 +414,8 @@ export class ContentAPIManager {
           file_id: fileId,
           file_reference: fileReference,
           copybook_reference: copybookReference,
-          parse_options: parseOptions || {},
+          parse_options: finalParseOptions,
+          parsing_type: finalParseOptions.parsing_type, // Also pass as top-level parameter for backend
         }
       );
 

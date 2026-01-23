@@ -274,8 +274,119 @@ export class OutcomesAPIManager {
    * 
    * Flow: Experience Plane → Runtime → Outcomes Realm
    */
+  /**
+   * Create blueprint (create_blueprint intent)
+   * 
+   * Flow: Experience Plane → Runtime → Outcomes Realm
+   */
+  async createBlueprint(
+    workflowId: string,
+    currentStateWorkflowId?: string
+  ): Promise<{ success: boolean; blueprint?: any; blueprint_id?: string; error?: string }> {
+    try {
+      const platformState = this.getPlatformState();
+      
+      if (!platformState.state.session.sessionId || !platformState.state.session.tenantId) {
+        throw new Error("Session required to create blueprint");
+      }
+
+      if (!workflowId) {
+        throw new Error("workflow_id is required for blueprint creation");
+      }
+
+      // Submit intent via Experience Plane Client
+      const execution = await platformState.submitIntent(
+        "create_blueprint",
+        {
+          workflow_id: workflowId,
+          current_state_workflow_id: currentStateWorkflowId
+        }
+      );
+
+      // Wait for execution completion
+      const result = await this._waitForExecution(execution, platformState);
+
+      if (result.status === "completed" && result.artifacts?.blueprint) {
+        // Update realm state
+        const blueprintId = result.artifacts.blueprint.blueprint_id || result.artifacts.blueprint_id;
+        platformState.setRealmState("outcomes", "blueprints", {
+          ...platformState.getRealmState("outcomes", "blueprints") || {},
+          [blueprintId]: result.artifacts.blueprint
+        });
+
+        return {
+          success: true,
+          blueprint: result.artifacts.blueprint,
+          blueprint_id: blueprintId
+        };
+      } else {
+        throw new Error(result.error || "Failed to create blueprint");
+      }
+    } catch (error) {
+      console.error("[OutcomesAPIManager] Error creating blueprint:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error"
+      };
+    }
+  }
+
+  /**
+   * Export artifact (export_artifact intent)
+   * 
+   * Flow: Experience Plane → Runtime → Outcomes Realm
+   */
+  async exportArtifact(
+    artifactType: "blueprint" | "poc" | "roadmap",
+    artifactId: string,
+    format: "json" | "docx" | "yaml" = "json"
+  ): Promise<{ success: boolean; download_url?: string; filename?: string; error?: string }> {
+    try {
+      const platformState = this.getPlatformState();
+      
+      if (!platformState.state.session.sessionId || !platformState.state.session.tenantId) {
+        throw new Error("Session required to export artifact");
+      }
+
+      if (!artifactType || !artifactId) {
+        throw new Error("artifact_type and artifact_id are required for export");
+      }
+
+      // Submit intent via Experience Plane Client
+      const execution = await platformState.submitIntent(
+        "export_artifact",
+        {
+          artifact_type: artifactType,
+          artifact_id: artifactId,
+          export_format: format
+        }
+      );
+
+      // Wait for execution completion
+      const result = await this._waitForExecution(execution, platformState);
+
+      if (result.status === "completed" && result.artifacts?.export) {
+        const exportResult = result.artifacts.export;
+        
+        return {
+          success: true,
+          download_url: exportResult.download_url,
+          filename: exportResult.filename
+        };
+      } else {
+        throw new Error(result.error || "Failed to export artifact");
+      }
+    } catch (error) {
+      console.error("[OutcomesAPIManager] Error exporting artifact:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Unknown error"
+      };
+    }
+  }
+
   async createSolution(
-    solutionSource: "roadmap" | "poc",
+    solutionSource: "roadmap" | "poc" | "blueprint",
     sourceId: string,
     sourceData: any,
     solutionOptions?: Record<string, any>

@@ -123,6 +123,18 @@ services:
     restart: unless-stopped
     networks:
     - symphainy_net
+    labels:
+    - traefik.enable=true
+    - traefik.http.routers.runtime.rule=PathPrefix(`/api/runtime`) && !PathPrefix(`/api/runtime/agent`) || PathPrefix(`/api/intent`) || PathPrefix(`/api/session`)
+      || PathPrefix(`/api/execution`) || PathPrefix(`/api/realms`)
+    - traefik.http.routers.runtime.entrypoints=web
+    - traefik.http.routers.runtime.service=runtime
+    - traefik.http.services.runtime.loadbalancer.server.port=8000
+    - traefik.http.routers.runtime.priority=10
+    - traefik.http.routers.runtime-health.rule=Path(`/health`) || Path(`/api/health`)
+    - traefik.http.routers.runtime-health.entrypoints=web
+    - traefik.http.routers.runtime-health.service=runtime
+    - traefik.http.routers.runtime-health.priority=99
   experience:
     build:
       context: .
@@ -141,6 +153,7 @@ services:
     - RUNTIME_URL=http://runtime:8000
     - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT:-http://otel-collector:4317}
     - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://35.215.64.103,http://35.215.64.103:3000,http://localhost:3000}
     depends_on:
       runtime:
         condition: service_healthy
@@ -161,6 +174,22 @@ services:
     restart: unless-stopped
     networks:
     - symphainy_net
+    labels:
+    - traefik.enable=true
+    - traefik.http.routers.experience.rule=PathPrefix(`/api/sessions`) || PathPrefix(`/api/session`) || PathPrefix(`/api/intent`) || PathPrefix(`/api/ws`)
+      || PathPrefix(`/api/admin`) || PathPrefix(`/api/auth`)
+    - traefik.http.routers.experience.entrypoints=web
+    - traefik.http.routers.experience.service=experience
+    - traefik.http.services.experience.loadbalancer.server.port=8001
+    - traefik.http.routers.experience.priority=10
+    - traefik.http.routers.experience-websocket.rule=PathPrefix(`/api/runtime/agent`)
+    - traefik.http.routers.experience-websocket.entrypoints=web
+    - traefik.http.routers.experience-websocket.service=experience
+    - traefik.http.routers.experience-websocket.priority=20
+    - traefik.http.routers.experience-health.rule=Path(`/health`)
+    - traefik.http.routers.experience-health.entrypoints=web
+    - traefik.http.routers.experience-health.service=experience
+    - traefik.http.routers.experience-health.priority=99
   realms:
     build:
       context: .
@@ -264,9 +293,12 @@ services:
     - --providers.docker=true
     - --providers.docker.exposedbydefault=false
     - --entrypoints.web.address=:80
+    - --entrypoints.web.transport.respondingTimeouts.readTimeout=0s
+    - --entrypoints.web.transport.respondingTimeouts.writeTimeout=0s
+    - --entrypoints.web.transport.respondingTimeouts.idleTimeout=3600s
     ports:
-    - ${TRAEFIK_PORT:-8080}:80
-    - ${TRAEFIK_ADMIN_PORT:-8081}:8080
+    - ${TRAEFIK_HTTP_PORT:-80}:80
+    - ${TRAEFIK_DASHBOARD_PORT:-8080}:8080
     volumes:
     - /var/run/docker.sock:/var/run/docker.sock:ro
     depends_on:
@@ -275,28 +307,46 @@ services:
     restart: unless-stopped
     networks:
     - symphainy_net
+  # Frontend - Symphainy Platform UI
+  frontend:
+    build:
+      context: ./symphainy-frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL:-${API_URL:-http://35.215.64.103}}
+        - NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE:-${API_URL:-http://35.215.64.103}}
+        - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-${API_URL:-http://35.215.64.103}}
+    container_name: symphainy-frontend
+    # Ports removed - routing through Traefik only (production-ready pattern)
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - NEXT_PUBLIC_BACKEND_URL=${NEXT_PUBLIC_BACKEND_URL:-${API_URL:-http://35.215.64.103}}
+      - NEXT_PUBLIC_API_BASE=${NEXT_PUBLIC_API_BASE:-${API_URL:-http://35.215.64.103}}
+      - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL:-${API_URL:-http://35.215.64.103}}
+      - NEXT_PUBLIC_FRONTEND_URL=${NEXT_PUBLIC_FRONTEND_URL:-${FRONTEND_URL:-http://35.215.64.103}}
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+    depends_on:
+      - traefik
+      - runtime
+      - experience
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    restart: unless-stopped
+    networks:
+      - symphainy_net
     labels:
-    - traefik.enable=true
-    - traefik.http.routers.runtime.rule=PathPrefix(`/api/runtime`) || PathPrefix(`/api/intent`) || PathPrefix(`/api/session`)
-      || PathPrefix(`/api/execution`) || PathPrefix(`/api/realms`)
-    - traefik.http.routers.runtime.entrypoints=web
-    - traefik.http.routers.runtime.service=runtime
-    - traefik.http.services.runtime.loadbalancer.server.port=8000
-    - traefik.http.routers.runtime.priority=10
-    - traefik.http.routers.runtime-health.rule=Path(`/health`) || Path(`/api/health`)
-    - traefik.http.routers.runtime-health.entrypoints=web
-    - traefik.http.routers.runtime-health.service=runtime
-    - traefik.http.routers.runtime-health.priority=99
-    - traefik.http.routers.experience.rule=PathPrefix(`/api/sessions`) || PathPrefix(`/api/intent`) || PathPrefix(`/api/ws`)
-      || PathPrefix(`/api/admin`)
-    - traefik.http.routers.experience.entrypoints=web
-    - traefik.http.routers.experience.service=experience
-    - traefik.http.services.experience.loadbalancer.server.port=8001
-    - traefik.http.routers.experience.priority=10
-    - traefik.http.routers.experience-health.rule=Path(`/health`)
-    - traefik.http.routers.experience-health.entrypoints=web
-    - traefik.http.routers.experience-health.service=experience
-    - traefik.http.routers.experience-health.priority=99
+      - "traefik.enable=true"
+      # Route all non-API paths to frontend (lower priority than API routes)
+      # This allows public access via standard HTTP port 80 (production-ready)
+      - "traefik.http.routers.frontend.rule=!PathPrefix(`/api`)"
+      - "traefik.http.routers.frontend.entrypoints=web"
+      - "traefik.http.services.frontend.loadbalancer.server.port=3000"
+      - "traefik.http.routers.frontend.priority=1"  # LOW priority - API routers match first
 volumes:
   redis_data: null
   arango_data: null

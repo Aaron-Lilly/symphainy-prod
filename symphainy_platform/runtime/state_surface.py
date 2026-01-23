@@ -184,19 +184,22 @@ class StateSurface:
     async def get_session_state(
         self,
         session_id: str,
-        tenant_id: str
+        tenant_id: Optional[str] = None
     ) -> Optional[Dict[str, Any]]:
         """
         Get session state.
         
         Args:
             session_id: Session identifier
-            tenant_id: Tenant identifier (for isolation)
+            tenant_id: Tenant identifier (for isolation, optional for anonymous sessions)
         
         Returns:
             Session state dictionary or None if not found
         """
-        state_id = f"session:{tenant_id}:{session_id}"
+        # For anonymous sessions, use session_id as tenant_id fallback
+        # This allows retrieving anonymous sessions without tenant_id
+        effective_tenant_id = tenant_id or f"anonymous_{session_id}"
+        state_id = f"session:{effective_tenant_id}:{session_id}"
         
         if self.use_memory:
             return self._memory_store.get(state_id)
@@ -214,7 +217,7 @@ class StateSurface:
     async def set_session_state(
         self,
         session_id: str,
-        tenant_id: str,
+        tenant_id: str,  # Required for storage key, but can be anonymous placeholder
         state: Dict[str, Any]
     ) -> bool:
         """
@@ -222,7 +225,7 @@ class StateSurface:
         
         Args:
             session_id: Session identifier
-            tenant_id: Tenant identifier (for isolation)
+            tenant_id: Tenant identifier (for isolation, can be anonymous placeholder)
             state: State dictionary
         
         Returns:

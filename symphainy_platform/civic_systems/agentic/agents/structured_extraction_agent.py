@@ -313,8 +313,8 @@ Description: {category.description}
 Domain: {config.domain}
 """
         
-        # Prepare data context for prompt
-        data_context = self._prepare_data_context(data_source)
+        # Prepare data context for prompt (retrieve actual parsed file content)
+        data_context = await self._prepare_data_context(data_source, context)
         
         prompt = f"{prompt_template}\n\nData Source:\n{json.dumps(data_context, indent=2)}"
         
@@ -412,15 +412,84 @@ Extract {category.name} information accurately and return valid JSON.
         self.logger.info(f"Hybrid extraction not yet implemented, using LLM for {category.name}")
         return await self._extract_via_llm(category, data_source, config, context)
     
-    def _prepare_data_context(self, data_source: Dict[str, Any]) -> Dict[str, Any]:
-        """Prepare data context for extraction."""
-        # Extract relevant data from data_source
-        # For MVP, return data_source as-is (will be enhanced with actual data retrieval)
-        return {
-            "parsed_file_id": data_source.get("parsed_file_id"),
-            "data_preview": data_source.get("data_preview", "Data available"),
-            "metadata": data_source.get("metadata", {})
-        }
+    async def _prepare_data_context(
+        self, 
+        data_source: Dict[str, Any],
+        context: ExecutionContext
+    ) -> Dict[str, Any]:
+        """
+        Prepare data context for extraction.
+        
+        Retrieves actual parsed file content from state_surface.
+        
+        Args:
+            data_source: Data source dictionary (may contain parsed_file_id)
+            context: Execution context (required for state_surface access)
+        
+        Returns:
+            Dict with parsed content and metadata
+        """
+        parsed_file_id = data_source.get("parsed_file_id")
+        
+        # If no parsed_file_id, return data_source as-is (for other data sources)
+        if not parsed_file_id:
+            return data_source
+        
+        # Retrieve actual parsed file content via Content Realm (governed access)
+        # ARCHITECTURAL PRINCIPLE: Agents never retrieve files directly.
+        # Use Content Realm service which goes through proper governance.
+        try:
+            if not self.public_works:
+                self.logger.warning(
+                    "Public Works not available - cannot retrieve parsed file via Content Realm. "
+                    "Falling back to data_source as-is."
+                )
+                return {
+                    "parsed_file_id": parsed_file_id,
+                    "data_preview": "Data retrieval unavailable (Public Works not available)",
+                    "metadata": data_source.get("metadata", {})
+                }
+            
+            # Use Content Realm service (governed access)
+            from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
+            file_parser_service = FileParserService(public_works=self.public_works)
+            
+            parsed_file = await file_parser_service.get_parsed_file(
+                parsed_file_id=parsed_file_id,
+                tenant_id=context.tenant_id,
+                context=context
+            )
+            
+            parsed_content = parsed_file.get("parsed_content")
+            
+            # Create data preview (truncate for prompt efficiency)
+            if isinstance(parsed_content, (dict, list)):
+                data_preview = json.dumps(parsed_content, indent=2)[:2000]  # Limit to 2000 chars
+            else:
+                data_preview = str(parsed_content)[:2000]
+            
+            self.logger.info(
+                f"Retrieved parsed file content via Content Realm: {parsed_file_id} "
+                f"(type: {type(parsed_content).__name__}, size: {len(str(parsed_content))} chars)"
+            )
+            
+            return {
+                "parsed_file_id": parsed_file_id,
+                "parsed_content": parsed_content,
+                "data_preview": data_preview,
+                "metadata": parsed_file.get("metadata", data_source.get("metadata", {}))
+            }
+        except Exception as e:
+            self.logger.error(
+                f"Failed to retrieve parsed file content via Content Realm for {parsed_file_id}: {e}",
+                exc_info=True
+            )
+            return {
+                "parsed_file_id": parsed_file_id,
+                "data_preview": f"Error retrieving data via Content Realm: {str(e)}",
+                "metadata": data_source.get("metadata", {}),
+                "error": str(e)
+            }
     
     def _calculate_confidence(
         self,
@@ -460,7 +529,7 @@ Extract {category.name} information accurately and return valid JSON.
         self.logger.info("Discovering extraction pattern from data")
         
         # Use LLM to analyze data structure and propose categories
-        data_context = self._prepare_data_context(data_source)
+        data_context = await self._prepare_data_context(data_source, context)
         
         prompt = f"""
 Analyze the following data source and propose an extraction pattern.
@@ -551,6 +620,8 @@ Return valid JSON with suggested categories and extraction methods.
         """
         Generate extraction config from target data model.
         
+        Retrieves actual target model content and analyzes it to generate extraction config.
+        
         Args:
             target_model_file_id: Parsed file ID of target data model
             tenant_id: Tenant identifier
@@ -561,12 +632,74 @@ Return valid JSON with suggested categories and extraction methods.
         """
         self.logger.info(f"Generating extraction config from target model: {target_model_file_id}")
         
-        # For MVP: Use LLM to analyze target model and generate config
-        # Full implementation would parse target model schema and map to extraction categories
+        # Retrieve actual target model content via Content Realm (governed access)
+        # ARCHITECTURAL PRINCIPLE: Agents never retrieve files directly.
+        # Use Content Realm service which goes through proper governance.
+        target_model_content = None
+        try:
+            if not self.public_works:
+                self.logger.warning(
+                    "Public Works not available - cannot retrieve target model via Content Realm. "
+                    "LLM will only receive file_id."
+                )
+            else:
+                # Use Content Realm service (governed access)
+                from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
+                file_parser_service = FileParserService(public_works=self.public_works)
+                
+                target_model_file = await file_parser_service.get_parsed_file(
+                    parsed_file_id=target_model_file_id,
+                    tenant_id=tenant_id,
+                    context=context
+                )
+                
+                target_model_content = target_model_file.get("parsed_content")
+                
+                self.logger.info(
+                    f"Retrieved target model content via Content Realm: {target_model_file_id} "
+                    f"(type: {type(target_model_content).__name__})"
+                )
+        except Exception as e:
+            self.logger.error(
+                f"Failed to retrieve target model content via Content Realm for {target_model_file_id}: {e}",
+                exc_info=True
+            )
+            # Continue with file_id only (will be less effective but won't fail completely)
         
-        prompt = f"""
+        # Build prompt with actual target model content
+        if target_model_content:
+            # Format target model content for prompt
+            if isinstance(target_model_content, (dict, list)):
+                model_structure = json.dumps(target_model_content, indent=2)
+            else:
+                model_structure = str(target_model_content)
+            
+            # Truncate if too large (keep first 4000 chars for prompt efficiency)
+            if len(model_structure) > 4000:
+                model_structure = model_structure[:4000] + "\n... (truncated)"
+            
+            prompt = f"""
+Analyze the following target data model structure and generate an extraction configuration.
+The extraction config should extract data that matches the target model structure.
+
+Target Model Structure:
+{model_structure}
+
+Return a JSON structure with:
+- config_id: Unique identifier
+- name: Config name
+- description: Config description
+- categories: List of extraction categories matching target model fields
+- extraction_order: Suggested extraction order
+- output_schema: JSON Schema matching the target model structure
+"""
+        else:
+            # Fallback: use file_id only (less effective)
+            prompt = f"""
 Analyze the target data model (file_id: {target_model_file_id}) and generate an extraction configuration.
 The extraction config should extract data that matches the target model structure.
+
+Note: Target model content not available. Generate a generic extraction config structure.
 
 Return a JSON structure with:
 - config_id: Unique identifier
@@ -578,7 +711,7 @@ Return a JSON structure with:
         
         system_message = """
 You are a data modeling expert. Analyze target data models and generate extraction configurations.
-Return valid JSON with extraction config structure.
+Return valid JSON with extraction config structure matching the target model.
 """
         
         try:

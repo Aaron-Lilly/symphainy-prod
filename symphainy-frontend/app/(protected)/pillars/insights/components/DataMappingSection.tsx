@@ -22,7 +22,8 @@ import { InsightsFileSelector } from './InsightsFileSelector';
 import { MappingResultsDisplay } from './MappingResultsDisplay';
 import { InsightsService } from '@/shared/services/insights';
 import { DataMappingResponse, DataMappingResultsResponse, DataMappingOptions } from '@/shared/services/insights/types';
-import { useGlobalSession } from '@/shared/agui/GlobalSessionProvider';
+import { useAuth } from '@/shared/auth/AuthProvider';
+import { usePlatformState } from '@/shared/state/PlatformStateProvider';
 
 interface DataMappingSectionProps {
   onMappingComplete?: (mapping: DataMappingResultsResponse) => void;
@@ -31,7 +32,9 @@ interface DataMappingSectionProps {
 export function DataMappingSection({ 
   onMappingComplete 
 }: DataMappingSectionProps) {
-  const { guideSessionToken } = useGlobalSession();
+  const { sessionToken } = useAuth();
+  const { state } = usePlatformState();
+  const guideSessionToken = sessionToken || state.session.sessionId;
   const [sourceFileId, setSourceFileId] = useState<string>('');
   const [targetFileId, setTargetFileId] = useState<string>('');
   const [mappingType, setMappingType] = useState<'auto' | 'unstructured_to_structured' | 'structured_to_structured'>('auto');

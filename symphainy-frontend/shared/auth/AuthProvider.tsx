@@ -21,7 +21,7 @@ import React, {
 } from "react";
 import { ExperiencePlaneClient } from "@/shared/services/ExperiencePlaneClient";
 import { getGlobalExperiencePlaneClient } from "@/shared/services/ExperiencePlaneClient";
-import { usePlatformState } from "@/shared/state/PlatformStateProvider";
+import { useSessionBoundary } from "@/shared/state/SessionBoundaryProvider";
 
 export interface User {
   id: string;
@@ -69,7 +69,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
   experiencePlaneClient,
 }) => {
   const client = experiencePlaneClient || getGlobalExperiencePlaneClient();
-  const { createSession, clearSession, state } = usePlatformState();
+  const { upgradeSession, invalidateSession, state: sessionState } = useSessionBoundary();
   
   const [user, setUser] = useState<User | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -86,6 +86,25 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
           return;
         }
 
+        // Check for access_token first - if not present, user is not authenticated
+        const accessToken = sessionStorage.getItem("access_token");
+        
+        if (!accessToken) {
+          // No access_token means user is not authenticated - clear any stale session data
+          sessionStorage.removeItem("session_id");
+          sessionStorage.removeItem("tenant_id");
+          sessionStorage.removeItem("user_id");
+          sessionStorage.removeItem("user_data");
+          // Also clear from localStorage (old storage location)
+          localStorage.removeItem("session_id");
+          localStorage.removeItem("tenant_id");
+          localStorage.removeItem("user_id");
+          localStorage.removeItem("user_data");
+          setIsLoading(false);
+          return;
+        }
+
+        // User is authenticated - restore session data
         const storedUser = sessionStorage.getItem("user_data");
         const storedTenantId = sessionStorage.getItem("tenant_id");
         const storedUserId = sessionStorage.getItem("user_id");
@@ -102,12 +121,19 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
             tenant_id: storedTenantId,
           });
           setIsAuthenticated(true);
-
+          
           // Restore session in PlatformStateProvider
           // Note: Session will be synced via PlatformStateProvider's syncWithRuntime
         }
       } catch (error) {
         console.error("Failed to restore session:", error);
+        // Clear stale data on error
+        if (typeof window !== 'undefined') {
+          sessionStorage.removeItem("session_id");
+          sessionStorage.removeItem("tenant_id");
+          sessionStorage.removeItem("user_id");
+          sessionStorage.removeItem("user_data");
+        }
       } finally {
         setIsLoading(false);
       }
@@ -156,10 +182,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         throw new Error("Invalid authentication response: missing token or user ID");
       }
 
-      // Create session via Experience Plane after successful authentication
-      const sessionId = await createSession(tenantId, userId, {
-        email: userEmail,
-        authenticated_at: new Date().toISOString(),
+      // ✅ SESSION BOUNDARY PATTERN: Upgrade existing session via SessionBoundaryProvider
+      // SessionBoundaryProvider manages session lifecycle - we just trigger the upgrade
+      await upgradeSession({
+        user_id: userId,
+        tenant_id: tenantId,
+        access_token: accessToken,
+        metadata: { email: userEmail, authenticated_at: new Date().toISOString() },
       });
 
       // Store user data
@@ -175,14 +204,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
       setUser(userData);
       setIsAuthenticated(true);
       
-      // Store in sessionStorage (better security - cleared on tab close)
-      // TODO: Production - migrate to HttpOnly cookies (see docs/execution/auth_security_migration_plan.md)
+      // SessionBoundaryProvider handles session storage - we just store user_data for UI
       if (typeof window !== "undefined") {
         sessionStorage.setItem("user_data", JSON.stringify(userData));
-        sessionStorage.setItem("auth_token", accessToken);
-        sessionStorage.setItem("session_id", sessionId);
-        sessionStorage.setItem("tenant_id", tenantId);
-        sessionStorage.setItem("user_id", userId);
         
         if (authData.refresh_token) {
           sessionStorage.setItem("refresh_token", authData.refresh_token);
@@ -196,7 +220,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
       setIsLoading(false);
       throw err;
     }
-  }, [createSession]);
+  }, [upgradeSession]);
 
   // Register
   const register = useCallback(async (
@@ -242,11 +266,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         throw new Error("Invalid registration response: missing token or user ID");
       }
 
-      // Create session via Experience Plane after successful registration
-      const sessionId = await createSession(tenantId, userId, {
-        email: userEmail,
-        name: userName,
-        registered_at: new Date().toISOString(),
+      // ✅ SESSION BOUNDARY PATTERN: Upgrade existing session via SessionBoundaryProvider
+      await upgradeSession({
+        user_id: userId,
+        tenant_id: tenantId,
+        access_token: accessToken,
+        metadata: { email: userEmail, name: userName, registered_at: new Date().toISOString() },
       });
 
       // Store user data
@@ -262,14 +287,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
       setUser(userData);
       setIsAuthenticated(true);
       
-      // Store in sessionStorage (better security - cleared on tab close)
-      // TODO: Production - migrate to HttpOnly cookies (see docs/execution/auth_security_migration_plan.md)
+      // SessionBoundaryProvider handles session storage - we just store user_data for UI
       if (typeof window !== "undefined") {
         sessionStorage.setItem("user_data", JSON.stringify(userData));
-        sessionStorage.setItem("auth_token", accessToken);
-        sessionStorage.setItem("session_id", sessionId);
-        sessionStorage.setItem("tenant_id", tenantId);
-        sessionStorage.setItem("user_id", userId);
         
         if (authData.refresh_token) {
           sessionStorage.setItem("refresh_token", authData.refresh_token);
@@ -283,7 +303,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
       setIsLoading(false);
       throw err;
     }
-  }, [createSession]);
+  }, [upgradeSession]);
 
   // Logout
   const logout = useCallback(async (): Promise<void> => {
@@ -291,20 +311,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     setError(null);
 
     try {
-      // Clear session
-      clearSession();
+      // Invalidate session via SessionBoundaryProvider
+      invalidateSession();
       
       // Clear user data
       setUser(null);
       setIsAuthenticated(false);
       
-      // Clear sessionStorage
+      // Clear user_data (SessionBoundaryProvider handles session storage)
       if (typeof window !== "undefined") {
         sessionStorage.removeItem("user_data");
-        sessionStorage.removeItem("auth_token");
-        sessionStorage.removeItem("session_id");
-        sessionStorage.removeItem("tenant_id");
-        sessionStorage.removeItem("user_id");
         sessionStorage.removeItem("refresh_token");
       }
       
@@ -315,15 +331,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
       setIsLoading(false);
       throw err;
     }
-  }, [clearSession]);
+  }, [invalidateSession]);
 
   // Clear error
   const clearError = useCallback(() => {
     setError(null);
   }, []);
 
-  // Get session token from PlatformStateProvider
-  const sessionToken = state.session.sessionId;
+  // Get session token from SessionBoundaryProvider
+  const sessionToken = sessionState.sessionId;
 
   const contextValue: AuthContextType = {
     user,

@@ -15,7 +15,7 @@ project_root = Path(__file__).resolve().parents[3]
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi import FastAPI, HTTPException, Depends, Request, Query
 from typing import Dict, Any, Optional
 from pydantic import BaseModel
 
@@ -26,14 +26,18 @@ from .intent_registry import IntentRegistry
 from .state_surface import StateSurface
 from .wal import WriteAheadLog
 from .transactional_outbox import TransactionalOutbox
+from symphainy_platform.civic_systems.smart_city.primitives.traffic_cop_primitives import (
+    TrafficCopPrimitives,
+    RateLimitStore
+)
 
 
 # Request/Response Models
 class SessionCreateRequest(BaseModel):
-    """Request to create a session."""
+    """Request to create a session (anonymous or authenticated)."""
     intent_type: str = "create_session"
-    tenant_id: str
-    user_id: str
+    tenant_id: Optional[str] = None  # Optional for anonymous sessions
+    user_id: Optional[str] = None    # Optional for anonymous sessions
     session_id: Optional[str] = None
     execution_contract: Optional[Dict[str, Any]] = None
     metadata: Optional[Dict[str, Any]] = None
@@ -42,8 +46,8 @@ class SessionCreateRequest(BaseModel):
 class SessionCreateResponse(BaseModel):
     """Response from session creation."""
     session_id: str
-    tenant_id: str
-    user_id: str
+    tenant_id: Optional[str] = None  # Optional for anonymous sessions
+    user_id: Optional[str] = None     # Optional for anonymous sessions
     created_at: str
 
 
@@ -110,16 +114,17 @@ class RuntimeAPI:
         request: SessionCreateRequest
     ) -> SessionCreateResponse:
         """
-        Create session via Runtime (internal operation, not an intent).
+        Create session via Runtime with intent validation.
         
-        Session creation is a Runtime-internal operation that:
-        1. Creates session state in State Surface
-        2. Registers session with tenant context
-        3. Returns session_id
+        Session creation follows the intent pattern:
+        1. Validate execution contract via Traffic Cop Primitives
+        2. Create session state in State Surface
+        3. Register session with tenant context
+        4. Return session_id
         
         Args:
-            request: Session creation request
-        
+            request: Session creation request (with execution_contract from Traffic Cop SDK)
+            
         Returns:
             Session creation response
         """
@@ -127,32 +132,70 @@ class RuntimeAPI:
             from datetime import datetime
             
             # Generate session_id if not provided
-            session_id = request.session_id or f"session_{request.tenant_id}_{request.user_id}_{datetime.now().isoformat()}"
+            if request.session_id:
+                session_id = request.session_id
+            elif request.tenant_id and request.user_id:
+                # Authenticated session
+                session_id = f"session_{request.tenant_id}_{request.user_id}_{datetime.now().isoformat()}"
+            else:
+                # Anonymous session
+                import uuid
+                session_id = f"session_anonymous_{uuid.uuid4().hex}_{datetime.now().isoformat()}"
             
-            # Create session state in State Surface
+            # Validate execution contract via Traffic Cop Primitives (intent validation pattern)
+            execution_contract = request.execution_contract or {}
+            
+            # Initialize Traffic Cop Primitives (MVP: simple validation)
+            rate_limit_store = RateLimitStore()  # MVP: in-memory, always allows
+            traffic_cop_primitives = TrafficCopPrimitives(rate_limit_store=rate_limit_store)
+            
+            # Validate session creation intent
+            is_valid = await traffic_cop_primitives.validate_session_creation(
+                execution_contract=execution_contract,
+                rate_limit_store=rate_limit_store
+            )
+            
+            if not is_valid:
+                self.logger.warning(f"Session creation validation failed for tenant {request.tenant_id}, user {request.user_id}")
+                raise HTTPException(
+                    status_code=403,
+                    detail="Session creation validation failed. Rate limit exceeded or invalid execution contract."
+                )
+            
+            # Validation passed - create session state in State Surface
+            is_anonymous = request.tenant_id is None or request.user_id is None
+            
             session_state = {
                 "session_id": session_id,
-                "tenant_id": request.tenant_id,
-                "user_id": request.user_id,
-                "execution_contract": request.execution_contract or {},
+                "tenant_id": request.tenant_id,  # May be None for anonymous
+                "user_id": request.user_id,      # May be None for anonymous
+                "is_anonymous": is_anonymous,
+                "execution_contract": execution_contract,
                 "metadata": request.metadata or {},
                 "created_at": datetime.now().isoformat(),
                 "status": "active"
             }
             
             # Store session in State Surface
+            # For anonymous sessions, use a special tenant_id or handle differently
+            # For now, use session_id as tenant_id fallback for anonymous sessions
+            storage_tenant_id = request.tenant_id or f"anonymous_{session_id}"
+            
             await self.state_surface.set_session_state(
                 session_id=session_id,
-                tenant_id=request.tenant_id,
+                tenant_id=storage_tenant_id,
                 state=session_state
             )
             
-            self.logger.info(f"Session created: {session_id} for tenant {request.tenant_id}")
+            if is_anonymous:
+                self.logger.info(f"Anonymous session created: {session_id}")
+            else:
+                self.logger.info(f"Session created (validated via Traffic Cop Primitives): {session_id} for tenant {request.tenant_id}")
             
             return SessionCreateResponse(
                 session_id=session_id,
-                tenant_id=request.tenant_id,
-                user_id=request.user_id,
+                tenant_id=request.tenant_id,  # May be None
+                user_id=request.user_id,      # May be None
                 created_at=session_state["created_at"]
             )
             
@@ -160,6 +203,66 @@ class RuntimeAPI:
             raise
         except Exception as e:
             self.logger.error(f"Failed to create session: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    
+    async def upgrade_session(
+        self,
+        session_id: str,
+        user_id: str,
+        tenant_id: str,
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Upgrade anonymous session with user_id and tenant_id.
+        
+        Args:
+            session_id: Existing session identifier (anonymous)
+            user_id: User identifier to attach
+            tenant_id: Tenant identifier to attach
+            metadata: Optional metadata to add
+        
+        Returns:
+            Updated session state
+        """
+        try:
+            from datetime import datetime
+            
+            # Get existing session (may be anonymous, so try without tenant_id first)
+            session_state = await self.state_surface.get_session_state(session_id, None)
+            
+            # If not found, try with anonymous tenant_id pattern
+            if not session_state:
+                anonymous_tenant_id = f"anonymous_{session_id}"
+                session_state = await self.state_surface.get_session_state(session_id, anonymous_tenant_id)
+            
+            if not session_state:
+                raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
+            
+            # Update session state with user_id and tenant_id
+            session_state["user_id"] = user_id
+            session_state["tenant_id"] = tenant_id
+            session_state["is_anonymous"] = False
+            session_state["upgraded_at"] = datetime.now().isoformat()
+            if metadata:
+                if "metadata" not in session_state:
+                    session_state["metadata"] = {}
+                session_state["metadata"].update(metadata)
+            
+            # Store updated session (now with tenant_id)
+            await self.state_surface.set_session_state(
+                session_id=session_id,
+                tenant_id=tenant_id,  # Now has tenant_id
+                state=session_state
+            )
+            
+            self.logger.info(f"Session upgraded: {session_id} for tenant {tenant_id}, user {user_id}")
+            
+            return session_state
+            
+        except HTTPException:
+            raise
+        except Exception as e:
+            self.logger.error(f"Failed to upgrade session: {e}", exc_info=True)
             raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
     
     async def submit_intent(
@@ -537,13 +640,28 @@ def create_runtime_app(
     @app.get("/api/session/{session_id}")
     async def get_session(
         session_id: str,
-        tenant_id: str
+        tenant_id: Optional[str] = Query(None, description="Tenant ID (optional for anonymous sessions)")
     ):
-        """Get session details."""
+        """Get session details (anonymous or authenticated)."""
+        # For anonymous sessions, tenant_id may be None
+        # get_session_state will handle this by using session_id as fallback
         session_state = await runtime_api.state_surface.get_session_state(session_id, tenant_id)
         if not session_state:
             raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
         return session_state
+    
+    @app.patch("/api/session/{session_id}/upgrade")
+    async def upgrade_session_endpoint(
+        session_id: str,
+        request: Dict[str, Any]  # { user_id, tenant_id, metadata }
+    ):
+        """Upgrade anonymous session with user_id and tenant_id."""
+        return await runtime_api.upgrade_session(
+            session_id=session_id,
+            user_id=request.get("user_id"),
+            tenant_id=request.get("tenant_id"),
+            metadata=request.get("metadata")
+        )
     
     @app.get("/api/execution/{execution_id}/status", response_model=ExecutionStatusResponse)
     async def get_execution_status_endpoint(

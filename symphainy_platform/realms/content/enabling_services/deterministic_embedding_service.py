@@ -47,10 +47,16 @@ class DeterministicEmbeddingService:
         self.logger = get_logger(self.__class__.__name__)
         self.public_works = public_works
         
-        # Get ArangoDB adapter for storage
-        self.arango_adapter = None
+        # Get Deterministic Compute abstraction for storage (governed access)
+        # ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
+        self.deterministic_compute_abstraction = None
         if public_works:
-            self.arango_adapter = public_works.get_arango_adapter()
+            self.deterministic_compute_abstraction = public_works.get_deterministic_compute_abstraction()
+            if not self.deterministic_compute_abstraction:
+                self.logger.warning(
+                    "DeterministicComputeAbstraction not available - deterministic embeddings will not be stored. "
+                    "DuckDB may not be configured."
+                )
     
     async def create_deterministic_embeddings(
         self,
@@ -80,19 +86,18 @@ class DeterministicEmbeddingService:
         # Create pattern signature
         pattern_signature = await self._create_pattern_signature(parsed_content, schema)
         
-        # Store in ArangoDB
-        embedding_doc = {
-            "_key": generate_event_id(),
-            "parsed_file_id": parsed_file_id,
-            "tenant_id": context.tenant_id,
-            "session_id": context.session_id,
-            "schema_fingerprint": schema_fingerprint,
-            "pattern_signature": pattern_signature,
-            "schema": schema,  # Store full schema for reference
-            "created_at": datetime.utcnow().isoformat()
-        }
+        # Generate embedding ID
+        embedding_id = generate_event_id()
         
-        embedding_id = await self._store_deterministic_embedding(embedding_doc, context)
+        # Store via DeterministicComputeAbstraction (governed access)
+        # ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
+        await self._store_deterministic_embedding(
+            embedding_id=embedding_id,
+            parsed_file_id=parsed_file_id,
+            schema_fingerprint=schema_fingerprint,
+            pattern_signature=pattern_signature,
+            context=context
+        )
         
         self.logger.info(f"✅ Deterministic embeddings created: {embedding_id}")
         
@@ -311,49 +316,6 @@ class DeterministicEmbeddingService:
         
         return patterns
     
-    async def _store_deterministic_embedding(
-        self,
-        embedding_doc: Dict[str, Any],
-        context: ExecutionContext
-    ) -> str:
-        """
-        Store deterministic embedding in ArangoDB.
-        
-        Args:
-            embedding_doc: Embedding document
-            context: Execution context
-        
-        Returns:
-            Embedding ID (_key)
-        """
-        if not self.arango_adapter:
-            self.logger.warning("ArangoDB adapter not available - skipping storage")
-            return embedding_doc["_key"]
-        
-        collection_name = "deterministic_embeddings"
-        database = context.tenant_id or "symphainy_platform"
-        
-        try:
-            # Ensure collection exists
-            if not await self.arango_adapter.collection_exists(collection_name):
-                await self.arango_adapter.create_collection(collection_name)
-            
-            # Store document
-            result = await self.arango_adapter.create_document(
-                collection=collection_name,
-                document=embedding_doc,
-                database=database
-            )
-            
-            embedding_id = result.get("_key") or embedding_doc["_key"]
-            self.logger.info(f"Stored deterministic embedding: {embedding_id}")
-            
-            return embedding_id
-            
-        except Exception as e:
-            self.logger.error(f"Failed to store deterministic embedding: {e}")
-            # Return ID even if storage fails (graceful degradation)
-            return embedding_doc["_key"]
     
     async def get_deterministic_embedding(
         self,
@@ -361,7 +323,9 @@ class DeterministicEmbeddingService:
         context: ExecutionContext
     ) -> Optional[Dict[str, Any]]:
         """
-        Get deterministic embedding by ID.
+        Get deterministic embedding by ID via DeterministicComputeAbstraction (governed access).
+        
+        ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
         
         Args:
             deterministic_embedding_id: Embedding identifier
@@ -370,21 +334,34 @@ class DeterministicEmbeddingService:
         Returns:
             Embedding document or None
         """
-        if not self.arango_adapter:
+        if not self.deterministic_compute_abstraction:
+            self.logger.warning("DeterministicComputeAbstraction not available")
             return None
         
-        collection_name = "deterministic_embeddings"
-        database = context.tenant_id or "symphainy_platform"
-        
         try:
-            document = await self.arango_adapter.get_document(
-                collection=collection_name,
-                key=deterministic_embedding_id,
-                database=database
+            # Get via abstraction (governed access)
+            embedding = await self.deterministic_compute_abstraction.get_deterministic_embedding(
+                embedding_id=deterministic_embedding_id,
+                tenant_id=context.tenant_id
             )
-            return document
+            
+            if embedding:
+                # Convert to expected format (include schema for compatibility)
+                return {
+                    "_key": embedding.get("embedding_id"),
+                    "parsed_file_id": embedding.get("parsed_file_id"),
+                    "tenant_id": embedding.get("tenant_id"),
+                    "session_id": embedding.get("session_id"),
+                    "schema_fingerprint": embedding.get("schema_fingerprint"),
+                    "pattern_signature": embedding.get("pattern_signature"),
+                    "schema": embedding.get("schema_fingerprint", {}).get("schema"),  # Extract schema if available
+                    "created_at": embedding.get("created_at")
+                }
+            else:
+                return None
+                
         except Exception as e:
-            self.logger.error(f"Failed to get deterministic embedding: {e}")
+            self.logger.error(f"Failed to get deterministic embedding: {e}", exc_info=True)
             return None
     
     async def match_schemas(

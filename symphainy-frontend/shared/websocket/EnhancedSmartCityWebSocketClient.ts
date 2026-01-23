@@ -15,9 +15,19 @@ export class EnhancedSmartCityWebSocketClient {
   constructor(config?: { baseUrl?: string; sessionToken?: string }) {
     console.warn('EnhancedSmartCityWebSocketClient is deprecated. Use RuntimeClient instead.');
     if (config?.baseUrl && config?.sessionToken) {
+      // Get both access_token and session_id from storage
+      const accessToken = typeof window !== 'undefined' ? sessionStorage.getItem("access_token") : null;
+      const sessionId = config.sessionToken; // sessionToken is actually session_id
+      
+      if (!accessToken || !sessionId) {
+        console.warn("Missing access_token or session_id, cannot create RuntimeClient");
+        return;
+      }
+      
       this.runtimeClient = new RuntimeClient({
         baseUrl: config.baseUrl,
-        sessionToken: config.sessionToken,
+        accessToken: accessToken,
+        sessionId: sessionId,
         autoReconnect: true,
       });
     }

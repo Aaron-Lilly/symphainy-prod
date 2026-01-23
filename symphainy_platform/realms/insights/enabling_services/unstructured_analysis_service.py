@@ -147,12 +147,38 @@ class UnstructuredAnalysisService:
             try:
                 # Construct parsed file reference
                 parsed_file_reference = f"parsed:{context.tenant_id}:{context.session_id}:{parsed_file_id}"
-                parsed_data = await context.state_surface.get_file(parsed_file_reference)
-                if parsed_data:
+                # ARCHITECTURAL PRINCIPLE: Use Content Realm service for file retrieval (governed access)
+                # Never use state_surface.get_file() or state_surface.retrieve_file() - that's an anti-pattern.
+                if not self.public_works:
+                    self.logger.warning("Public Works not available - cannot retrieve parsed file via Content Realm")
+                    return None
+                
+                # Use Content Realm service (governed access)
+                from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
+                file_parser_service = FileParserService(public_works=self.public_works)
+                
+                # Extract parsed_file_id from reference if needed
+                parsed_file_id = parsed_file_reference.split(':')[-1] if ':' in parsed_file_reference else parsed_file_reference
+                
+                parsed_file = await file_parser_service.get_parsed_file(
+                    parsed_file_id=parsed_file_id,
+                    tenant_id=context.tenant_id,
+                    context=context
+                )
+                
+                parsed_content = parsed_file.get("parsed_content")
+                if parsed_content:
                     import json
-                    return json.loads(parsed_data.decode('utf-8'))
+                    if isinstance(parsed_content, (dict, list)):
+                        return parsed_content
+                    elif isinstance(parsed_content, str):
+                        try:
+                            return json.loads(parsed_content)
+                        except json.JSONDecodeError:
+                            return parsed_content
+                    return parsed_content
             except Exception as e:
-                self.logger.debug(f"Could not retrieve parsed data: {e}")
+                self.logger.debug(f"Could not retrieve parsed data via Content Realm: {e}")
         
         return None
     
@@ -348,22 +374,43 @@ class UnstructuredAnalysisService:
         """
         Initiate deep dive investigation via Insights Liaison Agent.
         
-        This is a placeholder that will be integrated with the agent system.
+        ARCHITECTURAL PRINCIPLE: Uses Insights Liaison Agent for interactive analysis.
         """
         self.logger.info(f"Initiating deep dive for {parsed_file_id} via Insights Liaison Agent")
         
-        # For MVP: Return placeholder
-        # In full implementation: Engage Insights Liaison Agent
-        # The agent will:
-        # 1. Review analysis results
-        # 2. Ask clarifying questions
-        # 3. Perform additional investigation
-        # 4. Provide recommendations
-        
-        return {
-            "agent_engaged": True,
-            "agent_type": "insights_liaison",
-            "status": "investigating",
-            "message": "Deep dive investigation initiated. Agent will analyze data and provide insights.",
-            "note": "Full agent integration pending - this is a placeholder"
-        }
+        try:
+            # Get or create Insights Liaison Agent
+            from ..agents.insights_liaison_agent import InsightsLiaisonAgent
+            
+            if not hasattr(self, 'insights_liaison_agent') or not self.insights_liaison_agent:
+                self.insights_liaison_agent = InsightsLiaisonAgent(public_works=self.public_works)
+            
+            # Get analysis results for this parsed file
+            analysis_results = parsed_data.get("analysis_results", {})
+            
+            # Initiate deep dive session via agent
+            session_result = await self.insights_liaison_agent.initiate_deep_dive(
+                parsed_file_id=parsed_file_id,
+                analysis_results=analysis_results,
+                tenant_id=tenant_id,
+                context=context
+            )
+            
+            return {
+                "agent_engaged": True,
+                "agent_type": "insights_liaison",
+                "status": "ready",
+                "session_id": session_result.get("session_id"),
+                "message": session_result.get("message", "Deep dive investigation initiated. Agent will analyze data and provide insights."),
+                "capabilities": session_result.get("capabilities", [])
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initiate deep dive: {e}", exc_info=True)
+            return {
+                "agent_engaged": False,
+                "agent_type": "insights_liaison",
+                "status": "error",
+                "message": f"Failed to initiate deep dive: {str(e)}",
+                "error": str(e)
+            }

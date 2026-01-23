@@ -19,19 +19,22 @@ import { FileText, Database, Loader2, Lock } from 'lucide-react';
 import { getAvailableContentMetadata } from '@/lib/api/insights';
 import { useContentAPIManager, ContentFile } from '@/shared/managers/ContentAPIManager';
 import { usePlatformState } from '@/shared/state/PlatformStateProvider';
+import { ContentType } from '@/shared/types/file';
 
 interface InsightsFileSelectorProps {
   onSourceSelected: (sourceId: string, sourceType: 'file' | 'content_metadata', contentType: 'structured' | 'unstructured') => void;
   contentType: 'structured' | 'unstructured';
   selectedSourceId?: string;
   selectedSourceType?: 'file' | 'content_metadata';
+  filterDataModel?: boolean;  // ⭐ NEW: Filter to show only Data Model files
 }
 
 export function InsightsFileSelector({ 
   onSourceSelected,
   contentType,
   selectedSourceId,
-  selectedSourceType = 'file'
+  selectedSourceType = 'file',
+  filterDataModel = false  // ⭐ NEW: Default to false (show all files)
 }: InsightsFileSelectorProps) {
   const { state } = usePlatformState();
   const contentAPIManager = useContentAPIManager();
@@ -62,7 +65,16 @@ export function InsightsFileSelector({
       setError(null);
       
       // Get files from PlatformStateProvider (Content realm state)
-      const contentFiles = state.realm.content.files || [];
+      let contentFiles = state.realm.content.files || [];
+      
+      // ⭐ NEW: Filter by ContentType.DATA_MODEL if filterDataModel is true
+      if (filterDataModel) {
+        contentFiles = contentFiles.filter((file: any) => 
+          file.content_type === ContentType.DATA_MODEL || 
+          file.metadata?.content_type === ContentType.DATA_MODEL ||
+          file.metadata?.parsing_type === 'data_model'
+        );
+      }
       
       // Convert to ContentFile format
       const formattedFiles: ContentFile[] = contentFiles.map((file: any) => ({

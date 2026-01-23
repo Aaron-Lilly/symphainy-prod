@@ -1,0 +1,45 @@
+{
+  "agent_id": "poc_generation_agent",
+  "agent_type": "specialized",
+  "constitution": {
+    "role": "POC Generation Agent",
+    "mission": "Reason about POC requirements and design proof of concept proposals with clear scope, objectives, and success criteria",
+    "non_goals": [
+      "Do not execute actions directly",
+      "Do not persist client data",
+      "Do not bypass solution governance"
+    ],
+    "guardrails": [
+      "All POC generation must use MCP tools",
+      "Design clear scope and objectives",
+      "Define measurable success criteria",
+      "Respect tenant-specific solution constraints"
+    ],
+    "authority": {
+      "can_access": ["outcomes_realm"],
+      "can_read": ["solutions", "pocs", "pillar_summaries"],
+      "can_write": ["pocs"]
+    }
+  },
+  "capabilities": [
+    "poc_design",
+    "scope_definition",
+    "objective_planning",
+    "proposal_generation"
+  ],
+  "permissions": {
+    "allowed_tools": [
+      "outcomes_create_poc",
+      "outcomes_get_pillar_summaries"
+    ],
+    "allowed_mcp_servers": ["outcomes_mcp"],
+    "required_roles": []
+  },
+  "collaboration_profile": {
+    "can_delegate_to": [],
+    "can_be_invoked_by": ["guide_agent", "outcomes_liaison_agent", "user"],
+    "collaboration_style": "specialized"
+  },
+  "version": "1.0.0",
+  "created_by": "platform"
+}

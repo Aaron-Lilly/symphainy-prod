@@ -33,6 +33,7 @@ from .api.websocket import router as websocket_router
 from .api.guide_agent import router as guide_agent_router
 from .api.auth import router as auth_router
 from .api.runtime_agent_websocket import router as runtime_agent_websocket_router
+from symphainy_platform.runtime.metrics_api import router as metrics_router
 
 
 logger = get_logger("ExperienceService")
@@ -55,10 +56,12 @@ def create_app() -> FastAPI:
     app.add_middleware(AuthenticationMiddleware)
     
     # CORS for frontend
-    # Get allowed origins from environment variable, default to localhost for development
+    # Get allowed origins from environment variable
+    # Production: Frontend accessed via Traefik on port 80 (same origin, no CORS needed)
+    # But configure CORS as defense in depth for direct access scenarios
     allowed_origins_str = os.getenv(
         "CORS_ALLOWED_ORIGINS",
-        "http://localhost:3000,http://localhost:3001,http://localhost:8000"
+        "http://localhost:3000,http://localhost:3001,http://localhost:8000,http://35.215.64.103,http://35.215.64.103:3000"
     )
     allowed_origins = [origin.strip() for origin in allowed_origins_str.split(",") if origin.strip()]
     
@@ -77,6 +80,9 @@ def create_app() -> FastAPI:
     app.include_router(websocket_router)
     app.include_router(guide_agent_router)
     app.include_router(runtime_agent_websocket_router)  # Experience Plane owns /api/runtime/agent
+    
+    # Include Metrics API router (for admin dashboard)
+    app.include_router(metrics_router)
     
     # Include Admin Dashboard routers
     from symphainy_platform.civic_systems.experience.admin_dashboard.api import (
