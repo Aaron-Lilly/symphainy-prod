@@ -5,7 +5,7 @@ import { useSessionBoundary } from "@/shared/state/SessionBoundaryProvider";
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { useWebSocket } from "@/shared/agui/WebSocketProvider";
 // ✅ PHASE 5.6.1: Migrated to intent-based API - OperationsService removed
-import { useJourneyAPIManager } from "@/shared/hooks/useJourneyAPIManager";
+import { useOperationsAPIManager } from "@/shared/hooks/useOperationsAPIManager";
 import { useContentAPIManager } from "@/shared/hooks/useContentAPIManager";
 import { useSessionElements } from "@/shared/hooks/useSessionElements";
 import { FileMetadata, FileType, FileStatus } from "@/shared/types/file";
@@ -40,8 +40,8 @@ export default function OperationsPillarUpdated() {
   const { state, getRealmState, setRealmState, setChatbotAgentInfo, setMainChatbotOpen } = usePlatformState();
   const setAgentInfo = setChatbotAgentInfo; // Alias for compatibility
   const guideSessionToken = sessionState.sessionId;
-  // ✅ PHASE 5.6.1: Use JourneyAPIManager instead of OperationsService
-  const journeyAPIManager = useJourneyAPIManager();
+  // Uses OperationsAPIManager for Operations Realm intents
+  const operationsAPIManager = useOperationsAPIManager();
   const contentAPIManager = useContentAPIManager();
   
   // ✅ PHASE 1: Direct use of PlatformStateProvider (removed compatibility wrappers)
@@ -165,7 +165,7 @@ export default function OperationsPillarUpdated() {
     setLoadingState(true, 'coexistence_analysis', 'Analyzing coexistence opportunities...');
 
     try {
-      // ✅ PHASE 5.6.1: Use JourneyAPIManager (intent-based API) instead of OperationsService
+      // Uses OperationsAPIManager (intent-based API)
       // Extract sopContent and workflowContent from selected files
       const sopContent = selected.SOP ? (typeof selected.SOP === 'string' ? selected.SOP : JSON.stringify(selected.SOP)) : '';
       const workflowContent = selected.workflow ? (typeof selected.workflow === 'string' ? selected.workflow : JSON.stringify(selected.workflow)) : '';
@@ -175,7 +175,7 @@ export default function OperationsPillarUpdated() {
         return;
       }
 
-      const result = await journeyAPIManager.optimizeCoexistenceWithContent(
+      const result = await operationsAPIManager.optimizeCoexistenceWithContent(
         sopContent,
         workflowContent
       );
@@ -210,7 +210,7 @@ export default function OperationsPillarUpdated() {
     setLoadingState(true, 'sop_to_workflow', 'Generating workflow from SOP...');
 
     try {
-      // ✅ PHASE 5.6.1: Use JourneyAPIManager (intent-based API) instead of OperationsService
+      // Uses OperationsAPIManager (intent-based API)
       // Note: createWorkflow requires sopId. If selected.SOP is a FileMetadata, use file_id/uuid
       // If it's file content, we may need to parse it first or create a helper method
       const sopId = selected.SOP?.uuid || selected.SOP?.file_id || (typeof selected.SOP === 'string' ? selected.SOP : null);
@@ -220,7 +220,7 @@ export default function OperationsPillarUpdated() {
         return;
       }
 
-      const result = await journeyAPIManager.createWorkflow(sopId);
+      const result = await operationsAPIManager.createWorkflow(sopId);
 
       if (result.success && result.workflow) {
         setSuccess("Workflow generated successfully!");
@@ -250,7 +250,7 @@ export default function OperationsPillarUpdated() {
     setLoadingState(true, 'workflow_to_sop', 'Generating SOP from workflow...');
 
     try {
-      // ✅ PHASE 5.6.1: Use JourneyAPIManager (intent-based API) instead of OperationsService
+      // Uses OperationsAPIManager (intent-based API)
       // Note: generateSOP requires workflowId. If selected.workflow is a FileMetadata, use file_id/uuid
       // If it's file content, we may need to parse it first or create a helper method
       const workflowId = selected.workflow?.uuid || selected.workflow?.file_id || (typeof selected.workflow === 'string' ? selected.workflow : null);
@@ -260,7 +260,7 @@ export default function OperationsPillarUpdated() {
         return;
       }
 
-      const result = await journeyAPIManager.generateSOP(workflowId);
+      const result = await operationsAPIManager.generateSOP(workflowId);
 
       if (result.success && result.sop) {
         setSuccess("SOP generated successfully!");
@@ -333,8 +333,8 @@ export default function OperationsPillarUpdated() {
     }
 
     try {
-      // ✅ PHASE 5.6.1: Use JourneyAPIManager (intent-based API) instead of OperationsService
-      const result = await journeyAPIManager.processOperationsConversation(
+      // Uses OperationsAPIManager (intent-based API)
+      const result = await operationsAPIManager.processOperationsConversation(
         message,
         conversationId!,
         { session_token: guideSessionToken }

@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 import { useSessionBoundary, SessionStatus } from "@/shared/state/SessionBoundaryProvider";
 import { useAuth } from "@/shared/auth/AuthProvider"; // Keep for user data
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
-import { useJourneyAPIManager } from "@/shared/hooks/useJourneyAPIManager";
+import { useOperationsAPIManager } from "@/shared/hooks/useOperationsAPIManager";
 import { SecondaryChatbotAgent } from "@/shared/types/secondaryChatbot";
 // ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms (already imported above)
 import { usePathname } from "next/navigation";
@@ -40,10 +40,10 @@ export default function JourneyPillar() {
   const { state: sessionState } = useSessionBoundary();
   const { user } = useAuth(); // Keep for user data
   // ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
-  const { state, setChatbotAgentInfo, setMainChatbotOpen } = usePlatformState();
+  const { state, setChatbotAgentInfo, setMainChatbotOpen, setRealmState } = usePlatformState();
   const setAgentInfo = setChatbotAgentInfo; // Alias for compatibility
   const isAuthenticated = sessionState.status === SessionStatus.Active;
-  const journeyAPIManager = useJourneyAPIManager();
+  const operationsAPIManager = useOperationsAPIManager();
 
   const pathname = usePathname();
 
@@ -166,7 +166,7 @@ export default function JourneyPillar() {
     setLoadingState(true, 'coexistence_analysis', 'Analyzing coexistence...');
 
     try {
-      const result = await journeyAPIManager.analyzeCoexistence(
+      const result = await operationsAPIManager.analyzeCoexistence(
         selected.SOP.uuid,
         selected.workflow.uuid
       );
@@ -183,14 +183,18 @@ export default function JourneyPillar() {
           ...prev,
           blueprint,
           sopText: optimizedSop?.description || prev.sopText,
-        }));
-        
-        // ✅ PHASE 4.2: Set IDs for process optimization
-        if (selected.SOP?.uuid) setSelectedSopId(selected.SOP.uuid);
-        if (selected.workflow?.uuid) setSelectedWorkflowId(selected.workflow.uuid);
           workflowData: optimizedWorkflow?.description || prev.workflowData,
           isEnabled: true
         }));
+        
+        // ✅ ARCHITECTURAL FIX: Store selected IDs in realm state (not local state)
+        // Per Session-First pattern, pillar-specific data belongs in realm state
+        if (selected.SOP?.uuid) {
+          setRealmState('journey', 'selectedSopId', selected.SOP.uuid);
+        }
+        if (selected.workflow?.uuid) {
+          setRealmState('journey', 'selectedWorkflowId', selected.workflow.uuid);
+        }
         
         // Update journey state with optimized results
         if (optimizedSop || optimizedWorkflow) {
@@ -233,7 +237,7 @@ export default function JourneyPillar() {
     setLoadingState(true, 'sop_to_workflow', 'Generating workflow from SOP...');
 
     try {
-      const result = await journeyAPIManager.createWorkflow(selected.SOP.uuid);
+      const result = await operationsAPIManager.createWorkflow(selected.SOP.uuid);
 
       if (result.success && result.workflow) {
         setSuccess("Workflow generated successfully!");
@@ -276,7 +280,7 @@ export default function JourneyPillar() {
     setLoadingState(true, 'workflow_to_sop', 'Generating SOP from workflow...');
 
     try {
-      const result = await journeyAPIManager.generateSOP(selected.workflow.uuid);
+      const result = await operationsAPIManager.generateSOP(selected.workflow.uuid);
 
       if (result.success && result.sop) {
         setSuccess("SOP generated successfully!");

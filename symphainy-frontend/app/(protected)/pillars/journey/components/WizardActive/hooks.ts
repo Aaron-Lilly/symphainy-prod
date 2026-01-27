@@ -3,8 +3,8 @@
 import React, { useState, useEffect } from "react";
 // ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
-// ✅ PHASE 5.6.1: Use JourneyAPIManager instead of OperationsService
-import { useJourneyAPIManager } from "@/shared/hooks/useJourneyAPIManager";
+// Uses OperationsAPIManager for Operations Realm intents (SOPs, workflows)
+import { useOperationsAPIManager } from "@/shared/hooks/useOperationsAPIManager";
 import { 
   WizardActiveProps, 
   WizardActiveState, 
@@ -20,6 +20,8 @@ export function useWizardActive({ onBack }: WizardActiveProps): WizardActiveStat
   // ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
   const { setChatbotAgentInfo, setMainChatbotOpen, setRealmState } = usePlatformState();
   const setAgentInfo = setChatbotAgentInfo; // Alias for compatibility
+  // ✅ ARCHITECTURAL FIX: Actually instantiate the Operations API Manager
+  const operationsAPIManager = useOperationsAPIManager();
 
   const [chatHistory, setChatHistory] = useState<ChatTurn[]>([]);
   const [input, setInput] = useState("");
@@ -58,8 +60,8 @@ export function useWizardActive({ onBack }: WizardActiveProps): WizardActiveStat
         userMessage: input,
       };
       
-      // ✅ PHASE 5.6.1: Use JourneyAPIManager (intent-based API) instead of OperationsService
-      const result = await journeyAPIManager.processWizardConversation(
+      // Uses OperationsAPIManager (intent-based API)
+      const result = await operationsAPIManager.processWizardConversation(
         input,
         sessionToken,
         { agent_type: 'WorkflowBuilderWizardAgent' }
@@ -88,8 +90,8 @@ export function useWizardActive({ onBack }: WizardActiveProps): WizardActiveStat
         sessionToken,
       };
       
-      // ✅ PHASE 5.6.1: Use JourneyAPIManager (intent-based API) instead of OperationsService
-      const result = await journeyAPIManager.processOperationsQuery(
+      // Uses OperationsAPIManager (intent-based API)
+      const result = await operationsAPIManager.processOperationsQuery(
         "publish_workflow_and_sop",
         sessionToken,
         { agent_type: 'WorkflowBuilderWizardAgent' }

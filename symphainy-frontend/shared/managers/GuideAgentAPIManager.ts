@@ -1,12 +1,13 @@
 /**
  * Guide Agent API Manager
  * 
- * ✅ PHASE 5.6.3: Migrated to intent-based API
- * 
  * Centralizes all Guide Agent API calls using intent-based architecture.
  * 
- * Note: This manager now delegates to JourneyAPIManager for intent-based operations.
- * Guide agent operations are part of the Journey realm.
+ * Note: This manager delegates to OperationsAPIManager for intent-based operations.
+ * Guide agent operations are part of the Operations realm.
+ * 
+ * NAMING NOTE: "journey guidance" refers to user journey (platform concept),
+ * not the old "Journey Realm" which is now called "Operations Realm".
  */
 
 // ============================================
@@ -57,28 +58,28 @@ export interface ConversationHistoryResponse {
 // Guide Agent API Manager Class
 // ============================================
 
-import { useJourneyAPIManager } from '@/shared/hooks/useJourneyAPIManager';
+import { useOperationsAPIManager } from '@/shared/hooks/useOperationsAPIManager';
 
 /**
- * ✅ PHASE 5.6.3: Guide Agent API Manager (Migrated to Intent-Based API)
+ * Guide Agent API Manager (Intent-Based API)
  * 
- * This manager now uses JourneyAPIManager for all operations.
- * Guide agent operations are part of the Journey realm and use intent-based API.
+ * This manager uses OperationsAPIManager for all operations.
+ * Guide agent operations are part of the Operations realm and use intent-based API.
  */
 export class GuideAgentAPIManager {
-  private journeyAPIManager: ReturnType<typeof useJourneyAPIManager>;
+  private operationsAPIManager: ReturnType<typeof useOperationsAPIManager>;
 
-  constructor(journeyAPIManager: ReturnType<typeof useJourneyAPIManager>) {
-    this.journeyAPIManager = journeyAPIManager;
+  constructor(operationsAPIManager: ReturnType<typeof useOperationsAPIManager>) {
+    this.operationsAPIManager = operationsAPIManager;
   }
 
   /**
    * Analyze user intent
    * 
-   * ✅ PHASE 5.6.3: Uses JourneyAPIManager (intent-based API)
+   * Uses OperationsAPIManager (intent-based API)
    */
   async analyzeUserIntent(request: AnalyzeIntentRequest): Promise<AnalyzeIntentResponse> {
-    const result = await this.journeyAPIManager.analyzeUserIntent(
+    const result = await this.operationsAPIManager.analyzeUserIntent(
       request.message,
       request.context
     );
@@ -91,12 +92,15 @@ export class GuideAgentAPIManager {
   }
 
   /**
-   * Get journey guidance
+   * Get journey guidance (user journey through pillars)
    * 
-   * ✅ PHASE 5.6.3: Uses JourneyAPIManager (intent-based API)
+   * NOTE: "journey" here refers to user journey (platform concept),
+   * not the old realm name which is now "Operations Realm".
+   * 
+   * Uses OperationsAPIManager (intent-based API)
    */
   async getJourneyGuidance(request: JourneyGuidanceRequest): Promise<JourneyGuidanceResponse> {
-    const result = await this.journeyAPIManager.getJourneyGuidance(
+    const result = await this.operationsAPIManager.getJourneyGuidance(
       request.user_goal,
       request.current_step,
       request.context
@@ -113,10 +117,10 @@ export class GuideAgentAPIManager {
   /**
    * Get conversation history
    * 
-   * ✅ PHASE 5.6.3: Uses JourneyAPIManager (intent-based API)
+   * Uses OperationsAPIManager (intent-based API)
    */
   async getConversationHistory(sessionId: string): Promise<ConversationHistoryResponse> {
-    const result = await this.journeyAPIManager.getConversationHistory(sessionId);
+    const result = await this.operationsAPIManager.getConversationHistory(sessionId);
 
     return {
       success: result.success,
@@ -128,6 +132,6 @@ export class GuideAgentAPIManager {
 
 // Factory function for use in components
 export function useGuideAgentAPIManager(): GuideAgentAPIManager {
-  const journeyAPIManager = useJourneyAPIManager();
-  return new GuideAgentAPIManager(journeyAPIManager);
+  const operationsAPIManager = useOperationsAPIManager();
+  return new GuideAgentAPIManager(operationsAPIManager);
 }

@@ -27,6 +27,7 @@ import dynamicImport from "next/dynamic";
 import RoadmapTimeline from "@/components/experience/RoadmapTimeline";
 import { Button } from "@/components/ui/button";
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
+import { useSessionBoundary } from "@/shared/state/SessionBoundaryProvider";
 import { useOutcomesAPIManager } from "@/shared/hooks/useOutcomesAPIManager";
 import { Loader, AlertTriangle, FileText, Play, Download, Upload, MessageCircle, Eye, GitBranch } from "lucide-react";
 import { FileMetadata, FileType, FileStatus } from "@/shared/types/file";
@@ -84,7 +85,7 @@ export default function BusinessOutcomesPillarPage() {
   // New state for source files and additional context
   const [sourceFiles, setSourceFiles] = useState<any[]>([]);
   const [additionalFiles, setAdditionalFiles] = useState<FileMetadata[]>([]);
-  const [sessionState, setSessionState] = useState<any | null>(null);
+  // Note: sessionState comes from useSessionBoundary() above - don't shadow it
   const [isGeneratingOutputs, setIsGeneratingOutputs] = useState(false);
   const [businessOutcomesOutputs, setBusinessOutcomesOutputs] = useState<any>(null);
   const [workflowId, setWorkflowId] = useState<string | null>(null);

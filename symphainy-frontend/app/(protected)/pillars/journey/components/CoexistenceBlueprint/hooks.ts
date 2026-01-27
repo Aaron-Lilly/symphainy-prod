@@ -2,8 +2,8 @@
 "use client";
 import React, { useState, useCallback } from "react";
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
-// ✅ FIX ISSUE 1: Use JourneyAPIManager instead of OperationsService
-import { useJourneyAPIManager } from "@/shared/hooks/useJourneyAPIManager";
+// Uses OperationsAPIManager for Operations Realm intents (SOPs, workflows, coexistence)
+import { useOperationsAPIManager } from "@/shared/hooks/useOperationsAPIManager";
 import { 
   CoexistenceBlueprintProps, 
   CoexistenceBlueprintState, 
@@ -16,8 +16,8 @@ import {
 
 export function useCoexistenceBlueprint(props: CoexistenceBlueprintProps): CoexistenceBlueprintState & CoexistenceBlueprintActions {
   const { setRealmState, getRealmState } = usePlatformState();
-  // ✅ FIX ISSUE 1: Use JourneyAPIManager instead of OperationsService
-  const journeyAPIManager = useJourneyAPIManager();
+  // Uses OperationsAPIManager for Operations Realm intents
+  const operationsAPIManager = useOperationsAPIManager();
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -241,8 +241,8 @@ export function useCoexistenceBlueprint(props: CoexistenceBlueprintProps): Coexi
       const sopContent = getSafeFormattedContent(props.sopText, 'sop');
       const workflowContent = props.workflowData;
 
-      // ✅ FIX ISSUE 1: Use JourneyAPIManager (intent-based API) instead of OperationsService
-      const response = await journeyAPIManager.optimizeCoexistenceWithContent(
+      // ✅ FIX ISSUE 1: Use OperationsAPIManager (intent-based API) instead of OperationsService
+      const response = await operationsAPIManager.optimizeCoexistenceWithContent(
         sopContent,
         workflowContent
       );
@@ -252,8 +252,8 @@ export function useCoexistenceBlueprint(props: CoexistenceBlueprintProps): Coexi
         setOptimizedWorkflow(response.optimized_workflow || null);
         setBlueprint(response.blueprint || null);
 
-        // Realm state already updated by JourneyAPIManager, but ensure local state is set
-        // (JourneyAPIManager already calls setRealmState)
+        // Realm state already updated by OperationsAPIManager, but ensure local state is set
+        // (OperationsAPIManager already calls setRealmState)
       } else {
         setError(response.error || "Optimization failed");
       }
@@ -276,7 +276,7 @@ export function useCoexistenceBlueprint(props: CoexistenceBlueprintProps): Coexi
     setError(null);
 
     try {
-      // ✅ FIX ISSUE 1: Use JourneyAPIManager (intent-based API) instead of OperationsService
+      // ✅ FIX ISSUE 1: Use OperationsAPIManager (intent-based API) instead of OperationsService
       // Adapt blueprint data to createBlueprint format
       const blueprintData = {
         name: blueprint.name || "Coexistence Blueprint",
@@ -288,12 +288,12 @@ export function useCoexistenceBlueprint(props: CoexistenceBlueprintProps): Coexi
         }] : [])
       };
 
-      const response = await journeyAPIManager.createBlueprint(blueprintData);
+      const response = await operationsAPIManager.createBlueprint(blueprintData);
       
       if (response.success && response.blueprint) {
         console.log("Blueprint saved with ID:", response.blueprint.blueprint_id);
         
-        // Update realm state (already updated by JourneyAPIManager, but ensure local state is set)
+        // Update realm state (already updated by OperationsAPIManager, but ensure local state is set)
         setRealmState('journey', 'operations', {
           ...getRealmState('journey', 'operations') || {},
           savedBlueprintId: response.blueprint.blueprint_id,
@@ -308,7 +308,7 @@ export function useCoexistenceBlueprint(props: CoexistenceBlueprintProps): Coexi
     } finally {
       setLoading(false);
     }
-  }, [blueprint, journeyAPIManager, setRealmState, getRealmState]);
+  }, [blueprint, operationsAPIManager, setRealmState, getRealmState]);
 
   return {
     loading,
