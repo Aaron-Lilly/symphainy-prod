@@ -12,15 +12,33 @@
 ## 1. Intent Overview
 
 ### Purpose
-[Describe the purpose of this intent based on journey contract]
+Initialize GuideAgent conversation with platform-wide context and access to all orchestrator MCP tools. Loads conversation history, retrieves shared context from previous agent (if toggled), and queries Curator for available MCP tools from all orchestrators.
 
 ### Intent Flow
 ```
-[Describe the flow for this intent]
+[User sends message to GuideAgent or toggles to GuideAgent]
+    ↓
+[initiate_guide_agent intent executes]
+    ↓
+[Retrieve chat session and context]
+    ↓
+[Load conversation history from context]
+    ↓
+[Retrieve shared context from previous agent (if toggled)]
+    ↓
+[Query Curator for all available MCP tools (all orchestrators)]
+    ↓
+[Initialize GuideAgent with platform-wide knowledge]
+    ↓
+[Returns guide_agent_conversation_artifact with context and MCP tools]
 ```
 
 ### Expected Observable Artifacts
-- [List expected artifacts]
+- `guide_agent_conversation_artifact` - Conversation artifact with platform-wide context
+- `available_mcp_tools` - List of all available MCP tools (from all orchestrators via Curator)
+- `shared_context` - Context shared from previous agent (if toggled from Liaison Agent)
+- `conversation_history` - Loaded conversation history from chat session
+- `platform_context` - Platform-wide context (all pillars, all solutions)
 
 ---
 
@@ -30,19 +48,23 @@
 
 | Parameter | Type | Description | Validation |
 |-----------|------|-------------|------------|
-| `parameter_name` | `type` | Description | Validation rules |
+| None | - | - | - |
 
 ### Optional Parameters
 
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
-| `parameter_name` | `type` | Description | Default value |
+| `chat_session_id` | `string` | Chat session identifier | If not provided, uses active session for user |
+| `include_mcp_tools` | `boolean` | Whether to query and include MCP tools | `true` |
 
 ### Context Metadata (from ExecutionContext)
 
 | Metadata Key | Type | Description | Source |
 |--------------|------|-------------|--------|
-| `metadata_key` | `type` | Description | Runtime |
+| `user_id` | `string` | User identifier | Runtime (required) |
+| `tenant_id` | `string` | Tenant identifier | Runtime (required) |
+| `session_id` | `string` | User session identifier | Runtime (from Security Solution) |
+| `chat_session` | `object` | Chat session artifact (from get_chat_session) | Previous intent result (optional) |
 
 ---
 
@@ -53,18 +75,60 @@
 ```json
 {
   "artifacts": {
-    "artifact_type": {
-      "result_type": "artifact",
+    "guide_agent_conversation": {
+      "result_type": "guide_agent_conversation",
       "semantic_payload": {
-        // Artifact data
+        "agent_type": "guide",
+        "chat_session_id": "chat_session_abc123",
+        "conversation_history": [
+          {
+            "role": "user",
+            "content": "What is SymphAIny?",
+            "timestamp": "2026-01-27T10:05:00Z"
+          }
+        ],
+        "shared_context": {
+          "from_agent": "liaison_content",
+          "context_data": {
+            "pillar": "content",
+            "intent": "file_parsing"
+          }
+        },
+        "available_mcp_tools": [
+          {
+            "tool_name": "content_parse_file",
+            "description": "Parse a file using Content orchestrator",
+            "orchestrator": "content",
+            "parameters": {
+              "file_id": "string",
+              "file_type": "string"
+            }
+          },
+          {
+            "tool_name": "insights_assess_quality",
+            "description": "Assess data quality using Insights orchestrator",
+            "orchestrator": "insights",
+            "parameters": {
+              "parsed_file_id": "string"
+            }
+          }
+        ],
+        "platform_context": {
+          "pillars": ["content", "insights", "journey", "solution"],
+          "solutions": ["content_realm", "insights_realm", "journey_realm", "solution_realm"],
+          "capabilities": ["file_parsing", "data_quality", "workflow_creation", "solution_synthesis"]
+        }
       },
-      "renderings": {}
+      "renderings": {
+        "message": "GuideAgent initialized. I can help you with platform-wide questions and execute actions via MCP tools."
+      }
     }
   },
   "events": [
     {
-      "type": "event_type",
-      // Event data
+      "type": "guide_agent_initialized",
+      "chat_session_id": "chat_session_abc123",
+      "mcp_tools_count": 25
     }
   ]
 }
@@ -76,7 +140,8 @@
 {
   "error": "Error message",
   "error_code": "ERROR_CODE",
-  "execution_id": "exec_abc123"
+  "execution_id": "exec_abc123",
+  "intent_type": "initiate_guide_agent"
 }
 ```
 
@@ -103,14 +168,16 @@
 
 ### Idempotency Key
 ```
-idempotency_key = hash([key components])
+N/A - No side effects, initialization only
 ```
 
 ### Scope
-- [Describe scope: per tenant, per session, per artifact, etc.]
+- N/A - No side effects, initialization only
 
 ### Behavior
-- [Describe idempotent behavior]
+- This intent has no side effects (no state changes, no artifacts created)
+- Can be called multiple times - always returns same initialization data (idempotent)
+- Idempotent by nature (pure initialization function)
 
 ---
 
@@ -135,22 +202,40 @@ idempotency_key = hash([key components])
 
 ### Frontend Usage
 ```typescript
-// [Frontend code example]
+// When user toggles to GuideAgent or sends first message
+const executionId = await platformState.submitIntent(
+  'initiate_guide_agent',
+  {}
+);
+
+const status = await platformState.getExecutionStatus(executionId);
+if (status?.artifacts?.guide_agent_conversation) {
+  const conversation = status.artifacts.guide_agent_conversation.semantic_payload;
+  const mcpTools = conversation.available_mcp_tools;
+  const context = conversation.shared_context;
+  // GuideAgent ready with MCP tools and context
+}
 ```
 
 ### Expected Frontend Behavior
-1. [Behavior 1]
-2. [Behavior 2]
+1. **Agent toggle** - Frontend calls this intent when user toggles to GuideAgent
+2. **MCP tools loaded** - Frontend receives list of available MCP tools
+3. **Context loaded** - Frontend receives shared context from previous agent (if toggled)
+4. **Conversation history** - Frontend loads conversation history from context
+5. **Agent ready** - GuideAgent ready to process messages and call MCP tools
 
 ---
 
 ## 8. Error Handling
 
 ### Validation Errors
-- [Error type] -> [Error response]
+- **User not authenticated:** User not logged in -> Returns error response with `ERROR_CODE: "UNAUTHENTICATED"`
+- **Chat session not found:** Chat session does not exist -> Returns error response with `ERROR_CODE: "SESSION_NOT_FOUND"`
 
 ### Runtime Errors
-- [Error type] -> [Error response]
+- **Curator unavailable:** Cannot query Curator for MCP tools -> Returns error response with `ERROR_CODE: "CURATOR_UNAVAILABLE"` (GuideAgent can still initialize without tools)
+- **Tool registry unavailable:** Cannot query tool registry -> Returns error response with `ERROR_CODE: "TOOL_REGISTRY_UNAVAILABLE"` (GuideAgent can still initialize without tools)
+- **Context load failure:** Cannot load conversation history -> Returns error response with `ERROR_CODE: "CONTEXT_LOAD_FAILED"` (GuideAgent can still initialize with empty context)
 
 ### Error Response Format
 ```json
@@ -158,7 +243,10 @@ idempotency_key = hash([key components])
   "error": "Error message",
   "error_code": "ERROR_CODE",
   "execution_id": "exec_abc123",
-  "intent_type": "initiate_guide_agent"
+  "intent_type": "initiate_guide_agent",
+  "details": {
+    "reason": "Curator unavailable"
+  }
 }
 ```
 
@@ -167,30 +255,48 @@ idempotency_key = hash([key components])
 ## 9. Testing & Validation
 
 ### Happy Path
-1. [Step 1]
-2. [Step 2]
+1. User has active chat session with context
+2. User toggles to GuideAgent
+3. `initiate_guide_agent` intent executes
+4. Chat session retrieved, conversation history loaded
+5. Shared context retrieved (if toggled from Liaison Agent)
+6. Curator queried for all MCP tools (all orchestrators)
+7. Platform context built (solutions, pillars, capabilities)
+8. Returns GuideAgent conversation artifact with MCP tools and context
+9. GuideAgent ready to process messages
 
 ### Boundary Violations
-- [Violation type] -> [Expected behavior]
+- **Session not found:** Chat session does not exist -> Returns `ERROR_CODE: "SESSION_NOT_FOUND"`
+- **No MCP tools available:** Curator returns no tools -> GuideAgent initializes with empty MCP tools list (still functional)
 
 ### Failure Scenarios
-- [Failure type] -> [Expected behavior]
+- **Curator unavailable:** Cannot query Curator -> Returns `ERROR_CODE: "CURATOR_UNAVAILABLE"`, GuideAgent initializes without MCP tools (graceful degradation)
+- **Context load failure:** Cannot load context -> Returns `ERROR_CODE: "CONTEXT_LOAD_FAILED"`, GuideAgent initializes with empty context
 
 ---
 
 ## 10. Contract Compliance
 
 ### Required Artifacts
-- `artifact_type` - Required
+- `guide_agent_conversation` - Required (GuideAgent conversation artifact)
 
 ### Required Events
-- `event_type` - Required
+- `guide_agent_initialized` - Required (emitted when GuideAgent is initialized)
 
 ### Lifecycle State
-- [Lifecycle state requirements]
+- **No lifecycle state** - This is an initialization-only intent with no persistent artifacts
+- **Conversation state** - Stored in chat session context (ephemeral)
+
+### Contract Validation
+- ✅ Intent must return GuideAgent conversation artifact with MCP tools and context
+- ✅ MCP tools must be queried from Curator (all orchestrators)
+- ✅ Shared context must be loaded (if available from previous agent)
+- ✅ Conversation history must be loaded from chat session
+- ✅ Platform context must be built (solutions, pillars, capabilities)
+- ✅ No side effects (no artifacts created, no state changes)
 
 ---
 
-**Last Updated:** [Date]  
-**Owner:** [Realm] Solution Team  
-**Status:** IN PROGRESS
+**Last Updated:** January 27, 2026  
+**Owner:** Coexistence Solution Team  
+**Status:** ✅ **ENHANCED** - Ready for implementation
