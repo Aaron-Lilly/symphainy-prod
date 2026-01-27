@@ -147,11 +147,44 @@ Creating intent contracts for all 28 journeys, organized by journey folder. Each
 - `journey_coexistence_navigation/`
 - `journey_coexistence_guide_agent/`
 
-**Control Tower Solution (4 journeys):**
-- `journey_control_tower_monitoring/`
-- `journey_control_tower_solution_management/`
-- `journey_control_tower_developer_docs/`
-- `journey_control_tower_solution_composition/`
+---
+
+### ✅ Completed - Control Tower / Admin Dashboard (3 Views, 16 Intents)
+
+**Key Finding:** Control Tower is implemented as **Admin Dashboard** in `civic_systems/experience/admin_dashboard/`.
+
+**View: Control Room (Platform Observability)**
+- `control_tower_monitoring/`
+  - ✅ `intent_admin_get_platform_statistics.md` (comprehensive)
+  - ✅ `intent_admin_get_execution_metrics.md` (MVP - aggregation TODO)
+  - ✅ `intent_admin_get_realm_health.md` (comprehensive)
+  - ✅ `intent_admin_get_solution_registry_status.md` (comprehensive)
+  - ✅ `intent_admin_get_system_health.md` (comprehensive)
+
+**View: Developer View (SDK Documentation & Tools)**
+- `control_tower_developer/`
+  - ✅ `intent_admin_get_documentation.md` (comprehensive)
+  - ✅ `intent_admin_get_code_examples.md` (comprehensive)
+  - ✅ `intent_admin_get_patterns.md` (comprehensive)
+  - ✅ `intent_admin_validate_solution.md` (comprehensive - Solution Builder Playground)
+  - ✅ `intent_admin_preview_solution.md` (comprehensive)
+  - ✅ `intent_admin_submit_feature_request.md` (Coming Soon - gated)
+
+**View: Business User View (Solution Composition)**
+- `control_tower_business/`
+  - ✅ `intent_admin_get_composition_guide.md` (comprehensive)
+  - ✅ `intent_admin_get_solution_templates.md` (comprehensive)
+  - ✅ `intent_admin_compose_solution.md` (comprehensive - gated)
+  - ✅ `intent_admin_register_solution.md` (comprehensive)
+  - ✅ `intent_admin_submit_business_feature_request.md` (comprehensive)
+
+**📊 Control Tower Analysis**
+- ✅ `CONTROL_TOWER_ANALYSIS.md` - Documents backend implementation (3 views, 16 intents)
+
+**Architecture Notes:**
+- Frontend (AdminAPIManager.ts) uses intent-based API
+- Backend has REST endpoints + services
+- All intents use `admin_` prefix for access control filtering
 
 ---
 
@@ -174,19 +207,21 @@ Each intent contract includes:
 
 ## Summary
 
-| Realm | Journeys | Intents | Status |
-|-------|----------|---------|--------|
+| Realm/Solution | Journeys/Views | Intents | Status |
+|----------------|----------------|---------|--------|
 | Content | 4 | 9 | ✅ Complete |
 | Journey | 3 (reorganized) | 7 | ✅ Complete |
 | Journey (Guide Agent) | 1 | 3 | ⏳ Pending |
 | Journey (Cross-Pillar) | 1 | 2 | ⏳ Pending |
 | Insights | 5 (reorganized) | 9 | ✅ Complete |
+| Control Tower | 3 views | 16 | ✅ Complete |
 | Outcomes | 4 | TBD | 📋 Remaining |
 | Security | 2 | TBD | 📋 Remaining |
 | Coexistence | 3 | TBD | 📋 Remaining |
-| Control Tower | 4 | TBD | 📋 Remaining |
 
-**Note:** Insights Realm backend has 16 intents implemented, 9 documented in contracts (those used by frontend + key extraction intents).
+**Notes:**
+- Insights Realm backend has 16 intents implemented, 9 documented in contracts (those used by frontend + key extraction intents).
+- Control Tower = Admin Dashboard in `civic_systems/experience/admin_dashboard/`
 
 ---
 
