@@ -14,10 +14,14 @@
 |----------|--------|----------|------------|------------|
 | CoexistenceSolution | ✅ Complete | 3 | `coexist_` | ✅ |
 | ContentSolution | ✅ Complete | 4 | `content_` | ✅ |
-| InsightsSolution | ✅ Complete | 2 | `insights_` | ✅ |
+| InsightsSolution | ✅ Complete | 6 | `insights_` | ✅ |
 | JourneySolution | ✅ Complete | 2 | `journey_` | ✅ |
-| OutcomesSolution | ✅ Complete | 2 | `outcomes_` | ✅ |
+| OperationsSolution | ✅ Complete | 4 | `ops_` | ✅ |
+| OutcomesSolution | ✅ Complete | 7 | `outcomes_` | ✅ |
+| SecuritySolution | ✅ Complete | 3 | `security_` | ✅ |
 | ControlTower | ✅ Complete | 4 | `tower_` | ✅ |
+
+**Total: 8 Solutions, 33 Journeys**
 
 ### Solution Details
 
@@ -52,8 +56,10 @@
 |---------|--------|-------------|
 | BusinessAnalysisJourney | ✅ | Business data analysis |
 | DataQualityJourney | ✅ | Data quality assessment |
-
-**Note:** Journey contracts show 5 journeys (data_interpretation, relationship_mapping, semantic_embedding) - these are candidates for future implementation.
+| DataAnalysisJourney | ✅ | Structured/unstructured data analysis |
+| DataInterpretationJourney | ✅ | Data interpretation (guided/self-discovery) |
+| LineageVisualizationJourney | ✅ | Data lineage visualization |
+| RelationshipMappingJourney | ✅ | Relationship mapping |
 
 #### JourneySolution
 **Location:** `symphainy_platform/solutions/journey_solution/`
@@ -63,17 +69,37 @@
 | WorkflowSOPJourney | ✅ | Workflow and SOP management |
 | CoexistenceAnalysisJourney | ✅ | Coexistence analysis |
 
-**Note:** Journey contracts show 5 journeys (sop_creation_chat, workflow_visualization, blueprint_creation) - candidates for future implementation.
+#### OperationsSolution
+**Location:** `symphainy_platform/solutions/operations_solution/`
+
+| Journey | Status | Description |
+|---------|--------|-------------|
+| WorkflowManagementJourney | ✅ | Workflow lifecycle |
+| SOPManagementJourney | ✅ | SOP creation and management |
+| ProcessOptimizationJourney | ✅ | Process optimization |
+| CoexistenceAnalysisJourney | ✅ | Coexistence analysis |
 
 #### OutcomesSolution
 **Location:** `symphainy_platform/solutions/outcomes_solution/`
 
 | Journey | Status | Description |
 |---------|--------|-------------|
-| POCCreationJourney | ✅ | POC proposal creation |
+| POCCreationJourney | ✅ | POC creation |
+| POCProposalJourney | ✅ | POC proposal generation |
 | RoadmapGenerationJourney | ✅ | Roadmap generation |
+| OutcomeSynthesisJourney | ✅ | Outcome synthesis |
+| BlueprintCreationJourney | ✅ | Blueprint creation |
+| SolutionCreationJourney | ✅ | Solution creation |
+| ArtifactExportJourney | ✅ | Artifact export |
 
-**Note:** Journey contracts show 7 journeys - candidates for future implementation.
+#### SecuritySolution (FOUNDATIONAL)
+**Location:** `symphainy_platform/solutions/security_solution/`
+
+| Journey | Status | Description |
+|---------|--------|-------------|
+| AuthenticationJourney | ✅ | User authentication |
+| RegistrationJourney | ✅ | User registration |
+| SessionManagementJourney | ✅ | Session lifecycle |
 
 #### ControlTower (Admin Dashboard)
 **Location:** `symphainy_platform/solutions/control_tower/`
@@ -115,34 +141,32 @@ Frontend → Experience API → Runtime API → ExecutionLifecycleManager
 
 ---
 
-## 3. Missing/Future Work
+## 3. Housekeeping Items
 
-### Not Implemented (Contracts Exist)
+### Completed ✅
 
-| Solution | Missing Journeys |
-|----------|-----------------|
-| Security | Authentication, Registration (2 journeys) |
-| Insights | DataInterpretation, RelationshipMapping, SemanticEmbedding (3 journeys) |
-| Journey | SOPCreationChat, WorkflowVisualization, BlueprintCreation (3 journeys) |
-| Outcomes | SolutionSynthesis, BlueprintCreation, CrossPillarIntegration, ArtifactExport (5 journeys) |
-| Coexistence | ChatSession, ContextSharing, LiaisonAgent, OrchestratorInteraction (4 journeys) |
+1. **Solution Initializer Created** - Unified initialization of all 8 solutions
+2. **MCP Servers Wired** - Each solution's MCP server initialized at startup
+3. **compose_journey Intents Registered** - All solutions registered for compose_journey
+4. **RuntimeServices Updated** - Added solution_registry and solution_services fields
 
-### Housekeeping Items
+### Remaining Items
 
 1. **Duplicate symphainy_platform:** Both `/workspace/symphainy_platform/` and `/workspace/symphainy_coexistence_fabric/symphainy_platform/` exist
-   - **Recommendation:** Consolidate to single location or clarify relationship
+   - **Recommendation:** Consolidate to single location or clarify relationship (symphainy_coexistence_fabric may be the "new" platform)
 
-2. **Legacy Realm Orchestrators:** `service_factory.py` registers both realm orchestrators AND solutions
-   - **Recommendation:** Document which pattern to use (Solutions supersede Realms for new work)
+2. **JourneySolution vs OperationsSolution:** Both have CoexistenceAnalysisJourney
+   - **Recommendation:** Clarify distinction or consolidate (Operations = user-facing, Journey = internal?)
 
-3. **Intent Conflicts:** Some intents are registered twice (realm + solution)
-   - **Recommendation:** Add priority/routing logic or remove duplicates
+3. **Intent Services in symphainy_coexistence_fabric:** New intent services created in `symphainy_coexistence_fabric/symphainy_platform/realms/`
+   - `insights/intent_services/` - 7 services
+   - `operations/intent_services/` - 6 services
+   - `outcomes/intent_services/` - 6 services
+   - `security/intent_services/` - 7 services
+   - **Recommendation:** Verify these are registered with IntentRegistry
 
-4. **Security Solution:** Contracts exist but no implementation
-   - **Recommendation:** Implement SecuritySolution with Authentication/Registration journeys
-
-5. **Curator Integration:** GuideAgent queries Curator for MCP tools but Curator may not be fully wired
-   - **Recommendation:** Verify Curator initialization and tool registration
+4. **Curator Integration:** GuideAgent queries Curator for MCP tools
+   - **Recommendation:** Verify Curator initialization and tool registration across all MCP servers
 
 ---
 
@@ -154,6 +178,7 @@ Frontend → Experience API → Runtime API → ExecutionLifecycleManager
    - Each solution's `handle_intent()` method
    - Each journey's `compose_journey()` method
    - SOA API handlers
+   - Test files needed: 8 solutions × ~3-4 test files each = ~30 test files
 
 2. **Intent Flow Tests** (`tests/unit/runtime/`)
    - IntentRegistry routing
@@ -200,12 +225,65 @@ Frontend → Experience API → Runtime API → ExecutionLifecycleManager
 
 ### New Files
 - `symphainy_platform/solutions/solution_initializer.py`
+- `docs/architecture/PLATFORM_REBUILD_AUDIT.md`
 
 ### Modified Files
-- `symphainy_platform/solutions/__init__.py` - Added initializer exports
+- `symphainy_platform/solutions/__init__.py` - Added all solutions + initializer exports
 - `symphainy_platform/runtime/service_factory.py` - Added solution initialization
 - `symphainy_platform/runtime/runtime_services.py` - Added solution_services field
 - `experience_main.py` - Added solution initialization
+
+---
+
+## 6. Architecture Summary
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Experience Layer                              │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐               │
+│  │ Experience   │  │ Admin        │  │ Guide Agent  │               │
+│  │ Service      │  │ Dashboard    │  │ Service      │               │
+│  └──────────────┘  └──────────────┘  └──────────────┘               │
+└─────────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Solution Layer                                │
+│  ┌────────────────────────────────────────────────────────────────┐ │
+│  │                    Solution Initializer                         │ │
+│  │  Initializes all 8 solutions + MCP Servers at startup          │ │
+│  └────────────────────────────────────────────────────────────────┘ │
+│                                                                      │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐              │
+│  │Coexist   │ │Content   │ │Insights  │ │Operations│              │
+│  │Solution  │ │Solution  │ │Solution  │ │Solution  │              │
+│  │(3 jrnys) │ │(4 jrnys) │ │(6 jrnys) │ │(4 jrnys) │              │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘              │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐              │
+│  │Journey   │ │Outcomes  │ │Security  │ │Control   │              │
+│  │Solution  │ │Solution  │ │Solution  │ │Tower     │              │
+│  │(2 jrnys) │ │(7 jrnys) │ │(3 jrnys) │ │(4 jrnys) │              │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘              │
+└─────────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Runtime Layer                                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐               │
+│  │ Execution    │  │ Intent       │  │ State        │               │
+│  │ Manager      │  │ Registry     │  │ Surface      │               │
+│  └──────────────┘  └──────────────┘  └──────────────┘               │
+└─────────────────────────────────────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│                        Foundation Layer                              │
+│  ┌──────────────────────────────────────────────────────────────┐   │
+│  │                  Public Works Foundation                      │   │
+│  │  Abstractions: State, File Storage, Registry, Auth, etc.     │   │
+│  └──────────────────────────────────────────────────────────────┘   │
+└─────────────────────────────────────────────────────────────────────┘
+```
 
 ---
 
