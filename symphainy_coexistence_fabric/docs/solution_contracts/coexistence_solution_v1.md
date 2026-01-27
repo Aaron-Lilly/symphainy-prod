@@ -112,7 +112,7 @@ This solution composes the following journeys:
 - **Flow A:** User starts with Liaison Agent → Context shared when toggling to GuideAgent
 - **Flow B:** Agent-to-agent routing → GuideAgent routes to Liaison Agent with context
 - **Flow C:** Multi-pillar conversation → User toggles between multiple Liaison Agents, context preserved
-- **Flow D:** Orchestrator-mediated action → Agent requests journey execution, orchestrator validates and executes
+- **Flow D:** Orchestrator-mediated action → Agent calls orchestrator MCP tool, MCP tool validates and executes journey/intent
 
 ### Error Flows
 - **Error A:** Agent unavailable → Show error, allow retry or switch to other agent
@@ -179,9 +179,9 @@ This solution composes the following journeys:
   - Intent: `merge_agent_contexts` - Merge contexts from multiple agents
 
 - **Journey:** Agent-Orchestrator Interaction
-  - Intent: `request_orchestrator_action` - Agent requests orchestrator to execute journey
-  - Intent: `validate_orchestrator_request` - Validate agent request against governance
-  - Intent: `execute_governed_action` - Execute orchestrator action within governance boundaries
+  - Intent: `call_orchestrator_mcp_tool` - Agent calls orchestrator MCP tool
+  - Intent: `list_available_mcp_tools` - List available orchestrator MCP tools for agent
+  - Intent: `validate_mcp_tool_call` - Validate MCP tool call against governance (before execution)
 
 **UI Components:**
 - **Chat Interface:** Right side panel with message history
@@ -193,17 +193,19 @@ This solution composes the following journeys:
 **Agent Capabilities:**
 - **GuideAgent:**
   - Platform-wide knowledge (all pillars, all solutions)
-  - Can interact with any orchestrator (governed)
+  - Can call any orchestrator MCP tool (governed)
   - Can route to any Liaison Agent
   - Full conversation context awareness
-  - Can execute cross-pillar actions
+  - Can execute cross-pillar actions via MCP tools
+  - Has access to all MCP tools from all orchestrators
 
 - **Liaison Agents:**
   - Pillar-specific knowledge (Content, Insights, Journey, or Solution)
-  - Can interact with pillar orchestrators (governed)
+  - Can call pillar orchestrator MCP tools (governed)
   - Can request GuideAgent assistance
   - Pillar-aware conversation context
-  - Can execute pillar-specific actions
+  - Can execute pillar-specific actions via MCP tools
+  - Has access to pillar-specific MCP tools only
 
 **Policies:**
 - Platform access policies (Smart City: Security Guard)
@@ -282,7 +284,7 @@ This solution composes the following journeys:
 - **GuideAgent:** `initiate_guide_agent`, `process_guide_agent_message`, `route_to_liaison_agent`, `execute_orchestrator_action`
 - **Liaison Agent:** `initiate_liaison_agent`, `process_liaison_agent_message`, `get_pillar_context`, `execute_pillar_action`
 - **Context Sharing:** `share_context_to_agent`, `get_shared_context`, `merge_agent_contexts`
-- **Orchestrator Interaction:** `request_orchestrator_action`, `validate_orchestrator_request`, `execute_governed_action`
+- **Orchestrator Interaction:** `call_orchestrator_mcp_tool`, `list_available_mcp_tools`, `validate_mcp_tool_call`
 
 ---
 
@@ -304,10 +306,11 @@ This solution composes the following journeys:
 ## 7. Integration Points
 
 ### Platform Services
-- **Coexistence Realm:** Intent services for chat, agents, context sharing, orchestrator interactions
-- **Journey Realm:** Orchestration services (agents can request journey execution)
+- **Coexistence Realm:** Intent services for chat, agents, context sharing, MCP tool interactions
+- **Journey Realm:** Orchestration services (exposed as MCP tools via MCP servers)
 - **Agent Framework:** GuideAgent (platform concierge), Liaison Agents (pillar-specific)
-- **Orchestrator Services:** Journey orchestrators (accessible via governed agent requests)
+- **MCP Servers:** Orchestrators expose intent services as MCP tools (registered via Curator)
+- **Curator:** Registry of MCP tools (agents discover tools via Curator)
 
 ### Civic Systems
 - **Smart City Primitives:** Security Guard, Traffic Cop, City Manager
@@ -398,15 +401,24 @@ This solution IS the coexistence component - it provides the primary human-platf
 - **Merged:** Multiple agent contexts can be merged for comprehensive awareness
 - **Persistent:** Context persists across agent toggles and session restarts
 
-**Orchestrator Interactions:**
-- **Governed:** All agent-orchestrator interactions are validated against governance policies
-- **Request-Based:** Agents request orchestrator actions, orchestrators validate and execute
-- **Status Updates:** Agents receive real-time status updates on orchestrator actions
-- **Error Handling:** Governance violations result in clear error messages to agents
+**Orchestrator Interactions (via MCP Tools):**
+- **MCP Tool-Based:** Agents interact with orchestrators via MCP tools (not direct service calls)
+- **Governed:** All MCP tool calls are validated against governance policies before execution
+- **Tool Discovery:** Agents can discover available MCP tools via Curator registry
+- **Request-Based:** Agents call MCP tools, tools validate and execute journey/intent
+- **Status Updates:** Agents receive MCP tool responses with execution status
+- **Error Handling:** Governance violations result in MCP tool errors with clear messages
+- **Tool Registration:** Orchestrators register their intent services as MCP tools via Curator
 
 **Conversation Topics:**
-- **GuideAgent:** "What is SymphAIny?", "What can I do?", "Navigate to Content Solution", "Execute file upload journey"
-- **Liaison Agents:** "How do I parse a file?" (Content), "What insights are available?" (Insights), "Create a workflow" (Journey), "Build a solution" (Solution)
+- **GuideAgent:** "What is SymphAIny?", "What can I do?", "Navigate to Content Solution", "Execute file upload journey" (via MCP tool)
+- **Liaison Agents:** "How do I parse a file?" (Content - via Content orchestrator MCP tool), "What insights are available?" (Insights - via Insights orchestrator MCP tool), "Create a workflow" (Journey - via Journey orchestrator MCP tool), "Build a solution" (Solution - via Solution orchestrator MCP tool)
+
+**MCP Tool Integration:**
+- **Tool Discovery:** Agents query Curator for available MCP tools
+- **Tool Execution:** Agents call MCP tools with parameters, tools execute orchestrator intents
+- **Tool Responses:** MCP tools return execution results to agents
+- **Governance:** MCP tools validate requests against Smart City policies before execution
 
 ---
 
