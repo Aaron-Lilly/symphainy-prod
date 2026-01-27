@@ -46,6 +46,17 @@ from symphainy_platform.foundations.public_works.protocols.ingestion_protocol im
 from .retry_helpers import retry_with_backoff, get_retry_strategy_for_ingestion_type
 import hashlib
 
+# Import intent services
+from ..intent_services import (
+    ParseContentService,
+    GetParsedFileService,
+    CreateDeterministicEmbeddingsService,
+    ExtractEmbeddingsService,
+    ListArtifactsService,
+    RetrieveArtifactMetadataService,
+    ArchiveFileService,
+)
+
 
 class ContentOrchestrator:
     """
@@ -96,6 +107,78 @@ class ContentOrchestrator:
         # Initialize health monitoring and telemetry (lazy initialization)
         self.telemetry_service = None
         self.health_monitor = None
+        
+        # Initialize intent services (service pattern for atomic operations)
+        # These services encapsulate the logic from _handle_* methods
+        # and follow the BaseIntentService contract pattern
+        self._intent_services = {
+            "parse_content": ParseContentService(
+                public_works=public_works,
+                file_parser_service=self.file_parser_service
+            ),
+            "get_parsed_file": GetParsedFileService(
+                public_works=public_works,
+                file_parser_service=self.file_parser_service
+            ),
+            "create_deterministic_embeddings": CreateDeterministicEmbeddingsService(
+                public_works=public_works,
+                file_parser_service=self.file_parser_service,
+                deterministic_embedding_service=self.deterministic_embedding_service
+            ),
+            "extract_embeddings": ExtractEmbeddingsService(
+                public_works=public_works,
+                deterministic_embedding_service=self.deterministic_embedding_service,
+                embedding_service=self.embedding_service
+            ),
+            "list_artifacts": ListArtifactsService(public_works=public_works),
+            "list_files": ListArtifactsService(public_works=public_works),  # Alias
+            "retrieve_artifact_metadata": RetrieveArtifactMetadataService(public_works=public_works),
+            "archive_file": ArchiveFileService(public_works=public_works),
+        }
+    
+    async def _execute_via_intent_service(
+        self,
+        intent: Intent,
+        context: ExecutionContext
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Execute intent via intent service if available.
+        
+        Intent services encapsulate atomic operations following the
+        BaseIntentService pattern with telemetry, artifact registration,
+        and contract compliance.
+        
+        Args:
+            intent: The intent to execute
+            context: Execution context
+        
+        Returns:
+            Result dict if service available, None otherwise
+        """
+        service = self._intent_services.get(intent.intent_type)
+        if service:
+            try:
+                # Set state_surface on service from context
+                service.state_surface = context.state_surface
+                return await service(intent, context)
+            except Exception as e:
+                self.logger.warning(f"Intent service execution failed, falling back to handler: {e}")
+                return None
+        return None
+    
+    def get_intent_service(self, intent_type: str):
+        """
+        Get intent service by type.
+        
+        Allows external callers to access intent services directly.
+        
+        Args:
+            intent_type: Intent type to get service for
+        
+        Returns:
+            Intent service or None
+        """
+        return self._intent_services.get(intent_type)
     
     async def handle_intent(
         self,
