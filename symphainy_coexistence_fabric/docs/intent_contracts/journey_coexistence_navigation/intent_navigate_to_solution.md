@@ -2,9 +2,9 @@
 
 **Intent:** navigate_to_solution  
 **Intent Type:** `navigate_to_solution`  
-**Journey:** Journey Coexistence Navigation (`journey_coexistence_navigation`)  
-**Realm:** Coexistence Solution  
-**Status:** IN PROGRESS  
+**Journey:** Solution Navigation (`journey_coexistence_navigation`)  
+**Solution:** Coexistence Solution  
+**Status:** ENHANCED  
 **Priority:** PRIORITY 1
 
 ---
@@ -12,15 +12,23 @@
 ## 1. Intent Overview
 
 ### Purpose
-[Describe the purpose of this intent based on journey contract]
+Handles user navigation to a specific solution or pillar within the platform. This intent validates the navigation target, prepares the solution context, and returns navigation metadata including the appropriate route and any required pre-conditions.
 
 ### Intent Flow
 ```
-[Describe the flow for this intent]
+[User requests navigation to solution]
+    ↓
+[Validate solution_id exists and is accessible]
+    ↓
+[Check user permissions for solution]
+    ↓
+[Prepare navigation context and initial state]
+    ↓
+[Return navigation artifact with route and context]
 ```
 
 ### Expected Observable Artifacts
-- [List expected artifacts]
+- `navigation` - Navigation metadata including route and pre-conditions
 
 ---
 
@@ -30,19 +38,24 @@
 
 | Parameter | Type | Description | Validation |
 |-----------|------|-------------|------------|
-| `parameter_name` | `type` | Description | Validation rules |
+| `solution_id` | `string` | Target solution identifier | Must exist in registry |
+| `user_context` | `object` | User context information | Must include session_id |
 
 ### Optional Parameters
 
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
-| `parameter_name` | `type` | Description | Default value |
+| `pillar_name` | `string` | Specific pillar within solution | null (landing) |
+| `preserve_context` | `boolean` | Preserve current solution context | true |
+| `navigation_source` | `string` | Where navigation originated | "user_action" |
 
 ### Context Metadata (from ExecutionContext)
 
 | Metadata Key | Type | Description | Source |
 |--------------|------|-------------|--------|
-| `metadata_key` | `type` | Description | Runtime |
+| `tenant_id` | `string` | Tenant identifier | Runtime |
+| `session_id` | `string` | Session identifier | Runtime |
+| `current_solution_id` | `string` | Current solution (if any) | Session state |
 
 ---
 
@@ -53,18 +66,41 @@
 ```json
 {
   "artifacts": {
-    "artifact_type": {
-      "result_type": "artifact",
+    "navigation": {
+      "result_type": "navigation_result",
       "semantic_payload": {
-        // Artifact data
+        "target_solution": "content_solution",
+        "navigation_type": "solution_switch",
+        "requires_context_transfer": true
       },
-      "renderings": {}
+      "renderings": {
+        "route": "/pillars/content",
+        "solution_id": "content_solution",
+        "solution_name": "Content Solution",
+        "pillar_name": "content",
+        "navigation_metadata": {
+          "from_solution": "coexistence",
+          "to_solution": "content_solution",
+          "context_preserved": true
+        },
+        "pre_conditions": [],
+        "initial_state": {
+          "welcome_message": "Welcome to Content Solution! Upload a file to begin.",
+          "suggested_actions": ["upload_file", "view_artifacts"]
+        },
+        "breadcrumbs": [
+          { "label": "Home", "route": "/" },
+          { "label": "Content", "route": "/pillars/content" }
+        ]
+      }
     }
   },
   "events": [
     {
-      "type": "event_type",
-      // Event data
+      "type": "navigation_initiated",
+      "from_solution": "coexistence",
+      "to_solution": "content_solution",
+      "pillar_name": "content"
     }
   ]
 }
@@ -74,9 +110,10 @@
 
 ```json
 {
-  "error": "Error message",
-  "error_code": "ERROR_CODE",
-  "execution_id": "exec_abc123"
+  "error": "Solution not found",
+  "error_code": "SOLUTION_NOT_FOUND",
+  "execution_id": "exec_abc123",
+  "solution_id": "invalid_solution"
 }
 ```
 
@@ -85,17 +122,14 @@
 ## 4. Artifact Registration
 
 ### State Surface Registration
-- **Artifact ID:** [How artifact_id is generated]
-- **Artifact Type:** `"artifact_type"`
-- **Lifecycle State:** `"PENDING"` or `"READY"`
+- **Artifact ID:** `nav_{session_id}_{solution_id}_{timestamp}`
+- **Artifact Type:** `"navigation_result"`
+- **Lifecycle State:** `"READY"`
 - **Produced By:** `{ intent: "navigate_to_solution", execution_id: "<execution_id>" }`
-- **Semantic Descriptor:** [Descriptor details]
-- **Parent Artifacts:** [List of parent artifact IDs]
-- **Materializations:** [List of materializations]
+- **Materializations:** Logged for analytics
 
 ### Artifact Index Registration
-- Indexed in Supabase `artifact_index` table
-- Includes: [List of indexed fields]
+- Indexed for analytics: session_id, from_solution, to_solution, timestamp
 
 ---
 
@@ -103,31 +137,35 @@
 
 ### Idempotency Key
 ```
-idempotency_key = hash([key components])
+idempotency_key = hash(session_id + solution_id + pillar_name + "navigate_to_solution")
 ```
 
 ### Scope
-- [Describe scope: per tenant, per session, per artifact, etc.]
+- Per session + target
 
 ### Behavior
-- [Describe idempotent behavior]
+- Same navigation request returns same route (deterministic)
+- Context is re-prepared each time
 
 ---
 
 ## 6. Implementation Details
 
 ### Handler Location
-[Path to handler implementation]
+`symphainy_platform/solutions/coexistence/journeys/navigation_journey.py`
 
 ### Key Implementation Steps
-1. [Step 1]
-2. [Step 2]
-3. [Step 3]
+1. Validate solution_id exists in Solution Registry
+2. Check user has permission to access solution
+3. Determine route based on solution_id and pillar_name
+4. Prepare initial state for target solution
+5. Log navigation event for analytics
+6. Return navigation artifact
 
 ### Dependencies
-- **Public Works:** [Abstractions needed]
-- **State Surface:** [Methods needed]
-- **Runtime:** [Context requirements]
+- **Public Works:** registry_abstraction (Solution Registry)
+- **State Surface:** session state for context transfer
+- **Runtime:** ExecutionContext, Security validation
 
 ---
 
@@ -135,28 +173,47 @@ idempotency_key = hash([key components])
 
 ### Frontend Usage
 ```typescript
-// [Frontend code example]
+// From WelcomeJourney.tsx - handleStartCustomizedJourney
+const navResult = await platformState.submitIntent({
+  intent_type: "navigate_to_solution",
+  parameters: {
+    solution_id: "content_solution",
+    pillar_name: "content",
+    user_context: { session_id }
+  }
+});
+
+const nav = navResult.artifacts?.navigation?.renderings;
+router.push(nav.route);
+dispatch({ 
+  type: "SET_CHAT_STATE", 
+  payload: { initialMessage: nav.initial_state.welcome_message }
+});
 ```
 
 ### Expected Frontend Behavior
-1. [Behavior 1]
-2. [Behavior 2]
+1. Submit navigation intent
+2. Receive route and context
+3. Update breadcrumbs
+4. Navigate to new route
+5. Set initial chat message
 
 ---
 
 ## 8. Error Handling
 
 ### Validation Errors
-- [Error type] -> [Error response]
+- Unknown solution_id → Return SOLUTION_NOT_FOUND
+- Permission denied → Return ACCESS_DENIED
 
 ### Runtime Errors
-- [Error type] -> [Error response]
+- Registry unavailable → Return cached routes
 
 ### Error Response Format
 ```json
 {
-  "error": "Error message",
-  "error_code": "ERROR_CODE",
+  "error": "You don't have access to this solution",
+  "error_code": "ACCESS_DENIED",
   "execution_id": "exec_abc123",
   "intent_type": "navigate_to_solution"
 }
@@ -167,30 +224,33 @@ idempotency_key = hash([key components])
 ## 9. Testing & Validation
 
 ### Happy Path
-1. [Step 1]
-2. [Step 2]
+1. Request navigation to valid solution
+2. Verify route is correct
+3. Verify context is prepared
+4. Verify analytics event logged
 
 ### Boundary Violations
-- [Violation type] -> [Expected behavior]
+- Invalid solution_id → Return error
+- No permission → Return access denied
 
 ### Failure Scenarios
-- [Failure type] -> [Expected behavior]
+- Registry down → Use fallback routes
 
 ---
 
 ## 10. Contract Compliance
 
 ### Required Artifacts
-- `artifact_type` - Required
+- `navigation` - Required (navigation_result type)
 
 ### Required Events
-- `event_type` - Required
+- `navigation_initiated` - Required
 
 ### Lifecycle State
-- [Lifecycle state requirements]
+- Always READY
 
 ---
 
-**Last Updated:** [Date]  
-**Owner:** [Realm] Solution Team  
-**Status:** IN PROGRESS
+**Last Updated:** January 27, 2026  
+**Owner:** Coexistence Solution Team  
+**Status:** ENHANCED
