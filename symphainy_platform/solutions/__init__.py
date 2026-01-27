@@ -23,6 +23,16 @@ Available Solutions:
 - OutcomesSolution: Outcomes Realm capabilities (synthesis, roadmaps, POCs, blueprints)
 - SecuritySolution: Security Realm capabilities (auth, sessions, authorization) - FOUNDATIONAL
 - ControlTower: Platform command center (monitoring, management, composition)
+
+Usage:
+    from symphainy_platform.solutions import initialize_solutions
+    
+    services = await initialize_solutions(
+        public_works=public_works,
+        state_surface=state_surface,
+        solution_registry=solution_registry,
+        intent_registry=intent_registry
+    )
 """
 
 from .coexistence import CoexistenceSolution
@@ -32,13 +42,23 @@ from .operations_solution import OperationsSolution
 from .outcomes_solution import OutcomesSolution
 from .security_solution import SecuritySolution
 from .control_tower import ControlTower
+from .solution_initializer import (
+    initialize_solutions,
+    SolutionServices,
+    get_solution_summary
+)
 
 __all__ = [
+    # Solutions
     "CoexistenceSolution",
     "ContentSolution",
     "InsightsSolution",
     "OperationsSolution",
     "OutcomesSolution",
     "SecuritySolution",
-    "ControlTower"
+    "ControlTower",
+    # Initializer
+    "initialize_solutions",
+    "SolutionServices",
+    "get_solution_summary"
 ]

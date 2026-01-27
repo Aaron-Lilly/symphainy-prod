@@ -237,6 +237,21 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
     total_handlers = len(content_intents) + len(insights_intents) + len(outcomes_intents) + len(journey_intents) + len(operations_intents)
     logger.info(f"  ✅ IntentRegistry created with {total_handlers} intent handlers across all realms")
     
+    # Step 4.5: Initialize Platform Solutions
+    logger.info("  → Initializing Platform Solutions...")
+    from ..solutions import initialize_solutions
+    from ..civic_systems.platform_sdk.solution_registry import SolutionRegistry
+    
+    solution_registry = SolutionRegistry()
+    solution_services = await initialize_solutions(
+        public_works=public_works,
+        state_surface=state_surface,
+        solution_registry=solution_registry,
+        intent_registry=intent_registry,
+        initialize_mcp_servers=True
+    )
+    logger.info("  ✅ Platform Solutions initialized")
+    
     # Step 5: Create ExecutionLifecycleManager
     logger.info("  → Creating ExecutionLifecycleManager...")
     execution_lifecycle_manager = ExecutionLifecycleManager(
@@ -262,7 +277,9 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
         artifact_storage=artifact_storage,
         file_storage=file_storage,
         wal=wal,
-        intent_registry=intent_registry
+        intent_registry=intent_registry,
+        solution_registry=solution_registry,
+        solution_services=solution_services
     )
     
     logger.info("✅ Runtime object graph built successfully")

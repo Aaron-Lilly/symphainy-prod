@@ -122,6 +122,18 @@ async def lifespan(app: FastAPI):
         guide_agent_service = GuideAgentService(public_works=public_works)
         logger.info("✅ Guide Agent Service initialized")
         
+        # Initialize Platform Solutions
+        logger.info("📦 Step 7: Initializing Platform Solutions...")
+        from symphainy_platform.solutions import initialize_solutions
+        solution_services = await initialize_solutions(
+            public_works=public_works,
+            state_surface=None,  # Experience service doesn't have direct state_surface access
+            solution_registry=solution_registry,
+            intent_registry=None,  # Intent registration happens in Runtime
+            initialize_mcp_servers=False  # MCP servers initialized in Runtime
+        )
+        logger.info("✅ Platform Solutions initialized")
+        
         # Store components in app state
         app.state.public_works = public_works
         app.state.traffic_cop_sdk = traffic_cop_sdk
@@ -130,6 +142,7 @@ async def lifespan(app: FastAPI):
         app.state.solution_registry = solution_registry
         app.state.admin_dashboard_service = admin_dashboard_service
         app.state.guide_agent_service = guide_agent_service
+        app.state.solution_services = solution_services
         
         experience_components["public_works"] = public_works
         experience_components["traffic_cop_sdk"] = traffic_cop_sdk
