@@ -2,9 +2,9 @@
 
 **Intent:** introduce_platform  
 **Intent Type:** `introduce_platform`  
-**Journey:** Journey Coexistence Introduction (`journey_coexistence_introduction`)  
-**Realm:** Coexistence Solution  
-**Status:** IN PROGRESS  
+**Journey:** Platform Introduction (`journey_coexistence_introduction`)  
+**Solution:** Coexistence Solution  
+**Status:** ENHANCED  
 **Priority:** PRIORITY 1
 
 ---
@@ -12,15 +12,23 @@
 ## 1. Intent Overview
 
 ### Purpose
-[Describe the purpose of this intent based on journey contract]
+Introduces new users to the Symphainy platform, explaining its core value proposition: enabling boundary-crossing work coordination through the Coexistence Fabric. This intent provides a personalized welcome message and sets the context for the user's journey.
 
 ### Intent Flow
 ```
-[Describe the flow for this intent]
+[User lands on platform or requests introduction]
+    ↓
+[Validate session and user context]
+    ↓
+[Generate personalized welcome message]
+    ↓
+[Create introduction artifact with platform overview]
+    ↓
+[Return welcome content and next steps]
 ```
 
 ### Expected Observable Artifacts
-- [List expected artifacts]
+- `introduction_artifact` - Platform introduction content tailored to user context
 
 ---
 
@@ -30,19 +38,24 @@
 
 | Parameter | Type | Description | Validation |
 |-----------|------|-------------|------------|
-| `parameter_name` | `type` | Description | Validation rules |
+| `user_context` | `object` | User context information | Must include session_id |
 
 ### Optional Parameters
 
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
-| `parameter_name` | `type` | Description | Default value |
+| `user_name` | `string` | User's name for personalization | "User" |
+| `user_goals` | `string` | Initial goals if provided | null |
+| `referral_source` | `string` | How user found the platform | "direct" |
+| `language` | `string` | Preferred language | "en" |
 
 ### Context Metadata (from ExecutionContext)
 
 | Metadata Key | Type | Description | Source |
 |--------------|------|-------------|--------|
-| `metadata_key` | `type` | Description | Runtime |
+| `tenant_id` | `string` | Tenant identifier | Runtime |
+| `session_id` | `string` | Session identifier | Runtime |
+| `execution_id` | `string` | Execution trace ID | Runtime |
 
 ---
 
@@ -53,18 +66,39 @@
 ```json
 {
   "artifacts": {
-    "artifact_type": {
-      "result_type": "artifact",
+    "introduction": {
+      "result_type": "platform_introduction",
       "semantic_payload": {
-        // Artifact data
+        "welcome_type": "new_user",
+        "personalization_level": "basic",
+        "user_name": "User"
       },
-      "renderings": {}
+      "renderings": {
+        "welcome_message": "Welcome to Symphainy! Let's build your coexistence future together.",
+        "platform_tagline": "Coordinate boundary-crossing work across systems",
+        "value_propositions": [
+          "Enable legacy and modern systems to work together",
+          "AI-powered guidance through your transformation journey",
+          "Governed, secure coordination of cross-boundary workflows"
+        ],
+        "next_steps": [
+          "Explore the solution catalog",
+          "Tell us about your goals",
+          "Start your guided journey"
+        ],
+        "key_concepts": {
+          "coexistence": "Systems working together without replacement",
+          "boundary_crossing": "Workflows spanning multiple systems and teams",
+          "guided_journey": "AI-assisted path through platform capabilities"
+        }
+      }
     }
   },
   "events": [
     {
-      "type": "event_type",
-      // Event data
+      "type": "platform_introduction_presented",
+      "user_name": "User",
+      "personalization_level": "basic"
     }
   ]
 }
@@ -74,8 +108,8 @@
 
 ```json
 {
-  "error": "Error message",
-  "error_code": "ERROR_CODE",
+  "error": "Failed to generate introduction",
+  "error_code": "INTRODUCTION_FAILED",
   "execution_id": "exec_abc123"
 }
 ```
@@ -85,17 +119,17 @@
 ## 4. Artifact Registration
 
 ### State Surface Registration
-- **Artifact ID:** [How artifact_id is generated]
-- **Artifact Type:** `"artifact_type"`
-- **Lifecycle State:** `"PENDING"` or `"READY"`
+- **Artifact ID:** `intro_{session_id}_{timestamp}`
+- **Artifact Type:** `"platform_introduction"`
+- **Lifecycle State:** `"READY"` (ephemeral, no PENDING state)
 - **Produced By:** `{ intent: "introduce_platform", execution_id: "<execution_id>" }`
-- **Semantic Descriptor:** [Descriptor details]
-- **Parent Artifacts:** [List of parent artifact IDs]
-- **Materializations:** [List of materializations]
+- **Semantic Descriptor:** Platform introduction content
+- **Parent Artifacts:** None (root artifact)
+- **Materializations:** In-memory only (ephemeral)
 
 ### Artifact Index Registration
-- Indexed in Supabase `artifact_index` table
-- Includes: [List of indexed fields]
+- Not indexed (ephemeral artifact)
+- Session-scoped only
 
 ---
 
@@ -103,31 +137,34 @@
 
 ### Idempotency Key
 ```
-idempotency_key = hash([key components])
+idempotency_key = hash(session_id + user_name + "introduce_platform")
 ```
 
 ### Scope
-- [Describe scope: per tenant, per session, per artifact, etc.]
+- Per session (same session returns same introduction)
 
 ### Behavior
-- [Describe idempotent behavior]
+- Returns cached introduction for same session
+- New session generates fresh introduction
 
 ---
 
 ## 6. Implementation Details
 
 ### Handler Location
-[Path to handler implementation]
+`symphainy_platform/solutions/coexistence/journeys/introduction_journey.py`
 
 ### Key Implementation Steps
-1. [Step 1]
-2. [Step 2]
-3. [Step 3]
+1. Extract user context from parameters
+2. Generate personalized welcome message based on user_name and user_goals
+3. Compile platform value propositions
+4. Create structured introduction artifact
+5. Log analytics event for introduction presented
 
 ### Dependencies
-- **Public Works:** [Abstractions needed]
-- **State Surface:** [Methods needed]
-- **Runtime:** [Context requirements]
+- **Public Works:** telemetry_abstraction (for analytics)
+- **State Surface:** Optional (ephemeral artifacts)
+- **Runtime:** ExecutionContext for session info
 
 ---
 
@@ -135,28 +172,43 @@ idempotency_key = hash([key components])
 
 ### Frontend Usage
 ```typescript
-// [Frontend code example]
+// From WelcomeJourney.tsx
+const result = await platformState.submitIntent({
+  intent_type: "introduce_platform",
+  parameters: {
+    user_context: { session_id },
+    user_name: user?.name || "User",
+    user_goals: userGoals || null
+  }
+});
+
+// Display welcome content
+const intro = result.artifacts?.introduction?.renderings;
+setWelcomeMessage(intro.welcome_message);
+setValueProps(intro.value_propositions);
 ```
 
 ### Expected Frontend Behavior
-1. [Behavior 1]
-2. [Behavior 2]
+1. Display welcome message prominently
+2. Show value propositions as feature cards
+3. Present next steps as actionable buttons
+4. Enable transition to goal analysis or solution catalog
 
 ---
 
 ## 8. Error Handling
 
 ### Validation Errors
-- [Error type] -> [Error response]
+- Missing session_id → Return "Session required" error
 
 ### Runtime Errors
-- [Error type] -> [Error response]
+- Context generation failure → Return default generic introduction
 
 ### Error Response Format
 ```json
 {
-  "error": "Error message",
-  "error_code": "ERROR_CODE",
+  "error": "Session required for platform introduction",
+  "error_code": "SESSION_REQUIRED",
   "execution_id": "exec_abc123",
   "intent_type": "introduce_platform"
 }
@@ -167,30 +219,33 @@ idempotency_key = hash([key components])
 ## 9. Testing & Validation
 
 ### Happy Path
-1. [Step 1]
-2. [Step 2]
+1. User lands on platform with valid session
+2. Submit introduce_platform intent
+3. Receive personalized welcome content
+4. Verify all value propositions present
 
 ### Boundary Violations
-- [Violation type] -> [Expected behavior]
+- No session → Return error requiring session
+- Invalid user_context → Return generic introduction
 
 ### Failure Scenarios
-- [Failure type] -> [Expected behavior]
+- Backend unavailable → Return cached/default introduction
 
 ---
 
 ## 10. Contract Compliance
 
 ### Required Artifacts
-- `artifact_type` - Required
+- `introduction` - Required (platform_introduction type)
 
 ### Required Events
-- `event_type` - Required
+- `platform_introduction_presented` - Required
 
 ### Lifecycle State
-- [Lifecycle state requirements]
+- Always READY (ephemeral artifact, no pending state)
 
 ---
 
-**Last Updated:** [Date]  
-**Owner:** [Realm] Solution Team  
-**Status:** IN PROGRESS
+**Last Updated:** January 27, 2026  
+**Owner:** Coexistence Solution Team  
+**Status:** ENHANCED
