@@ -30,19 +30,21 @@ Retrieve active chat session (if exists)
 
 | Parameter | Type | Description | Validation |
 |-----------|------|-------------|------------|
-| `parameter_name` | `type` | Description | Validation rules |
+| None | - | - | - |
 
 ### Optional Parameters
 
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
-| `parameter_name` | `type` | Description | Default value |
+| `chat_session_id` | `string` | Specific session ID to retrieve | If not provided, retrieves active session for user |
 
 ### Context Metadata (from ExecutionContext)
 
 | Metadata Key | Type | Description | Source |
 |--------------|------|-------------|--------|
-| `metadata_key` | `type` | Description | Runtime |
+| `user_id` | `string` | User identifier | Runtime (required) |
+| `tenant_id` | `string` | Tenant identifier | Runtime (required) |
+| `session_id` | `string` | User session identifier | Runtime (from Security Solution) |
 
 ---
 
@@ -117,17 +119,26 @@ idempotency_key = hash([key components])
 ## 6. Implementation Details
 
 ### Handler Location
-[Path to handler implementation]
+- **New Implementation:** `symphainy_platform/realms/coexistence/intent_services/get_chat_session_service.py` (to be created)
 
 ### Key Implementation Steps
-1. [Step 1]
-2. [Step 2]
-3. [Step 3]
+1. **Extract Context:** Get `user_id`, `tenant_id` from ExecutionContext
+2. **Query Chat Session:**
+   - If `chat_session_id` provided: Query `chat_sessions` table by `chat_session_id`
+   - If not provided: Query `chat_sessions` table by `user_id` and `tenant_id` where `lifecycle_state: "ACTIVE"`
+3. **Check Session Exists:**
+   - If session found: Retrieve session artifact from State Surface
+   - If not found: Return session not found response
+4. **Return Chat Session Artifact:**
+   - Return `chat_session_id`, `active_agent`, `context`, `created_at`, `updated_at`
 
 ### Dependencies
-- **Public Works:** [Abstractions needed]
-- **State Surface:** [Methods needed]
-- **Runtime:** [Context requirements]
+- **Public Works:**
+  - `TenantAbstraction` - For tenant-scoped queries
+- **State Surface:**
+  - `get_artifact()` - Retrieve chat session artifact
+- **Runtime:**
+  - `ExecutionContext` - Tenant, user, session, execution context
 
 ---
 
@@ -135,12 +146,29 @@ idempotency_key = hash([key components])
 
 ### Frontend Usage
 ```typescript
-// [Frontend code example]
+// When chat interface opens or user toggles agent
+const executionId = await platformState.submitIntent(
+  'get_chat_session',
+  {}
+);
+
+const status = await platformState.getExecutionStatus(executionId);
+if (status?.artifacts?.chat_session?.semantic_payload?.exists) {
+  const session = status.artifacts.chat_session.semantic_payload;
+  const activeAgent = session.active_agent;
+  const context = session.context;
+  // Load chat interface with existing session
+} else {
+  // No session found, initialize new one
+  await platformState.submitIntent('initialize_chat_session', {});
+}
 ```
 
 ### Expected Frontend Behavior
-1. [Behavior 1]
-2. [Behavior 2]
+1. **Chat interface opens** - Frontend calls this intent to check for existing session
+2. **Session found** - Frontend loads chat with existing context and active agent
+3. **Session not found** - Frontend initializes new session
+4. **Agent toggle** - Frontend calls this intent to get current session before toggling
 
 ---
 
@@ -181,16 +209,25 @@ idempotency_key = hash([key components])
 ## 10. Contract Compliance
 
 ### Required Artifacts
-- `artifact_type` - Required
+- `chat_session` - Required (if session exists) or session not found response
 
 ### Required Events
-- `event_type` - Required
+- `chat_session_retrieved` - Required (when session is found)
+- `chat_session_not_found` - Required (when session is not found)
 
 ### Lifecycle State
-- [Lifecycle state requirements]
+- **No lifecycle state** - This is a retrieval-only intent with no artifacts created
+- **Returned session lifecycle state** - Must be "ACTIVE" (only active sessions are returned)
+
+### Contract Validation
+- ✅ Intent must return chat session artifact if session exists
+- ✅ Intent must return session not found response if session doesn't exist
+- ✅ No side effects (no artifacts created, no state changes)
+- ✅ Idempotent (same input = same output)
+- ✅ Session must be active (lifecycle_state: "ACTIVE")
 
 ---
 
 **Last Updated:** January 27, 2026  
 **Owner:** Coexistence Solution Team  
-**Status:** ⏳ **IN PROGRESS**
+**Status:** ✅ **ENHANCED** - Ready for implementation

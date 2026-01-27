@@ -103,31 +103,57 @@ Update shared conversation context
 
 ### Idempotency Key
 ```
-idempotency_key = hash([key components])
+idempotency_key = hash(chat_session_id + context_hash)
 ```
 
 ### Scope
-- [Describe scope: per tenant, per session, per artifact, etc.]
+- Per chat session, per context state
+- Same session + same context = same update result (idempotent)
 
 ### Behavior
-- [Describe idempotent behavior]
+- If context update with same data is called multiple times, returns same updated session (idempotent)
+- Context merging is deterministic (same inputs = same merged output)
+- Prevents duplicate context updates
 
 ---
 
 ## 6. Implementation Details
 
 ### Handler Location
-[Path to handler implementation]
+- **New Implementation:** `symphainy_platform/realms/coexistence/intent_services/update_chat_context_service.py` (to be created)
 
 ### Key Implementation Steps
-1. [Step 1]
-2. [Step 2]
-3. [Step 3]
+1. **Extract Parameters:** Get `context_updates`, `chat_session_id`, `merge_strategy` from intent parameters
+2. **Retrieve Existing Session:**
+   - If `chat_session_id` provided: Query session by ID
+   - If not provided: Query active session by `user_id` and `tenant_id`
+   - Verify session exists and `lifecycle_state: "ACTIVE"`
+3. **Merge Context:**
+   - Get existing `context` from session
+   - If `merge_strategy: "merge"`: Deep merge `context_updates` with existing context
+   - If `merge_strategy: "replace"`: Replace existing context with `context_updates`
+   - Context structure:
+     - `conversation_history: array` - Array of messages
+     - `shared_intent: string` - Shared intent across agents
+     - `pillar_context: object` - Pillar-specific context
+     - `agent_metadata: object` - Agent-specific metadata
+4. **Update Session Artifact in State Surface:**
+   - Update chat session artifact with merged context
+   - Update `updated_at` timestamp
+5. **Update Session in Supabase:**
+   - Update `chat_sessions` table with merged context
+   - Update `updated_at` timestamp
+6. **Return Updated Session Artifact:**
+   - Return `chat_session_id`, `active_agent`, merged `context`, `updated_at`
 
 ### Dependencies
-- **Public Works:** [Abstractions needed]
-- **State Surface:** [Methods needed]
-- **Runtime:** [Context requirements]
+- **Public Works:**
+  - `TenantAbstraction` - For tenant-scoped operations
+- **State Surface:**
+  - `get_artifact()` - Retrieve chat session artifact
+  - `update_artifact()` - Update chat session artifact
+- **Runtime:**
+  - `ExecutionContext` - Tenant, user, session, execution context
 
 ---
 
@@ -135,12 +161,35 @@ idempotency_key = hash([key components])
 
 ### Frontend Usage
 ```typescript
-// [Frontend code example]
+// After user sends message or agent responds
+const executionId = await platformState.submitIntent(
+  'update_chat_context',
+  {
+    context_updates: {
+      conversation_history: [
+        ...existingHistory,
+        {
+          role: 'user',
+          content: userMessage,
+          timestamp: new Date().toISOString()
+        },
+        {
+          role: 'agent',
+          content: agentResponse,
+          timestamp: new Date().toISOString()
+        }
+      ],
+      shared_intent: detectedIntent
+    }
+  }
+);
 ```
 
 ### Expected Frontend Behavior
-1. [Behavior 1]
-2. [Behavior 2]
+1. **After message exchange** - Frontend calls this intent to update context
+2. **Context merged** - New context merged with existing context
+3. **Context available** - Updated context available for agent toggle
+4. **Session persisted** - Context persists across page refreshes
 
 ---
 
@@ -167,30 +216,48 @@ idempotency_key = hash([key components])
 ## 9. Testing & Validation
 
 ### Happy Path
-1. [Step 1]
-2. [Step 2]
+1. User has active chat session (`chat_session_id: "chat_session_abc123"`)
+2. User sends message to GuideAgent
+3. `update_chat_context` intent executes with `context_updates: {conversation_history: [...]}`
+4. Existing context retrieved from session
+5. New context merged with existing context
+6. Session artifact updated in State Surface
+7. Session updated in Supabase
+8. Returns updated session with merged context
+9. Context available for agent toggle
 
 ### Boundary Violations
-- [Violation type] -> [Expected behavior]
+- **Session not found:** Chat session does not exist -> Returns `ERROR_CODE: "SESSION_NOT_FOUND"`
+- **Invalid context_updates:** Context updates not an object -> Returns `ERROR_CODE: "INVALID_PARAMETER_TYPE"`
+- **Context too large:** Context exceeds size limit -> Returns `ERROR_CODE: "CONTEXT_TOO_LARGE"` or truncates
 
 ### Failure Scenarios
-- [Failure type] -> [Expected behavior]
+- **Database unavailable:** Cannot update session -> Returns `ERROR_CODE: "DATABASE_UNAVAILABLE"`, frontend shows error
+- **Context merge failure:** Merge fails (circular reference, etc.) -> Returns `ERROR_CODE: "CONTEXT_MERGE_FAILED"`, frontend shows error
+- **Partial update:** Context updated in database but artifact not updated -> Context in database but artifact stale (requires cleanup)
 
 ---
 
 ## 10. Contract Compliance
 
 ### Required Artifacts
-- `artifact_type` - Required
+- `chat_session` - Required (updated chat session artifact)
 
 ### Required Events
-- `event_type` - Required
+- `chat_context_updated` - Required (emitted when context is updated)
 
 ### Lifecycle State
-- [Lifecycle state requirements]
+- **Lifecycle state unchanged** - Session remains `"ACTIVE"` (only context is updated)
+
+### Contract Validation
+- ✅ Artifact must have updated `context` in semantic_payload
+- ✅ Context must be merged correctly (no data loss)
+- ✅ Session must be updated in Supabase `chat_sessions` table
+- ✅ Artifact must be updated in State Surface
+- ✅ Idempotent (same session + same context = same update)
 
 ---
 
 **Last Updated:** January 27, 2026  
 **Owner:** Coexistence Solution Team  
-**Status:** ⏳ **IN PROGRESS**
+**Status:** ✅ **ENHANCED** - Ready for implementation
