@@ -14,7 +14,9 @@ import sys
 from pathlib import Path
 
 # Add project root to path
-project_root = Path(__file__).resolve().parents[5]
+# Path: symphainy_platform/bases/intent_service_base.py
+# parents[0] = bases, parents[1] = symphainy_platform, parents[2] = symphainy_coexistence_fabric
+project_root = Path(__file__).resolve().parents[2]
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
