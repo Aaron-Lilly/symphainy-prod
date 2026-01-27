@@ -1,0 +1,26 @@
+{
+  "test_framework": "pytest",
+  "test_location": "tests/",
+  "contract_tests": "tests/contracts/",
+  "integration_tests": "tests/integration/",
+  "e2e_tests": "tests/e2e/",
+  "validation": {
+    "contract_compliance": true,
+    "pattern_validation": true,
+    "architecture_validation": true
+  },
+  "test_structure": {
+    "intent_tests": "tests/contracts/intents/",
+    "journey_tests": "tests/contracts/journeys/",
+    "solution_tests": "tests/contracts/solutions/",
+    "integration_tests": "tests/integration/",
+    "e2e_tests": "tests/e2e/"
+  },
+  "validation_rules": {
+    "must_align_to_contracts": true,
+    "must_use_artifact_centric_patterns": true,
+    "must_validate_lifecycle_states": true,
+    "must_validate_materializations": true,
+    "must_validate_lineage": true
+  }
+}

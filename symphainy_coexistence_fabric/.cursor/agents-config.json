@@ -1,0 +1,57 @@
+{
+  "project_name": "SymphAIny Coexistence Fabric v1",
+  "architecture": {
+    "pattern": "solution_centric",
+    "hierarchy": ["solution", "journey", "intent"],
+    "realms": ["content", "insights", "journey", "outcomes"],
+    "civic_systems": ["smart_city", "agentic", "experience"]
+  },
+  "contracts": {
+    "location": "docs/intent_contracts/",
+    "journey_location": "docs/journey_contracts/",
+    "solution_location": "docs/solution_contracts/"
+  },
+  "patterns": {
+    "artifact_centric": true,
+    "intent_services": true,
+    "orchestrators_in_journey_realm": true,
+    "solution_contracts": true
+  },
+  "current_work": {
+    "phase": "setup_and_contract_creation",
+    "focus": "create_contracts_first",
+    "next_steps": [
+      "Create solution contracts for all 4 MVP solutions",
+      "Create journey contracts for each solution",
+      "Create intent contracts for each journey",
+      "Validate contracts for completeness"
+    ]
+  },
+  "constraints": {
+    "no_backward_compatibility": true,
+    "contract_based_testing": true,
+    "artifact_centric_only": true
+  },
+  "solutions": {
+    "security": {
+      "solution_id": "security_solution_v1",
+      "status": "PLANNED",
+      "components": ["Security", "Coexistence", "Policies", "Experiences", "Business Logic"]
+    },
+    "coexistence": {
+      "solution_id": "coexistence_solution_v1",
+      "status": "PLANNED",
+      "components": ["Coexistence", "Policies", "Experiences", "Business Logic"]
+    },
+    "control_tower": {
+      "solution_id": "control_tower_solution_v1",
+      "status": "PLANNED",
+      "components": ["Control Tower", "Coexistence", "Policies", "Experiences", "Business Logic"]
+    },
+    "platform_mvp": {
+      "solution_id": "platform_mvp_solution_v1",
+      "status": "PLANNED",
+      "components": ["Content Realm", "Insights Realm", "Journey Realm", "Outcomes Realm", "Coexistence", "Policies", "Experiences", "Business Logic"]
+    }
+  }
+}
