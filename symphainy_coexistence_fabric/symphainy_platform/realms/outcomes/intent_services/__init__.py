@@ -1,7 +1,7 @@
 """
-Solution Realm Intent Services
+Outcomes Realm Intent Services
 
-Intent services for the Solution Realm. Each service implements a single intent type
+Intent services for the Outcomes Realm. Each service implements a single intent type
 following the BaseIntentService pattern.
 
 Architecture:
@@ -17,6 +17,11 @@ Services:
 - CreateBlueprintService: Create coexistence blueprint from workflow
 - CreateSolutionService: Create platform solution from artifact
 - ExportArtifactService: Export artifact in various formats
+
+Naming Convention:
+- Realm name: Outcomes Realm
+- Artifact prefix: outcome_* (e.g., outcome_synthesis, outcome_roadmap)
+- Solution = platform construct that composes journeys (OutcomesSolution)
 """
 
 from .synthesize_outcome_service import SynthesizeOutcomeService

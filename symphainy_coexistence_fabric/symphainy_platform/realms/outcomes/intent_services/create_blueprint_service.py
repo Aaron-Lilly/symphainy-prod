@@ -1,9 +1,9 @@
 """
 Create Blueprint Intent Service
 
-Implements the create_blueprint intent for the Solution Realm.
+Implements the create_blueprint intent for the Outcomes Realm.
 
-Contract: docs/intent_contracts/journey_solution_blueprint_creation/intent_create_blueprint.md
+Contract: docs/intent_contracts/journey_outcomes_blueprint_creation/intent_create_blueprint.md
 
 Purpose: Create coexistence blueprint from workflow analysis. Takes workflow_id and creates a
 structured blueprint with current state, coexistence state, transformation roadmap, and
@@ -12,6 +12,11 @@ responsibility matrix.
 WHAT (Intent Service Role): I create coexistence blueprints from workflows
 HOW (Intent Service Implementation): I execute the create_blueprint intent, analyze workflow,
     create blueprint structure, store in Artifact Plane, and return structured artifact
+
+Naming Convention:
+- Realm: Outcomes Realm
+- Artifacts: outcome_blueprint
+- Solution = platform construct (OutcomesSolution)
 """
 
 import sys

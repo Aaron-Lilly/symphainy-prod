@@ -1,16 +1,21 @@
 """
 Export Artifact Intent Service
 
-Implements the export_artifact intent for the Solution Realm.
+Implements the export_artifact intent for the Outcomes Realm.
 
-Contract: docs/intent_contracts/journey_solution_artifact_export/intent_export_artifact.md
+Contract: docs/intent_contracts/journey_outcomes_artifact_export/intent_export_artifact.md
 
-Purpose: Export solution artifacts (blueprints, POCs, roadmaps) in various formats (JSON, DOCX, YAML).
+Purpose: Export outcome artifacts (blueprints, POCs, roadmaps) in various formats (JSON, DOCX, YAML).
 Retrieves artifact from Artifact Plane, formats it, stores export, and returns download URL.
 
 WHAT (Intent Service Role): I export artifacts in various formats
 HOW (Intent Service Implementation): I execute the export_artifact intent, retrieve artifact,
     format it, store export file, and return download URL
+
+Naming Convention:
+- Realm: Outcomes Realm
+- Artifacts: outcome_* (blueprints, POCs, roadmaps)
+- Solution = platform construct (OutcomesSolution)
 """
 
 import sys

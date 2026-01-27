@@ -1,9 +1,9 @@
 """
 Create POC Intent Service
 
-Implements the create_poc intent for the Solution Realm.
+Implements the create_poc intent for the Outcomes Realm.
 
-Contract: docs/intent_contracts/journey_solution_poc_proposal/intent_create_poc.md
+Contract: docs/intent_contracts/journey_outcomes_poc_proposal/intent_create_poc.md
 
 Purpose: Create Proof of Concept proposal from description. Takes description and creates a
 structured POC proposal with objectives, scope, deliverables, timeline, and resources.
@@ -11,6 +11,11 @@ structured POC proposal with objectives, scope, deliverables, timeline, and reso
 WHAT (Intent Service Role): I create POC proposals from descriptions
 HOW (Intent Service Implementation): I execute the create_poc intent, create POC structure,
     generate visualization, store in Artifact Plane, and return structured artifact
+
+Naming Convention:
+- Realm: Outcomes Realm
+- Artifacts: outcome_poc
+- Solution = platform construct (OutcomesSolution)
 """
 
 import sys

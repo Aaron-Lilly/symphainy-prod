@@ -1,9 +1,9 @@
 """
 Generate Roadmap Intent Service
 
-Implements the generate_roadmap intent for the Solution Realm.
+Implements the generate_roadmap intent for the Outcomes Realm.
 
-Contract: docs/intent_contracts/journey_solution_roadmap_generation/intent_generate_roadmap.md
+Contract: docs/intent_contracts/journey_outcomes_roadmap_generation/intent_generate_roadmap.md
 
 Purpose: Generate strategic roadmap from business goals. Takes goals array and creates a
 structured roadmap with phases, milestones, timeline, and dependencies.
@@ -11,6 +11,11 @@ structured roadmap with phases, milestones, timeline, and dependencies.
 WHAT (Intent Service Role): I generate strategic roadmaps from goals
 HOW (Intent Service Implementation): I execute the generate_roadmap intent, create roadmap
     structure, generate visualization, store in Artifact Plane, and return structured artifact
+
+Naming Convention:
+- Realm: Outcomes Realm
+- Artifacts: outcome_roadmap
+- Solution = platform construct (OutcomesSolution)
 """
 
 import sys

@@ -1,9 +1,9 @@
 """
 Create Solution Intent Service
 
-Implements the create_solution intent for the Solution Realm.
+Implements the create_solution intent for the Outcomes Realm.
 
-Contract: docs/intent_contracts/journey_solution_creation/intent_create_solution.md
+Contract: docs/intent_contracts/journey_outcomes_creation/intent_create_solution.md
 
 Purpose: Create platform solution from roadmap, POC, or blueprint. Retrieves source artifact
 from Artifact Plane and creates a registered platform solution using Solution SDK.
@@ -11,6 +11,11 @@ from Artifact Plane and creates a registered platform solution using Solution SD
 WHAT (Intent Service Role): I create platform solutions from source artifacts
 HOW (Intent Service Implementation): I execute the create_solution intent, retrieve source
     artifact, build solution via Solution SDK, register it, and return structured artifact
+
+Naming Convention:
+- Realm: Outcomes Realm
+- Solution (intent) = registers artifacts as platform solutions
+- Solution (platform) = OutcomesSolution that composes journeys
 """
 
 import sys

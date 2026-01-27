@@ -9,8 +9,13 @@ HOW (Solution Implementation): I coordinate journey orchestrators, expose SOA AP
 
 Key Principle: The platform runs Solutions; Solutions run systems.
 Solutions bind domain services to external systems.
+
+Available Solutions:
+- ContentSolution: Content Realm capabilities (file upload, parsing, embedding)
+- OutcomesSolution: Outcomes Realm capabilities (synthesis, roadmaps, POCs, blueprints)
 """
 
 from .content_solution import ContentSolution
+from .outcomes_solution import OutcomesSolution
 
-__all__ = ["ContentSolution"]
+__all__ = ["ContentSolution", "OutcomesSolution"]

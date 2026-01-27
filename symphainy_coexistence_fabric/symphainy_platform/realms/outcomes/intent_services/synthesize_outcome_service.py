@@ -1,17 +1,22 @@
 """
 Synthesize Outcome Intent Service
 
-Implements the synthesize_outcome intent for the Solution Realm.
+Implements the synthesize_outcome intent for the Outcomes Realm.
 
-Contract: docs/intent_contracts/journey_solution_synthesis/intent_synthesize_outcome.md
+Contract: docs/intent_contracts/journey_outcomes_synthesis/intent_synthesize_outcome.md
 
 Purpose: Synthesize business outcomes from Content, Insights, and Journey realms into a unified
-solution summary. This intent aggregates pillar summaries from session state, generates synthesis
+outcome summary. This intent aggregates pillar summaries from session state, generates synthesis
 with realm-specific visualizations.
 
 WHAT (Intent Service Role): I synthesize outcomes from all pillars
 HOW (Intent Service Implementation): I execute the synthesize_outcome intent, aggregate pillar
     summaries, generate synthesis reports and visualizations, and return structured artifacts
+
+Naming Convention:
+- Realm: Outcomes Realm (not Solution Realm)
+- Artifacts: outcome_* prefix (e.g., outcome_synthesis)
+- Solution = platform construct that composes journeys (OutcomesSolution)
 """
 
 import sys
