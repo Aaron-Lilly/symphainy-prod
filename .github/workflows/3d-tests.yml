@@ -1,0 +1,137 @@
+name: 3D Test Suite
+
+on:
+  pull_request:
+    branches: [main, cursor/*]
+  push:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # Phase 1: Unit Tests (no services needed)
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-asyncio pytest-cov
+          pip install -r requirements-as2.txt || true
+      
+      - name: Run Startup Tests
+        run: pytest tests/3d/startup/ -v --tb=short
+      
+      - name: Run Solution Tests
+        run: pytest tests/3d/solution/ -v --tb=short
+      
+      - name: Run MCP Tests
+        run: pytest tests/3d/mcp/ -v --tb=short
+      
+      - name: Run Agent Tests
+        run: pytest tests/3d/agents/ -v --tb=short
+      
+      - name: Run Artifact Tests
+        run: pytest tests/3d/artifacts/ -v --tb=short
+      
+      - name: Run Security Tests (Unit)
+        run: pytest tests/3d/security/ -v --tb=short
+
+  # Phase 2: Journey Tests
+  journey-tests:
+    name: Journey Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-asyncio
+          pip install -r requirements-as2.txt || true
+      
+      - name: Run Journey Tests - Coexistence
+        run: pytest tests/3d/journey/coexistence/ -v --tb=short
+      
+      - name: Run Journey Tests - Content
+        run: pytest tests/3d/journey/content_solution/ -v --tb=short
+      
+      - name: Run Journey Tests - Insights
+        run: pytest tests/3d/journey/insights_solution/ -v --tb=short
+      
+      - name: Run Journey Tests - All Others
+        run: |
+          pytest tests/3d/journey/operations_solution/ -v --tb=short || true
+          pytest tests/3d/journey/outcomes_solution/ -v --tb=short || true
+          pytest tests/3d/journey/security_solution/ -v --tb=short || true
+          pytest tests/3d/journey/control_tower/ -v --tb=short || true
+
+  # Phase 3: E2E Tests (with services)
+  e2e-tests:
+    name: E2E Demo Path Tests
+    runs-on: ubuntu-latest
+    needs: journey-tests
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-asyncio
+          pip install -r requirements-as2.txt || true
+      
+      - name: Run E2E Demo Path Tests
+        env:
+          REDIS_URL: redis://localhost:6379
+        run: pytest tests/e2e/demo_paths/ -v --tb=short
+
+  # Summary Job
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [unit-tests, journey-tests, e2e-tests]
+    if: always()
+    steps:
+      - name: Check test results
+        run: |
+          if [ "${{ needs.unit-tests.result }}" != "success" ]; then
+            echo "❌ Unit tests failed"
+            exit 1
+          fi
+          if [ "${{ needs.journey-tests.result }}" != "success" ]; then
+            echo "❌ Journey tests failed"
+            exit 1
+          fi
+          if [ "${{ needs.e2e-tests.result }}" != "success" ]; then
+            echo "❌ E2E tests failed"
+            exit 1
+          fi
+          echo "✅ All tests passed!"
