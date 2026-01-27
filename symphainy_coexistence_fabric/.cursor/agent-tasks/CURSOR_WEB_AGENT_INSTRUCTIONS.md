@@ -6,17 +6,18 @@
 
 ---
 
-## Agent Configuration
+## ⚠️ CRITICAL: Repository & Working Directory
 
 ### Repository
-- **Repository:** [Your GitHub repository URL]
-- **Branch:** `main` (or create feature branch)
-- **Working Directory:** `symphainy_coexistence_fabric/`
+- **Repository:** `symphainy_source_code`
+- **Working Directory:** `symphainy_coexistence_fabric/` (within the repo)
+- **All paths are relative to:** `symphainy_coexistence_fabric/`
+- **Branch:** Create feature branch `feature/intent-services-pilot`
 
 ### Task Location
-- **Task File:** `.cursor/agent-tasks/INTENT_SERVICES_PILOT.md`
-- **Instructions:** `.cursor/agent-tasks/AGENT_INSTRUCTIONS.md`
-- **This File:** `.cursor/agent-tasks/CURSOR_WEB_AGENT_INSTRUCTIONS.md`
+- **Task File:** `symphainy_coexistence_fabric/.cursor/agent-tasks/INTENT_SERVICES_PILOT.md`
+- **Instructions:** `symphainy_coexistence_fabric/.cursor/agent-tasks/AGENT_INSTRUCTIONS.md`
+- **This File:** `symphainy_coexistence_fabric/.cursor/agent-tasks/CURSOR_WEB_AGENT_INSTRUCTIONS.md`
 
 ---
 
@@ -61,24 +62,43 @@ Read these files to understand business logic:
 **Important:** Use these for business logic understanding, but follow NEW architecture patterns (BaseIntentService, not BaseContentHandler).
 
 ### Step 3: Create Directory Structure
+
+**Make sure you're in:** `symphainy_coexistence_fabric/` directory
+
 ```bash
+# From symphainy_coexistence_fabric/ directory:
 mkdir -p symphainy_platform/realms/content/intent_services
 touch symphainy_platform/realms/content/intent_services/__init__.py
 ```
 
+**Verify structure:**
+```bash
+ls -la symphainy_platform/realms/content/intent_services/
+# Should show: __init__.py
+```
+
 ### Step 4: Implement ingest_file_service.py
 
+**Reference Implementation:** `../symphainy_platform/realms/content/orchestrators/handlers/ingestion_handlers.py` (function `handle_ingest_file`)
+
 **Key Requirements:**
-- Extend `BaseIntentService`
+- Extend `BaseIntentService` (NOT BaseContentHandler!)
 - Implement `execute()` method
 - Validate parameters per contract Section 2
-- Get `IngestionAbstraction` from Public Works
-- Execute ingestion (upload/edi/api)
-- Register artifact in State Surface (lifecycle_state: PENDING)
-- Add GCS materialization
-- Index artifact in Supabase
-- Report telemetry via Nurse SDK
+- Get `IngestionAbstraction` from Public Works (`self.public_works.ingestion_abstraction`)
+- Execute ingestion (upload/edi/api) - see reference implementation for logic
+- Register artifact in State Surface (lifecycle_state: PENDING) using `self.register_artifact()`
+- Add GCS materialization to artifact record
+- Index artifact in Supabase (via Public Works abstraction)
+- Report telemetry via Nurse SDK using `self.record_telemetry()`
 - Return structured artifact response per contract Section 3
+
+**What to extract from reference implementation:**
+- How file_content (hex) is decoded
+- How file_type and mime_type are determined
+- How GCS path is constructed
+- How artifact_id is generated
+- How boundary_contract_id is created
 
 **Pattern:**
 ```python
@@ -121,17 +141,29 @@ class IngestFileService(BaseIntentService):
 
 ### Step 5: Implement save_materialization_service.py
 
+**Reference Implementation:** `../symphainy_platform/realms/content/orchestrators/content_orchestrator.py` (function `_handle_save_materialization` around line 1418)
+
 **Key Requirements:**
-- Extend `BaseIntentService`
+- Extend `BaseIntentService` (NOT BaseContentHandler!)
 - Implement `execute()` method
 - Validate parameters per contract Section 2
-- Get file metadata from State Surface
-- Register materialization in materialization index
+- Get file metadata from State Surface using `self.state_surface`
+- Register materialization in materialization index - see reference for pattern
 - **Create pending parsing journey** (intent_executions table, status: PENDING)
+  - Use intent registry to create pending intent
+  - Intent type: `parse_content`
+  - Status: `PENDING`
 - **Store ingest type and file type in pending intent context**
-- Transition file artifact lifecycle (PENDING → READY)
-- Report telemetry via Nurse SDK
+  - See reference implementation for how context is structured
+- Transition file artifact lifecycle (PENDING → READY) using State Surface
+- Report telemetry via Nurse SDK using `self.record_telemetry()`
 - Return structured artifact response per contract Section 3
+
+**What to extract from reference implementation:**
+- How materialization is registered in the index
+- How `create_pending_parse_intent` works (or equivalent pattern)
+- How intent context stores ingest_profile/file_type
+- How lifecycle state is updated
 
 ### Step 6: Validate Implementation
 

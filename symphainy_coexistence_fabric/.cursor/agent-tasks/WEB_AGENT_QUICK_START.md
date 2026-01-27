@@ -4,32 +4,58 @@
 
 ---
 
-## For Cursor Web Agent
+## ⚠️ CRITICAL: Working Directory
 
+**Repository:** `symphainy_source_code`  
+**Working Directory:** `symphainy_coexistence_fabric/` (within the repo)
+
+**All paths are relative to:** `/symphainy_coexistence_fabric/`
+
+---
 ### Agent Task Prompt
-
-Copy this prompt for your Cursor Web Agent:
 
 ```
 Implement 2 intent services for the SymphAIny Coexistence Fabric platform.
 
+REPOSITORY & WORKING DIRECTORY:
+- Repository: symphainy_source_code
+- Working Directory: symphainy_coexistence_fabric/ (all paths relative to this folder)
+- Create feature branch: feature/intent-services-pilot
+
 WORKFLOW:
-1. Clone/pull the repository (if not already available)
-2. Create a feature branch: feature/intent-services-pilot
+1. Navigate to symphainy_coexistence_fabric/ directory
+2. Create feature branch: feature/intent-services-pilot
 3. Read all reference materials (see list below)
-4. Implement the intent services
-5. Validate implementation compiles
-6. Commit changes to the feature branch
-7. Push the feature branch to origin
+4. Review existing implementations for business logic reference
+5. Create directory structure: symphainy_platform/realms/content/intent_services/
+6. Implement the intent services
+7. Validate implementation compiles
+8. Commit changes to the feature branch
+9. Push the feature branch to origin
+
+START HERE (Read First):
+1. symphainy_coexistence_fabric/.cursor/agent-tasks/START_HERE.md - 🚀 Quick start guide
 
 REFERENCE MATERIALS (Read in this order):
-1. .cursor/agent-tasks/INTENT_SERVICES_PILOT.md - Full task specification
-2. .cursor/agent-tasks/AGENT_INSTRUCTIONS.md - Step-by-step guidance
-3. .cursor/agent-tasks/CURSOR_WEB_AGENT_INSTRUCTIONS.md - Web agent specifics
-4. docs/intent_contracts/journey_content_file_upload_materialization/intent_ingest_file.md - Contract for ingest_file
-5. docs/intent_contracts/journey_content_file_upload_materialization/intent_save_materialization.md - Contract for save_materialization
-6. symphainy_platform/bases/intent_service_base.py - Base class to extend
-7. .cursor/ARCHITECTURAL_REQUIREMENTS.md - Patterns and constraints
+1. symphainy_coexistence_fabric/.cursor/agent-tasks/INTENT_SERVICES_PILOT.md - Full task specification
+2. symphainy_coexistence_fabric/.cursor/agent-tasks/AGENT_INSTRUCTIONS.md - Step-by-step guidance
+3. symphainy_coexistence_fabric/.cursor/agent-tasks/CURSOR_WEB_AGENT_INSTRUCTIONS.md - Web agent specifics
+4. symphainy_coexistence_fabric/docs/intent_contracts/journey_content_file_upload_materialization/intent_ingest_file.md - Contract for ingest_file
+5. symphainy_coexistence_fabric/docs/intent_contracts/journey_content_file_upload_materialization/intent_save_materialization.md - Contract for save_materialization
+6. symphainy_coexistence_fabric/symphainy_platform/bases/intent_service_base.py - Base class to extend
+7. symphainy_coexistence_fabric/.cursor/ARCHITECTURAL_REQUIREMENTS.md - Patterns and constraints
+
+EXISTING IMPLEMENTATIONS (For Business Logic Reference):
+⚠️ These are OLD implementations - use for business logic understanding only!
+⚠️ DO NOT copy the architecture - follow NEW patterns (BaseIntentService, not BaseContentHandler)
+
+1. symphainy_coexistence_fabric/.cursor/agent-tasks/REFERENCE_IMPLEMENTATIONS.md - 📖 Detailed guide to reference code
+2. symphainy_source_code/symphainy_platform/realms/content/orchestrators/handlers/ingestion_handlers.py
+   - Function: handle_ingest_file() (line ~29)
+   - Shows: file ingestion, GCS storage, artifact creation
+3. symphainy_source_code/symphainy_platform/realms/content/orchestrators/content_orchestrator.py
+   - Function: _handle_save_materialization() (line ~1418)
+   - Shows: materialization registration, pending journey creation
 
 TARGET FILES TO CREATE:
 1. symphainy_platform/realms/content/intent_services/ingest_file_service.py
