@@ -4,7 +4,7 @@
 **Intent Type:** `terminate_session`  
 **Journey:** Journey Security Authentication (`journey_security_authentication`)  
 **Realm:** Security Solution  
-**Status:** IN PROGRESS  
+**Status:** ✅ **ENHANCED** - Ready for implementation  
 **Priority:** PRIORITY 1
 
 ---
@@ -12,15 +12,36 @@
 ## 1. Intent Overview
 
 ### Purpose
-[Describe the purpose of this intent based on journey contract]
+Terminate (logout) a user session. Transitions session artifact lifecycle state from "ACTIVE" to "TERMINATED", invalidates session token, clears session cookie, and logs out the user.
 
 ### Intent Flow
 ```
-[Describe the flow for this intent]
+[User clicks logout]
+    ↓
+[terminate_session intent executes]
+    ↓
+[Validate session token]
+    ↓
+[Retrieve session artifact]
+    ↓
+[Transition session lifecycle state (ACTIVE → TERMINATED)]
+    ↓
+[Invalidate session token]
+    ↓
+[Update session in Supabase (sessions table)]
+    ↓
+[Clear session cookie]
+    ↓
+[Returns confirmation (session terminated)]
 ```
 
 ### Expected Observable Artifacts
-- [List expected artifacts]
+- `session_id` - Session identifier
+- `lifecycle_state: "TERMINATED"` (transitioned from ACTIVE)
+- `terminated_at` - Termination timestamp
+- Session artifact updated in State Surface
+- Session record updated in Supabase (sessions table)
+- Session cookie cleared
 
 ---
 
@@ -30,7 +51,14 @@
 
 | Parameter | Type | Description | Validation |
 |-----------|------|-------------|------------|
-| `parameter_name` | `type` | Description | Validation rules |
+| `session_id` | `string` | Session identifier | Required, must exist and be ACTIVE |
+| `session_token` | `string` | Current session token (JWT) | Required, must be valid |
+
+### Optional Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| None | - | - | - |
 
 ### Optional Parameters
 
@@ -191,6 +219,6 @@ idempotency_key = hash([key components])
 
 ---
 
-**Last Updated:** [Date]  
-**Owner:** [Realm] Solution Team  
-**Status:** IN PROGRESS
+**Last Updated:** January 27, 2026  
+**Owner:** Security Solution Team  
+**Status:** ✅ **ENHANCED** - Ready for implementation

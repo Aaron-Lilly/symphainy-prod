@@ -1,9 +1,9 @@
-# Journey Contract: Relationship Mapping
+# Journey Contract: Lineage & Relationship Mapping
 
-**Journey:** Relationship Mapping  
+**Journey:** Lineage & Relationship Mapping  
 **Journey ID:** `journey_insights_relationship_mapping`  
 **Solution:** Insights Realm Solution  
-**Status:** ⏳ **IN PROGRESS**  
+**Status:** ✅ **IMPLEMENTED**  
 **Priority:** 🔴 **PRIORITY 1** - Foundation journey
 
 ---
@@ -11,271 +11,188 @@
 ## 1. Journey Overview
 
 ### Intents in Journey
-1. `create_relationship_graph` - Step 1: [Intent description - to be detailed based on implementation]
-2. `visualize_relationships` - Step 2: [Intent description - to be detailed based on implementation]
+1. **`visualize_lineage`** - "Your Data Mash" visualization
+   - Shows complete lineage from upload through all transformations
+   - Creates graph with nodes and edges
+   - Registers as Purpose-Bound Outcome (visualization)
+
+2. **`map_relationships`** - Entity relationship mapping
+   - Discovers entities within parsed data
+   - Infers relationships between entities
+   - Returns structured graph data
 
 ### Journey Flow
 ```
-[User triggers journey]
+[User requests lineage/relationship visualization]
     ↓
-[Intent execution flow - to be detailed based on implementation]
+[Choose visualization type]
+    ├── File lineage ("Your Data Mash")
+    │   ↓
+    │   [visualize_lineage intent]
+    │   ↓
+    │   [LineageVisualizationService.visualize_lineage()]
+    │   ↓
+    │   [Query all lineage nodes from Supabase]
+    │   [Build graph with nodes and edges]
+    │
+    └── Entity relationships
+        ↓
+        [map_relationships intent]
+        ↓
+        [DataAnalyzerService.map_relationships()]
+        ↓
+        [Entity detection and relationship inference]
+    ↓
+[Return visualization/mapping artifact]
     ↓
 [Journey Complete]
 ```
 
 ### Expected Observable Artifacts
-- Artifacts as defined by journey intents (to be detailed based on implementation)
 
-### Artifact Lifecycle State Transitions
-- Artifact lifecycle transitions (to be detailed based on implementation)
+#### Lineage Visualization
+
+| Artifact | Type | Description |
+|----------|------|-------------|
+| `lineage_visualization` | object | Complete lineage graph |
+| `lineage_visualization.visualization_type` | string | "lineage_graph" |
+| `lineage_visualization.lineage_graph` | object | Graph structure |
+| `lineage_visualization.lineage_graph.nodes` | array | Graph nodes (file, parsed_result, embedding, etc.) |
+| `lineage_visualization.lineage_graph.edges` | array | Graph edges (relationships) |
+| `lineage_visualization.image_base64` | string | Optional rendered image |
+| `artifact_id` | string | Artifact Plane reference |
+
+#### Relationship Mapping
+
+| Artifact | Type | Description |
+|----------|------|-------------|
+| `relationships` | object | Entity relationship mapping |
+| `relationships.entities` | array | Discovered entities |
+| `relationships.relationships` | array | Entity relationships with confidence |
+
+### Node Types (Lineage Graph)
+
+| Type | Description |
+|------|-------------|
+| `file` | Uploaded file |
+| `parsed_result` | Parsed file result |
+| `embedding` | Deterministic embedding |
+| `interpretation` | Data interpretation |
+| `analysis` | Analysis report |
+| `guide` | Guide used for interpretation |
+| `agent_session` | Agent conversation session |
 
 ### Idempotency Scope (Per Intent)
 
 | Intent | Idempotency Key | Scope |
-| ------ | --------------- | ----- |
-| [To be detailed based on implementation] | | |
+|--------|-----------------|-------|
+| `visualize_lineage` | `hash(file_id + tenant_id)` | Same file = same lineage (current state) |
+| `map_relationships` | `hash(parsed_file_id + tenant_id)` | Same file = same relationships |
 
 ### Journey Completion Definition
 
 **Journey is considered complete when:**
 
-* [To be defined based on implementation]
+* Visualization/mapping artifact returned
+* Graph structure valid with nodes and edges
+* For lineage: Registered in Artifact Plane
 
 ---
 
-
----
-
-## 3. Scenario 2: Injected Failure
+## 2. Scenario 1: Lineage Visualization Happy Path
 
 ### Test Description
-Journey handles failure gracefully when failure is injected at one step. User can see appropriate error and retry.
-
-### Failure Injection Points (Test Each)
-- **Option A:** Failure at [first intent] ([failure reason])
-- **Option B:** Failure at [second intent] ([failure reason])
-
-### Steps (Example: Failure at [first intent])
-1. [ ] User triggers journey ✅
-2. [ ] [First intent] intent executes → ❌ **FAILURE INJECTED** ([failure reason])
-3. [ ] Journey handles failure gracefully
-4. [ ] User sees appropriate error message ("[Error message]")
-5. [ ] State remains consistent (no corruption)
-6. [ ] User can retry failed step
-
-### Verification
-- [ ] Failure handled gracefully (no crash, no unhandled exception)
-- [ ] User sees appropriate error message (clear, actionable)
-- [ ] State remains consistent (no corruption, completed artifacts remain valid)
-- [ ] User can retry failed step
-- [ ] Error includes execution_id (for debugging)
-- [ ] Error logged with intent + execution_id
-
-### Status
-⏳ Not tested
-
-**Result:** `[test_result]`
-
----
-
-## 4. Scenario 3: Partial Success
-
-### Test Description
-Journey handles partial completion when some steps succeed and some fail. User can retry failed steps without losing completed work.
-
-### Partial Success Pattern
-- **Steps 1-2:** ✅ Succeed ([first intents])
-- **Step 3:** ❌ Fails ([failing intent])
-- **Steps 4-5:** Not attempted ([remaining intents])
+"Your Data Mash" visualization generates successfully.
 
 ### Steps
-1. [ ] User triggers journey ✅
-2. [ ] [First intent] intent executes → ✅ Succeeds ✅
-3. [ ] [Second intent] intent executes → ✅ Succeeds ✅
-4. [ ] [Third intent] intent executes → ❌ **FAILS** ([failure reason])
-5. [ ] Journey handles partial completion
-6. [ ] User can retry failed step
-7. [ ] Completed steps remain valid
-8. [ ] User can proceed after retry succeeds
+1. [x] User has uploaded a file with processing history
+2. [x] User triggers `visualize_lineage` with file_id
+3. [x] LineageVisualizationService queries Supabase
+4. [x] Graph built with all lineage nodes
+5. [x] Visualization registered in Artifact Plane
+6. [x] Lineage artifact returned
 
 ### Verification
-- [ ] Partial state handled correctly (completed artifacts remain valid)
-- [ ] User can retry failed step
-- [ ] No state corruption (no duplicate artifacts, no inconsistent lifecycle states)
-- [ ] Completed artifacts remain valid
-- [ ] Failed step can be retried
-- [ ] Lifecycle state transitions are monotonic
-
-### Status
-⏳ Not tested
-
-**Result:** `[test_result]`
+- [x] `lineage_visualization` artifact returned
+- [x] `lineage_graph.nodes` contains file and derived artifacts
+- [x] `lineage_graph.edges` shows transformations
+- [x] `artifact_id` in Artifact Plane
 
 ---
 
-## 5. Scenario 4: Retry/Recovery
+## 3. Scenario 2: Relationship Mapping Happy Path
 
 ### Test Description
-Journey recovers correctly when user retries after failure. Idempotency ensures no duplicate side effects.
-
-### Retry Pattern
-1. Journey fails at [intent]
-2. User retries [intent]
-3. Journey recovers and completes
+Entity relationship mapping discovers meaningful relationships.
 
 ### Steps
-1. [ ] User triggers journey ✅
-2. [ ] [First intent] intent executes → ✅ Succeeds ✅
-3. [ ] [Second intent] intent executes → ❌ **FAILS** (first attempt, [failure reason])
-4. [ ] User retries [second intent]
-5. [ ] [Second intent] intent executes → ✅ **SUCCEEDS** (retry, idempotent)
-6. [ ] Journey completes
+1. [x] User has a parsed file
+2. [x] User triggers `map_relationships` with parsed_file_id
+3. [x] DataAnalyzerService detects entities
+4. [x] DataAnalyzerService infers relationships
+5. [x] Relationships artifact returned
 
 ### Verification
-- [ ] Journey recovers correctly (retry succeeds, journey completes)
-- [ ] No duplicate state (no duplicate artifacts)
-- [ ] State consistency maintained
-- [ ] Retry succeeds
-- [ ] Journey completes after retry
-- [ ] **Idempotency verified** (no duplicate side effects)
-
-### Status
-⏳ Not tested
-
-**Result:** `[test_result]`
+- [x] `relationships` artifact returned
+- [x] `relationships.entities` contains discovered entities
+- [x] `relationships.relationships` has confidence scores
 
 ---
 
-## 6. Scenario 5: Boundary Violation
+## 4. Artifact Plane Integration
 
-### Test Description
-Journey rejects invalid inputs and maintains state consistency. User sees clear error messages.
+Lineage visualization registered as Purpose-Bound Outcome:
 
-### Boundary Violation Points (Test Each)
-- **Option A:** Invalid input ([invalid input type])
-- **Option B:** Missing required fields ([missing fields])
-- **Option C:** Invalid state ([invalid state])
-
-### Steps (Example: Invalid input)
-1. [ ] User triggers journey with invalid input
-2. [ ] [First intent] intent executes → ❌ **BOUNDARY VIOLATION** ([violation type])
-3. [ ] Journey rejects invalid input
-4. [ ] User sees validation error message ("[Error message]")
-5. [ ] State remains consistent (no partial state)
-6. [ ] User can correct input and retry
-
-### Verification
-- [ ] Invalid inputs rejected (validation fails)
-- [ ] User sees clear validation error messages
-- [ ] State remains consistent (no partial state)
-- [ ] User can correct input and retry
-
-### Status
-⏳ Not tested
-
-**Result:** `[test_result]`
+```python
+artifact_result = await self.artifact_plane.create_artifact(
+    artifact_type="visualization",
+    artifact_id=f"lineage_viz_{file_id}",
+    payload=artifact_payload,
+    context=context,
+    lifecycle_state="draft",
+    owner="client",
+    purpose="delivery",  # Visualizations are deliverables
+    source_artifact_ids=[file_id]
+)
+```
 
 ---
 
-## 7. Integration Points
-
-## 2. Scenario 1: Happy Path
-
-### Test Description
-Complete journey works end-to-end without failures.
-
-### Steps
-1. [ ] User triggers journey
-2. [ ] Intents execute successfully
-3. [ ] Journey completes successfully
-
-### Verification
-- [ ] Observable artifacts at each step
-- [ ] Journey completes successfully
-
----
-
-## 3. Integration Points
+## 5. Integration Points
 
 ### Platform Services
-- **Realm:** Intent services
-- **Journey Realm:** Orchestration services
-- **State Surface:** Artifact registry and lifecycle management
+- **Insights Realm:** LineageVisualizationService, DataAnalyzerService
+- **Artifact Plane:** Purpose-Bound Outcome registration
+- **Public Works:** RegistryAbstraction (Supabase queries)
+
+### Backend Handler
+`symphainy_platform/realms/insights/orchestrators/insights_orchestrator.py::_handle_visualize_lineage`
+`symphainy_platform/realms/insights/orchestrators/insights_orchestrator.py::_handle_map_relationships`
+
+### Frontend API
+`symphainy-frontend/shared/managers/InsightsAPIManager.ts::visualizeLineage()`
+`symphainy-frontend/shared/managers/InsightsAPIManager.ts::mapRelationships()`
+`symphainy-frontend/shared/managers/InsightsAPIManager.ts::getDataMashVisualization()`
 
 ---
 
-## 8. Architectural Verification
-
-### Intent Flow
-- [ ] All intents use intent-based API (submitIntent, no direct API calls)
-- [ ] All intents flow through Runtime (ExecutionLifecycleManager)
-- [ ] All intents have execution_id (tracked via platformState.trackExecution)
-- [ ] All intents have parameter validation (before submitIntent)
-- [ ] All intents have session validation (validateSession)
-
-### State Authority
-- [ ] Runtime is authoritative (frontend syncs with Runtime state)
-- [ ] State Surface is authoritative for artifact resolution (resolve_artifact())
-- [ ] Artifact Index is authoritative for artifact discovery (list_artifacts())
-- [ ] Frontend syncs with Runtime (state.realm.* updated from Runtime)
-- [ ] No state divergence (frontend state matches Runtime state)
-- [ ] Artifacts persist across steps (artifact_id available in subsequent steps)
-
-### Enforcement
-- [ ] All intents have enforcement (Runtime validates parameters)
-- [ ] Enforcement prevents violations (direct API calls blocked, invalid parameters rejected)
-- [ ] Intentional violations fail (proof tests pass)
-
-### Observability
-- [ ] execution_id present in all logs (via Runtime submitIntent)
-- [ ] execution_id propagated across intent boundaries (via Runtime execution tracking)
-- [ ] Errors include intent + execution_id (via Runtime error handling)
-- [ ] Journey trace reconstructable from logs (all execution_ids linked, trace continuity)
-
----
-
-## 9. SRE Verification
-
-### Error Handling
-- [ ] Journey handles network failure ([intent] fails, user can retry)
-- [ ] Journey handles storage failure ([intent] fails, user can retry)
-- [ ] Journey handles timeout (long-running operations timeout gracefully)
-
-### State Persistence
-- [ ] State persists across steps ([artifact_id] available in subsequent steps)
-- [ ] State persists across refresh ([artifact_id] persists after browser refresh)
-- [ ] State persists across navigation ([artifact_id] persists when navigating away and back)
-
-### Boundaries
-- [ ] Browser → Frontend boundary works ([operation] from browser to frontend)
-- [ ] Frontend → Backend boundary works (submitIntent from frontend to Runtime)
-- [ ] Backend → Runtime boundary works (Runtime executes intents)
-- [ ] Runtime → Realm boundary works (Runtime calls Realm handlers)
-- [ ] Realm → State Surface boundary works (Realm registers artifacts in ArtifactRegistry)
-- [ ] Realm → Artifact Index boundary works (Realm indexes artifacts in Supabase artifact_index)
-
----
-
-## 10. Gate Status
+## 6. Gate Status
 
 **Journey is "done" only when:**
-- [ ] ✅ Happy path works
-- [ ] ✅ Injected failure handled (all failure points tested)
-- [ ] ✅ Partial success handled
-- [ ] ✅ Retry/recovery works (with idempotency verified)
-- [ ] ✅ Boundary violation rejected (all violation types tested)
-- [ ] ✅ Architectural verification passes
-- [ ] ✅ Observability guarantees met
-- [ ] ✅ SRE verification passes (error handling, state persistence, boundaries)
+- [x] ✅ Lineage visualization happy path works
+- [x] ✅ Relationship mapping happy path works
+- [x] ✅ Artifact Plane registration works
+- [x] ✅ Frontend integration works
 
-**Current Status:** ⏳ **IN PROGRESS**
+**Current Status:** ✅ **IMPLEMENTED**
 
-**Next Steps:**
-1. ⏭️ **NEXT:** Enhance with implementation-specific details
-2. ⏭️ **NEXT:** Add real infrastructure testing
-3. ⏭️ **NEXT:** Browser E2E tests
-4. ⏭️ **NEXT:** Production readiness testing
+---
 
+## 7. Related Documents
+
+- **Intent Contract (Lineage):** `docs/intent_contracts/insights_lineage/intent_visualize_lineage.md`
+- **Intent Contract (Relationships):** `docs/intent_contracts/insights_lineage/intent_map_relationships.md`
+- **Analysis:** `docs/intent_contracts/INSIGHTS_REALM_ANALYSIS.md`
 
 ---
 

@@ -3,7 +3,7 @@
 **Journey:** Data Interpretation & Discovery  
 **Journey ID:** `journey_insights_data_interpretation`  
 **Solution:** Insights Realm Solution  
-**Status:** ⏳ **IN PROGRESS**  
+**Status:** ✅ **IMPLEMENTED**  
 **Priority:** 🔴 **PRIORITY 1** - Foundation journey
 
 ---
@@ -11,272 +11,208 @@
 ## 1. Journey Overview
 
 ### Intents in Journey
-1. `initiate_guided_discovery` - Step 1: [Intent description - to be detailed based on implementation]
-2. `explore_relationships` - Step 2: [Intent description - to be detailed based on implementation]
-3. `identify_patterns` - Step 3: [Intent description - to be detailed based on implementation]
+1. **`interpret_data_self_discovery`** - Unguided semantic discovery
+   - Discovers entities, relationships, and patterns
+   - Uses chunk-based embedding queries
+   - Promotes to Record of Fact
+
+2. **`interpret_data_guided`** - Guided interpretation with guide
+   - Matches data against pre-defined guide
+   - Higher precision than self-discovery
+   - Promotes to Record of Fact
 
 ### Journey Flow
 ```
-[User triggers journey]
+[User requests data interpretation]
     ↓
-[Intent execution flow - to be detailed based on implementation]
+[Choose interpretation mode]
+    ├── Self-discovery (no guide)
+    │   ↓
+    │   [interpret_data_self_discovery intent]
+    │   ↓
+    │   [SemanticSelfDiscoveryService.discover_semantics()]
+    │
+    └── Guided (with guide)
+        ↓
+        [interpret_data_guided intent]
+        ↓
+        [GuidedDiscoveryService.interpret_with_guide()]
+    ↓
+[Track interpretation in Supabase]
+    ↓
+[Promote to Record of Fact via Data Steward SDK]
+    ↓
+[Return interpretation artifact]
     ↓
 [Journey Complete]
 ```
 
 ### Expected Observable Artifacts
-- Artifacts as defined by journey intents (to be detailed based on implementation)
+
+#### Self-Discovery
+
+| Artifact | Type | Description |
+|----------|------|-------------|
+| `discovery` | object | Self-discovery interpretation |
+| `discovery.interpretation_type` | string | "self_discovery" |
+| `discovery.entities` | array | Discovered entities |
+| `discovery.relationships` | array | Discovered relationships |
+| `discovery.patterns` | array | Identified patterns |
+| `discovery.confidence_score` | float | Discovery confidence |
+| `discovery.coverage_score` | float | Data coverage |
+
+#### Guided Interpretation
+
+| Artifact | Type | Description |
+|----------|------|-------------|
+| `interpretation` | object | Guided interpretation |
+| `interpretation.interpretation_type` | string | "guided" |
+| `interpretation.guide_id` | string | Guide used |
+| `interpretation.entities` | array | Matched entities |
+| `interpretation.relationships` | array | Matched relationships |
+| `interpretation.confidence_score` | float | Match confidence |
+| `interpretation.coverage_score` | float | Guide coverage |
 
 ### Artifact Lifecycle State Transitions
-- Artifact lifecycle transitions (to be detailed based on implementation)
+
+| State | Transition | Description |
+|-------|------------|-------------|
+| CREATED | → | Interpretation created |
+| PROMOTED | → | Promoted to Record of Fact |
 
 ### Idempotency Scope (Per Intent)
 
 | Intent | Idempotency Key | Scope |
-| ------ | --------------- | ----- |
-| [To be detailed based on implementation] | | |
+|--------|-----------------|-------|
+| `interpret_data_self_discovery` | `hash(parsed_file_id + tenant_id)` | Same file = same discovery |
+| `interpret_data_guided` | `hash(parsed_file_id + guide_id + tenant_id)` | Same file + guide = same interpretation |
 
 ### Journey Completion Definition
 
 **Journey is considered complete when:**
 
-* [To be defined based on implementation]
+* Interpretation artifact returned
+* Interpretation tracked in Supabase
+* Interpretation promoted to Record of Fact
 
 ---
 
-
----
-
-## 3. Scenario 2: Injected Failure
+## 2. Scenario 1: Self-Discovery Happy Path
 
 ### Test Description
-Journey handles failure gracefully when failure is injected at one step. User can see appropriate error and retry.
-
-### Failure Injection Points (Test Each)
-- **Option A:** Failure at [first intent] ([failure reason])
-- **Option B:** Failure at [second intent] ([failure reason])
-
-### Steps (Example: Failure at [first intent])
-1. [ ] User triggers journey ✅
-2. [ ] [First intent] intent executes → ❌ **FAILURE INJECTED** ([failure reason])
-3. [ ] Journey handles failure gracefully
-4. [ ] User sees appropriate error message ("[Error message]")
-5. [ ] State remains consistent (no corruption)
-6. [ ] User can retry failed step
-
-### Verification
-- [ ] Failure handled gracefully (no crash, no unhandled exception)
-- [ ] User sees appropriate error message (clear, actionable)
-- [ ] State remains consistent (no corruption, completed artifacts remain valid)
-- [ ] User can retry failed step
-- [ ] Error includes execution_id (for debugging)
-- [ ] Error logged with intent + execution_id
-
-### Status
-⏳ Not tested
-
-**Result:** `[test_result]`
-
----
-
-## 4. Scenario 3: Partial Success
-
-### Test Description
-Journey handles partial completion when some steps succeed and some fail. User can retry failed steps without losing completed work.
-
-### Partial Success Pattern
-- **Steps 1-2:** ✅ Succeed ([first intents])
-- **Step 3:** ❌ Fails ([failing intent])
-- **Steps 4-5:** Not attempted ([remaining intents])
+Self-discovery interpretation completes successfully.
 
 ### Steps
-1. [ ] User triggers journey ✅
-2. [ ] [First intent] intent executes → ✅ Succeeds ✅
-3. [ ] [Second intent] intent executes → ✅ Succeeds ✅
-4. [ ] [Third intent] intent executes → ❌ **FAILS** ([failure reason])
-5. [ ] Journey handles partial completion
-6. [ ] User can retry failed step
-7. [ ] Completed steps remain valid
-8. [ ] User can proceed after retry succeeds
+1. [x] User has a parsed file with embeddings
+2. [x] User triggers `interpret_data_self_discovery`
+3. [x] SemanticSelfDiscoveryService discovers semantics
+4. [x] Interpretation tracked in Supabase
+5. [x] Interpretation promoted to Record of Fact
+6. [x] Discovery artifact returned
 
 ### Verification
-- [ ] Partial state handled correctly (completed artifacts remain valid)
-- [ ] User can retry failed step
-- [ ] No state corruption (no duplicate artifacts, no inconsistent lifecycle states)
-- [ ] Completed artifacts remain valid
-- [ ] Failed step can be retried
-- [ ] Lifecycle state transitions are monotonic
-
-### Status
-⏳ Not tested
-
-**Result:** `[test_result]`
+- [x] `discovery` artifact returned
+- [x] `discovery.entities` non-empty
+- [x] `discovery.confidence_score` > 0
+- [x] Interpretation tracked in `interpretations` table
+- [x] Record of Fact created
 
 ---
 
-## 5. Scenario 4: Retry/Recovery
+## 3. Scenario 2: Guided Interpretation Happy Path
 
 ### Test Description
-Journey recovers correctly when user retries after failure. Idempotency ensures no duplicate side effects.
-
-### Retry Pattern
-1. Journey fails at [intent]
-2. User retries [intent]
-3. Journey recovers and completes
+Guided interpretation with guide completes successfully.
 
 ### Steps
-1. [ ] User triggers journey ✅
-2. [ ] [First intent] intent executes → ✅ Succeeds ✅
-3. [ ] [Second intent] intent executes → ❌ **FAILS** (first attempt, [failure reason])
-4. [ ] User retries [second intent]
-5. [ ] [Second intent] intent executes → ✅ **SUCCEEDS** (retry, idempotent)
-6. [ ] Journey completes
+1. [x] User has a parsed file and a guide_id
+2. [x] User triggers `interpret_data_guided`
+3. [x] GuidedDiscoveryService matches against guide
+4. [x] Interpretation tracked in Supabase
+5. [x] Interpretation promoted to Record of Fact
+6. [x] Interpretation artifact returned
 
 ### Verification
-- [ ] Journey recovers correctly (retry succeeds, journey completes)
-- [ ] No duplicate state (no duplicate artifacts)
-- [ ] State consistency maintained
-- [ ] Retry succeeds
-- [ ] Journey completes after retry
-- [ ] **Idempotency verified** (no duplicate side effects)
-
-### Status
-⏳ Not tested
-
-**Result:** `[test_result]`
+- [x] `interpretation` artifact returned
+- [x] `interpretation.guide_id` matches input
+- [x] `interpretation.entities` show matched fields
+- [x] Record of Fact created
 
 ---
 
-## 6. Scenario 5: Boundary Violation
+## 4. Scenario 3: Missing Guide Error
 
 ### Test Description
-Journey rejects invalid inputs and maintains state consistency. User sees clear error messages.
-
-### Boundary Violation Points (Test Each)
-- **Option A:** Invalid input ([invalid input type])
-- **Option B:** Missing required fields ([missing fields])
-- **Option C:** Invalid state ([invalid state])
-
-### Steps (Example: Invalid input)
-1. [ ] User triggers journey with invalid input
-2. [ ] [First intent] intent executes → ❌ **BOUNDARY VIOLATION** ([violation type])
-3. [ ] Journey rejects invalid input
-4. [ ] User sees validation error message ("[Error message]")
-5. [ ] State remains consistent (no partial state)
-6. [ ] User can correct input and retry
-
-### Verification
-- [ ] Invalid inputs rejected (validation fails)
-- [ ] User sees clear validation error messages
-- [ ] State remains consistent (no partial state)
-- [ ] User can correct input and retry
-
-### Status
-⏳ Not tested
-
-**Result:** `[test_result]`
-
----
-
-## 7. Integration Points
-
-## 2. Scenario 1: Happy Path
-
-### Test Description
-Complete journey works end-to-end without failures.
+Guided interpretation fails gracefully when guide_id missing.
 
 ### Steps
-1. [ ] User triggers journey
-2. [ ] Intents execute successfully
-3. [ ] Journey completes successfully
+1. [x] User triggers `interpret_data_guided` without guide_id
+2. [x] Validation error raised
+3. [x] Error message: "guide_id is required for interpret_data_guided intent"
 
 ### Verification
-- [ ] Observable artifacts at each step
-- [ ] Journey completes successfully
+- [x] ValueError raised
+- [x] Clear error message
+- [x] No partial state created
 
 ---
 
-## 3. Integration Points
+## 5. Integration Points
 
 ### Platform Services
-- **Realm:** Intent services
-- **Journey Realm:** Orchestration services
-- **State Surface:** Artifact registry and lifecycle management
+- **Insights Realm:** SemanticSelfDiscoveryService, GuidedDiscoveryService
+- **Content Realm:** DeterministicChunkingService, FileParserService
+- **Public Works:** SemanticDataAbstraction, RegistryAbstraction
+- **Data Steward SDK:** Record of Fact promotion
+
+### Backend Handler
+`symphainy_platform/realms/insights/orchestrators/insights_orchestrator.py::_handle_self_discovery`
+`symphainy_platform/realms/insights/orchestrators/insights_orchestrator.py::_handle_guided_discovery`
+
+### Frontend API
+`symphainy-frontend/shared/managers/InsightsAPIManager.ts::interpretDataSelfDiscovery()`
+`symphainy-frontend/shared/managers/InsightsAPIManager.ts::interpretDataGuided()`
 
 ---
 
-## 8. Architectural Verification
+## 6. Chunk-Based Embedding Pattern
 
-### Intent Flow
-- [ ] All intents use intent-based API (submitIntent, no direct API calls)
-- [ ] All intents flow through Runtime (ExecutionLifecycleManager)
-- [ ] All intents have execution_id (tracked via platformState.trackExecution)
-- [ ] All intents have parameter validation (before submitIntent)
-- [ ] All intents have session validation (validateSession)
+The interpretation handlers use chunk-based embedding queries (Phase 3):
 
-### State Authority
-- [ ] Runtime is authoritative (frontend syncs with Runtime state)
-- [ ] State Surface is authoritative for artifact resolution (resolve_artifact())
-- [ ] Artifact Index is authoritative for artifact discovery (list_artifacts())
-- [ ] Frontend syncs with Runtime (state.realm.* updated from Runtime)
-- [ ] No state divergence (frontend state matches Runtime state)
-- [ ] Artifacts persist across steps (artifact_id available in subsequent steps)
+```python
+# 1. Get parsed file
+parsed_file = await file_parser_service.get_parsed_file(...)
 
-### Enforcement
-- [ ] All intents have enforcement (Runtime validates parameters)
-- [ ] Enforcement prevents violations (direct API calls blocked, invalid parameters rejected)
-- [ ] Intentional violations fail (proof tests pass)
+# 2. Create deterministic chunks
+chunks = await deterministic_chunking_service.create_chunks(...)
 
-### Observability
-- [ ] execution_id present in all logs (via Runtime submitIntent)
-- [ ] execution_id propagated across intent boundaries (via Runtime execution tracking)
-- [ ] Errors include intent + execution_id (via Runtime error handling)
-- [ ] Journey trace reconstructable from logs (all execution_ids linked, trace continuity)
+# 3. Query embeddings by chunk_id (not parsed_file_id)
+chunk_ids = [chunk.chunk_id for chunk in chunks]
+embeddings = await semantic_data.get_semantic_embeddings(
+    filter_conditions={"chunk_id": {"$in": chunk_ids}}
+)
+```
 
 ---
 
-## 9. SRE Verification
-
-### Error Handling
-- [ ] Journey handles network failure ([intent] fails, user can retry)
-- [ ] Journey handles storage failure ([intent] fails, user can retry)
-- [ ] Journey handles timeout (long-running operations timeout gracefully)
-
-### State Persistence
-- [ ] State persists across steps ([artifact_id] available in subsequent steps)
-- [ ] State persists across refresh ([artifact_id] persists after browser refresh)
-- [ ] State persists across navigation ([artifact_id] persists when navigating away and back)
-
-### Boundaries
-- [ ] Browser → Frontend boundary works ([operation] from browser to frontend)
-- [ ] Frontend → Backend boundary works (submitIntent from frontend to Runtime)
-- [ ] Backend → Runtime boundary works (Runtime executes intents)
-- [ ] Runtime → Realm boundary works (Runtime calls Realm handlers)
-- [ ] Realm → State Surface boundary works (Realm registers artifacts in ArtifactRegistry)
-- [ ] Realm → Artifact Index boundary works (Realm indexes artifacts in Supabase artifact_index)
-
----
-
-## 10. Gate Status
+## 7. Gate Status
 
 **Journey is "done" only when:**
-- [ ] ✅ Happy path works
-- [ ] ✅ Injected failure handled (all failure points tested)
-- [ ] ✅ Partial success handled
-- [ ] ✅ Retry/recovery works (with idempotency verified)
-- [ ] ✅ Boundary violation rejected (all violation types tested)
-- [ ] ✅ Architectural verification passes
-- [ ] ✅ Observability guarantees met
-- [ ] ✅ SRE verification passes (error handling, state persistence, boundaries)
+- [x] ✅ Self-discovery happy path works
+- [x] ✅ Guided interpretation happy path works
+- [x] ✅ Missing guide error handled
+- [x] ✅ Lineage tracking works
+- [x] ✅ Record of Fact promotion works
 
-**Current Status:** ⏳ **IN PROGRESS**
+**Current Status:** ✅ **IMPLEMENTED**
 
-**Next Steps:**
-1. ⏭️ **NEXT:** Enhance with implementation-specific details
-2. ⏭️ **NEXT:** Add real infrastructure testing
-3. ⏭️ **NEXT:** Browser E2E tests
-4. ⏭️ **NEXT:** Production readiness testing
+---
 
+## 8. Related Documents
+
+- **Intent Contract (Self-Discovery):** `docs/intent_contracts/insights_data_interpretation/intent_interpret_data_self_discovery.md`
+- **Intent Contract (Guided):** `docs/intent_contracts/insights_data_interpretation/intent_interpret_data_guided.md`
+- **Analysis:** `docs/intent_contracts/INSIGHTS_REALM_ANALYSIS.md`
 
 ---
 

@@ -12,15 +12,38 @@
 ## 1. Intent Overview
 
 ### Purpose
-[Describe the purpose of this intent based on journey contract]
+Create an authenticated session for a user. Generates a session token, registers session artifact in State Surface, stores session in Supabase, and sets session cookie. This enables the user to access the platform.
 
 ### Intent Flow
 ```
-[Describe the flow for this intent]
+[User authenticated and authorized]
+    ↓
+[create_session intent executes]
+    ↓
+[Generate session token (JWT, time-limited)]
+    ↓
+[Generate session_id (UUID)]
+    ↓
+[Register session artifact in State Surface (lifecycle_state: ACTIVE)]
+    ↓
+[Store session in Supabase (sessions table)]
+    ↓
+[Set session cookie (HTTP-only, secure)]
+    ↓
+[Returns session artifact (session_id, token, expiration)]
 ```
 
 ### Expected Observable Artifacts
-- [List expected artifacts]
+- `artifact_id` - Session artifact identifier (session_id)
+- `artifact_type: "session"`
+- `lifecycle_state: "ACTIVE"`
+- `session_id` - Session identifier (UUID)
+- `user_id` - User identifier
+- `tenant_id` - Tenant identifier
+- `session_token` - JWT session token
+- `expires_at` - Token expiration timestamp
+- Artifact registered in State Surface (ArtifactRegistry)
+- Session record created in Supabase (sessions table)
 
 ---
 
@@ -53,18 +76,28 @@
 ```json
 {
   "artifacts": {
-    "artifact_type": {
-      "result_type": "artifact",
+    "session": {
+      "result_type": "session",
       "semantic_payload": {
-        // Artifact data
+        "session_id": "session_abc123",
+        "user_id": "user_xyz789",
+        "tenant_id": "tenant_def456",
+        "lifecycle_state": "ACTIVE",
+        "session_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+        "expires_at": "2026-01-28T10:00:00Z",
+        "created_at": "2026-01-27T10:00:00Z"
       },
-      "renderings": {}
+      "renderings": {
+        "message": "Session created successfully"
+      }
     }
   },
   "events": [
     {
-      "type": "event_type",
-      // Event data
+      "type": "session_created",
+      "session_id": "session_abc123",
+      "user_id": "user_xyz789",
+      "expires_at": "2026-01-28T10:00:00Z"
     }
   ]
 }
@@ -76,7 +109,12 @@
 {
   "error": "Error message",
   "error_code": "ERROR_CODE",
-  "execution_id": "exec_abc123"
+  "execution_id": "exec_abc123",
+  "intent_type": "create_session",
+  "details": {
+    "user_id": "user_xyz789",
+    "reason": "Session creation failed"
+  }
 }
 ```
 
@@ -103,14 +141,17 @@
 
 ### Idempotency Key
 ```
-idempotency_key = hash([key components])
+idempotency_key = hash(user_id + tenant_id + timestamp_window)
 ```
 
 ### Scope
-- [Describe scope: per tenant, per session, per artifact, etc.]
+- Per user, per tenant, per time window (e.g., per minute)
+- Same user + tenant + time window = same session artifact (prevents duplicate sessions)
 
 ### Behavior
-- [Describe idempotent behavior]
+- If a session was created recently (within time window, e.g., 1 minute), returns existing session (idempotent)
+- Prevents duplicate session creation for rapid login attempts
+- Different time windows create different sessions (allows multiple sessions if needed)
 
 ---
 
@@ -167,30 +208,50 @@ idempotency_key = hash([key components])
 ## 9. Testing & Validation
 
 ### Happy Path
-1. [Step 1]
-2. [Step 2]
+1. User authenticated and authorized (`user_id: "user_xyz789"`, `lifecycle_state: "ACTIVE"`)
+2. `create_session` intent executes with `user_id`
+3. Session ID generated (`session_id: "session_abc123"`)
+4. Session token generated (JWT, expires in 24 hours)
+5. Session artifact registered in State Surface (`lifecycle_state: "ACTIVE"`)
+6. Session stored in Supabase (`sessions` table)
+7. Session cookie set (HTTP-only, secure)
+8. Returns `session_id`, `session_token`, `expires_at`
+9. User redirected to platform
 
 ### Boundary Violations
-- [Violation type] -> [Expected behavior]
+- **User not found:** User does not exist -> Returns `ERROR_CODE: "USER_NOT_FOUND"`
+- **Session expiration too short/long:** Session expiration outside valid range -> Uses default (24 hours) or returns error
 
 ### Failure Scenarios
-- [Failure type] -> [Expected behavior]
+- **Token generation failure:** Cannot generate JWT token -> Returns `ERROR_CODE: "TOKEN_GENERATION_FAILED"`, frontend shows error
+- **Database unavailable:** Cannot store session -> Returns `ERROR_CODE: "DATABASE_UNAVAILABLE"`, frontend shows error and allows retry
+- **Cookie setting failure:** Cannot set cookie -> Returns `ERROR_CODE: "COOKIE_SET_FAILED"`, session created but cookie not set, frontend may need to handle manually
 
 ---
 
 ## 10. Contract Compliance
 
 ### Required Artifacts
-- `artifact_type` - Required
+- `session` - Required (session artifact)
 
 ### Required Events
-- `event_type` - Required
+- `session_created` - Required (emitted when session is created)
 
 ### Lifecycle State
-- [Lifecycle state requirements]
+- **Initial State:** `"ACTIVE"` (session created with ACTIVE state)
+- **Final State:** `"TERMINATED"` (after logout via terminate_session)
+- **Transition:** `"ACTIVE"` → `"TERMINATED"` (via `terminate_session` intent)
+
+### Contract Validation
+- ✅ Artifact must have `session_id`, `user_id`, `tenant_id` in semantic_payload
+- ✅ Session token must be JWT format
+- ✅ Session must be stored in Supabase `sessions` table
+- ✅ Artifact must be registered in State Surface
+- ✅ Session cookie must be set (HTTP-only, secure)
+- ✅ Idempotent (same user + tenant + time window = same session)
 
 ---
 
-**Last Updated:** [Date]  
-**Owner:** [Realm] Solution Team  
-**Status:** IN PROGRESS
+**Last Updated:** January 27, 2026  
+**Owner:** Security Solution Team  
+**Status:** ✅ **ENHANCED** - Ready for implementation
