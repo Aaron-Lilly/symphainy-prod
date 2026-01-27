@@ -1,7 +1,7 @@
 # Intent Contracts Creation Plan
 
 **Date:** January 27, 2026  
-**Status:** ⏳ **IN PROGRESS**
+**Status:** ✅ **ALL TEMPLATES GENERATED** (82 intent contracts)
 
 ---
 
@@ -16,17 +16,25 @@ Creating intent contracts for all 28 journeys, organized by journey folder. Each
 
 ## Progress
 
-### ✅ Completed
+### ✅ Templates Generated (82 total)
+**Script:** `scripts/generate_intent_contracts.py`
+
+All intent contract templates have been generated. They are currently placeholders and need to be filled in with:
+- Intent purpose and flow details
+- Parameters (required, optional, context)
+- Return structures
+- Artifact registration details
+- Implementation details
+- Frontend integration
+- Error handling
+- Testing scenarios
+
+### ✅ Fully Completed (2 intents)
 - `journey_content_file_upload_materialization/`
-  - ✅ `intent_ingest_file.md`
-  - ✅ `intent_save_materialization.md`
+  - ✅ `intent_ingest_file.md` - Fully detailed
+  - ✅ `intent_save_materialization.md` - Fully detailed
 
-### ⏳ In Progress
-- `journey_content_file_parsing/`
-  - ⏳ `intent_parse_content.md`
-  - ⏳ `intent_save_parsed_content.md`
-
-### 📋 Pending (26 journeys remaining)
+### ⏳ Templates Generated, Needs Enhancement (80 intents)
 
 **Content Realm (2 remaining journeys):**
 - `journey_content_deterministic_embedding/`
