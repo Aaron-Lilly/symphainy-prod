@@ -1,153 +1,139 @@
 """
 Data Quality Journey Orchestrator
 
-Composes data quality assessment:
-1. assess_data_quality - Assess quality of data
-2. generate_quality_report - Generate quality report
-3. validate_schema - Validate data against schema
+Composes the data quality journey:
+1. Validate parsed_file_id
+2. Execute assess_data_quality intent
+3. Return quality assessment report
 
 WHAT (Journey Role): I orchestrate data quality assessment
-HOW (Journey Implementation): I compose quality assessment, reporting, and validation intents
+HOW (Journey Implementation): I compose assess_data_quality intent
 """
 
 import sys
 from pathlib import Path
 
-project_root = Path(__file__).resolve().parents[5]
+project_root = Path(__file__).resolve().parents[4]
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from typing import Dict, Any, Optional
-
 from utilities import get_logger, generate_event_id, get_clock
 from symphainy_platform.runtime.execution_context import ExecutionContext
-from symphainy_platform.realms.utils.structured_artifacts import create_structured_artifact
 
 
 class DataQualityJourney:
-    """
-    Data Quality Journey Orchestrator.
-    
-    Provides MCP Tools:
-    - insights_assess_quality: Assess data quality
-    - insights_generate_quality_report: Generate quality report
-    - insights_validate_schema: Validate against schema
-    """
+    """Data Quality Journey Orchestrator."""
     
     JOURNEY_ID = "data_quality"
     JOURNEY_NAME = "Data Quality Assessment"
     
-    def __init__(self, public_works: Optional[Any] = None, state_surface: Optional[Any] = None):
+    def __init__(self, public_works=None, state_surface=None):
         self.logger = get_logger(self.__class__.__name__)
         self.clock = get_clock()
         self.public_works = public_works
         self.state_surface = state_surface
         self.journey_id = self.JOURNEY_ID
         self.journey_name = self.JOURNEY_NAME
+        self._intent_service = None
+        self.telemetry_service = None
     
-    async def compose_journey(self, context: ExecutionContext, journey_params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Compose data quality journey."""
+    async def compose_journey(
+        self,
+        context: ExecutionContext,
+        journey_params: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """Compose the data quality journey."""
         journey_params = journey_params or {}
-        journey_execution_id = generate_event_id()
         
         self.logger.info(f"Composing journey: {self.journey_name}")
         
+        journey_execution_id = generate_event_id()
+        
         try:
-            artifact_id = journey_params.get("artifact_id")
+            parsed_file_id = journey_params.get("parsed_file_id")
+            if not parsed_file_id:
+                raise ValueError("parsed_file_id is required for quality assessment")
             
-            # Execute quality assessment
-            assessment_id = generate_event_id()
-            quality_result = {
-                "assessment_id": assessment_id,
-                "artifact_id": artifact_id,
-                "created_at": self.clock.now_utc().isoformat(),
-                "quality_score": 0.85,
-                "completeness": 0.90,
-                "accuracy": 0.88,
-                "consistency": 0.82,
-                "issues": [],
-                "recommendations": []
-            }
-            
-            semantic_payload = {
-                "assessment_id": assessment_id,
-                "artifact_id": artifact_id,
-                "quality_score": quality_result["quality_score"],
-                "journey_execution_id": journey_execution_id
-            }
-            
-            artifact = create_structured_artifact(
-                result_type="data_quality_assessment",
-                semantic_payload=semantic_payload,
-                renderings={"quality_result": quality_result}
-            )
+            intent_service = await self._get_intent_service()
+            result = await intent_service.execute(context, journey_params)
             
             return {
                 "success": True,
                 "journey_id": self.journey_id,
                 "journey_execution_id": journey_execution_id,
-                "assessment_id": assessment_id,
-                "artifacts": {"quality_assessment": artifact},
-                "events": [{"type": "quality_assessed", "assessment_id": assessment_id}]
+                "artifacts": result.get("artifacts", {}),
+                "events": [
+                    {"type": "journey_completed", "journey_id": self.journey_id},
+                    *result.get("events", [])
+                ]
             }
             
         except Exception as e:
             self.logger.error(f"Journey failed: {e}", exc_info=True)
-            return {"success": False, "error": str(e), "journey_id": self.journey_id}
+            return {
+                "success": False,
+                "error": str(e),
+                "journey_id": self.journey_id,
+                "journey_execution_id": journey_execution_id,
+                "artifacts": {},
+                "events": [{"type": "journey_failed", "journey_id": self.journey_id, "error": str(e)}]
+            }
+    
+    async def _get_intent_service(self):
+        if not self._intent_service:
+            from symphainy_coexistence_fabric.symphainy_platform.realms.insights.intent_services import (
+                AssessDataQualityService
+            )
+            self._intent_service = AssessDataQualityService(
+                public_works=self.public_works,
+                state_surface=self.state_surface
+            )
+        return self._intent_service
     
     def get_soa_apis(self) -> Dict[str, Dict[str, Any]]:
+        """Get SOA APIs provided by this journey."""
         return {
             "assess_quality": {
-                "handler": self._handle_assess,
+                "handler": self._soa_assess_quality,
+                "description": "Assess data quality for a parsed file",
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "artifact_id": {"type": "string", "description": "Content artifact to assess"},
-                        "user_context": {"type": "object"}
+                        "parsed_file_id": {"type": "string", "description": "Parsed file ID"},
+                        "source_file_id": {"type": "string", "description": "Source file ID"},
+                        "parser_type": {"type": "string", "description": "Parser type"},
+                        "tenant_id": {"type": "string"},
+                        "session_id": {"type": "string"}
                     },
-                    "required": ["artifact_id"]
-                },
-                "description": "Assess data quality and generate metrics"
-            },
-            "generate_quality_report": {
-                "handler": self._handle_report,
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "assessment_id": {"type": "string", "description": "Assessment ID"},
-                        "user_context": {"type": "object"}
-                    },
-                    "required": ["assessment_id"]
-                },
-                "description": "Generate detailed quality report"
-            },
-            "validate_schema": {
-                "handler": self._handle_validate,
-                "input_schema": {
-                    "type": "object",
-                    "properties": {
-                        "artifact_id": {"type": "string"},
-                        "schema_id": {"type": "string", "description": "Schema to validate against"},
-                        "user_context": {"type": "object"}
-                    },
-                    "required": ["artifact_id"]
-                },
-                "description": "Validate data against schema"
+                    "required": ["parsed_file_id", "tenant_id", "session_id"]
+                }
             }
         }
     
-    async def _handle_assess(self, **kwargs) -> Dict[str, Any]:
-        user_context = kwargs.get("user_context", {})
+    async def _soa_assess_quality(
+        self,
+        parsed_file_id: str,
+        tenant_id: str,
+        session_id: str,
+        source_file_id: Optional[str] = None,
+        parser_type: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """SOA API: Assess quality."""
+        execution_id = generate_event_id()
+        
         context = ExecutionContext(
-            execution_id=generate_event_id(),
-            tenant_id=user_context.get("tenant_id", "default"),
-            session_id=user_context.get("session_id", generate_event_id()),
-            solution_id="insights_solution"
+            execution_id=execution_id,
+            tenant_id=tenant_id,
+            session_id=session_id,
+            intent=None,
+            state_surface=self.state_surface
         )
-        return await self.compose_journey(context, {"artifact_id": kwargs.get("artifact_id")})
-    
-    async def _handle_report(self, **kwargs) -> Dict[str, Any]:
-        return await self._handle_assess(**kwargs)
-    
-    async def _handle_validate(self, **kwargs) -> Dict[str, Any]:
-        return await self._handle_assess(**kwargs)
+        
+        journey_params = {"parsed_file_id": parsed_file_id}
+        if source_file_id:
+            journey_params["source_file_id"] = source_file_id
+        if parser_type:
+            journey_params["parser_type"] = parser_type
+        
+        return await self.compose_journey(context, journey_params)

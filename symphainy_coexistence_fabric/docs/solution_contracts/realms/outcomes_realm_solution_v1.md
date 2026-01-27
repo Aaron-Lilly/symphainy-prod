@@ -1,17 +1,24 @@
-# Solution Contract: Solution Realm Solution
+# Solution Contract: Outcomes Realm Solution
 
-**Solution:** Solution Realm Solution  
-**Solution ID:** `solution_realm_solution_v1`  
+**Solution:** Outcomes Realm Solution  
+**Solution ID:** `outcomes_realm_solution_v1`  
 **Status:** ✅ IMPLEMENTED  
 **Priority:** P0  
 **Owner:** C-Suite
 
 ---
 
+## Naming Convention
+- **Realm:** Outcomes Realm (not Solution Realm)
+- **Solution:** OutcomesSolution (platform construct that composes journeys)
+- **Artifacts:** outcome_* prefix (e.g., outcome_synthesis, outcome_roadmap)
+
+---
+
 ## 1. Business Objective
 
 ### Problem Statement
-Users need to synthesize insights from all realms (Content, Insights, Journey) into strategic outcomes, generate roadmaps, create POC proposals, and build coexistence blueprints. The Solution Realm Solution provides solution synthesis, roadmap generation, POC proposal creation, blueprint creation, and artifact export capabilities that integrate work across all pillars.
+Users need to synthesize insights from all realms (Content, Insights, Journey) into strategic outcomes, generate roadmaps, create POC proposals, and build coexistence blueprints. The Outcomes Realm Solution provides outcome synthesis, roadmap generation, POC proposal creation, blueprint creation, and artifact export capabilities that integrate work across all pillars.
 
 ### Target Users
 - **Primary Persona:** Solution Architects, Business Strategists
@@ -33,38 +40,38 @@ Users need to synthesize insights from all realms (Content, Insights, Journey) i
 
 ### Composed Journeys
 
-1. **Journey:** Solution Synthesis (Journey ID: `journey_solution_synthesis`)
+1. **Journey:** Outcome Synthesis (Journey ID: `journey_outcomes_synthesis`)
    - **Purpose:** Synthesize business outcomes from Content, Insights, and Journey realms
-   - **User Trigger:** User clicks "Generate Artifacts" or requests solution synthesis
-   - **Success Outcome:** Solution synthesized with summary visualization, realm visuals, and overall synthesis report
+   - **User Trigger:** User clicks "Generate Artifacts" or requests outcome synthesis
+   - **Success Outcome:** Outcome synthesized with summary visualization, realm visuals, and overall synthesis report
    - **Intents:** `synthesize_outcome`
 
-2. **Journey:** Roadmap Generation (Journey ID: `journey_solution_roadmap_generation`)
+2. **Journey:** Roadmap Generation (Journey ID: `journey_outcomes_roadmap_generation`)
    - **Purpose:** Generate strategic roadmap from business goals
    - **User Trigger:** User provides goals and requests roadmap generation
    - **Success Outcome:** Strategic roadmap generated with phases, timeline, and visualization
    - **Intents:** `generate_roadmap`
 
-3. **Journey:** POC Proposal Creation (Journey ID: `journey_solution_poc_proposal`)
+3. **Journey:** POC Proposal Creation (Journey ID: `journey_outcomes_poc_proposal`)
    - **Purpose:** Create Proof of Concept proposal from description
    - **User Trigger:** User provides POC description and requests proposal creation
    - **Success Outcome:** POC proposal created with objectives, scope, deliverables, and timeline
    - **Intents:** `create_poc`
 
-4. **Journey:** Blueprint Creation (Journey ID: `journey_solution_blueprint_creation`)
+4. **Journey:** Blueprint Creation (Journey ID: `journey_outcomes_blueprint_creation`)
    - **Purpose:** Create coexistence blueprint from workflow analysis
    - **User Trigger:** User provides workflow_id and requests blueprint creation
    - **Success Outcome:** Coexistence blueprint created with current state, coexistence state, roadmap, and responsibility matrix
    - **Intents:** `create_blueprint`
 
-5. **Journey:** Solution Creation (Journey ID: `journey_solution_creation`)
+5. **Journey:** Solution Creation (Journey ID: `journey_outcomes_creation`)
    - **Purpose:** Create platform solution from roadmap, POC, or blueprint
    - **User Trigger:** User selects source artifact and requests solution creation
    - **Success Outcome:** Platform solution registered with domain bindings and intents
    - **Intents:** `create_solution`
 
-6. **Journey:** Artifact Export (Journey ID: `journey_solution_artifact_export`)
-   - **Purpose:** Export solution artifacts in various formats
+6. **Journey:** Artifact Export (Journey ID: `journey_outcomes_artifact_export`)
+   - **Purpose:** Export outcome artifacts in various formats
    - **User Trigger:** User selects artifact and export format
    - **Success Outcome:** Artifact exported as JSON, DOCX, or YAML
    - **Intents:** `export_artifact`
@@ -72,8 +79,8 @@ Users need to synthesize insights from all realms (Content, Insights, Journey) i
 ### Journey Orchestration
 
 **Sequential Flow (Primary):**
-1. User accesses Solution Realm (Business Outcomes) → Views cross-pillar summaries
-2. User synthesizes solution → Journey: Solution Synthesis
+1. User accesses Outcomes Realm (Business Outcomes) → Views cross-pillar summaries
+2. User synthesizes outcome → Journey: Outcome Synthesis
 3. User generates roadmap → Journey: Roadmap Generation
 4. User creates POC proposal → Journey: POC Proposal Creation
 5. User creates blueprint → Journey: Blueprint Creation
@@ -90,7 +97,7 @@ Users need to synthesize insights from all realms (Content, Insights, Journey) i
 
 ### Primary User Flow
 ```
-1. User navigates to Solution Realm (Business Outcomes pillar)
+1. User navigates to Outcomes Realm (Business Outcomes pillar)
    → Sees summary visualization of work across all pillars
    → Sees tabs (Journey Recap, Data, Insights, Journey)
    
@@ -311,7 +318,7 @@ All artifacts are stored in **Artifact Plane** (not execution state):
 ## 9. Solution Registry
 
 ### Solution Metadata
-- **Solution ID:** `solution_realm_solution_v1`
+- **Solution ID:** `outcomes_realm_solution_v1`
 - **Solution Version:** 1.0
 - **Deployment Status:** IMPLEMENTED
 - **Last Updated:** January 27, 2026
@@ -320,24 +327,24 @@ All artifacts are stored in **Artifact Plane** (not execution state):
 
 | Journey ID | Status | Intents |
 |------------|--------|---------|
-| `journey_solution_synthesis` | ✅ IMPLEMENTED | `synthesize_outcome` |
-| `journey_solution_roadmap_generation` | ✅ IMPLEMENTED | `generate_roadmap` |
-| `journey_solution_poc_proposal` | ✅ IMPLEMENTED | `create_poc` |
-| `journey_solution_blueprint_creation` | ✅ IMPLEMENTED | `create_blueprint` |
-| `journey_solution_creation` | ✅ IMPLEMENTED | `create_solution` |
-| `journey_solution_artifact_export` | ✅ IMPLEMENTED | `export_artifact` |
+| `journey_outcomes_synthesis` | ✅ IMPLEMENTED | `synthesize_outcome` |
+| `journey_outcomes_roadmap_generation` | ✅ IMPLEMENTED | `generate_roadmap` |
+| `journey_outcomes_poc_proposal` | ✅ IMPLEMENTED | `create_poc` |
+| `journey_outcomes_blueprint_creation` | ✅ IMPLEMENTED | `create_blueprint` |
+| `journey_outcomes_creation` | ✅ IMPLEMENTED | `create_solution` |
+| `journey_outcomes_artifact_export` | ✅ IMPLEMENTED | `export_artifact` |
 
 ### Solution Dependencies
 - **Depends on:** Content Realm Solution, Insights Realm Solution, Journey Realm Solution, Security Solution (authentication)
-- **Required by:** None (final synthesis solution)
+- **Required by:** None (final outcome synthesis solution)
 
 ---
 
 ## 10. Coexistence Component
 
 **GuideAgent Integration:**
-- **Platform Concierge:** GuideAgent routes to Solution Realm for synthesis
-- **Navigation:** GuideAgent helps navigate solution workflows
+- **Platform Concierge:** GuideAgent routes to Outcomes Realm for synthesis
+- **Navigation:** GuideAgent helps navigate outcomes workflows
 - **Context Awareness:** GuideAgent knows user's pillar progress
 
 **Solution-Specific Liaison Agents:**
@@ -370,7 +377,7 @@ All artifacts are stored in **Artifact Plane** (not execution state):
 - **Status:** ✅ IMPLEMENTED
 
 ### Implemented Features
-- Solution synthesis with realm visuals
+- Outcome synthesis with realm visuals
 - Roadmap generation with Artifact Plane storage
 - POC proposal creation with Artifact Plane storage
 - Blueprint creation with workflow analysis
