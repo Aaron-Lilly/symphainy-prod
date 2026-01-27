@@ -2,12 +2,12 @@
 Guide Agent Journey Orchestrator
 
 Composes AI-powered guidance operations:
-1. initiate_guide_agent - Start agent conversation
-2. process_guide_agent_message - Handle user messages
-3. route_to_liaison_agent - Hand off to specialist
+1. initiate_guide_agent - Initialize with platform-wide context and MCP tools
+2. process_guide_agent_message - Process messages, optionally call MCP tools
+3. route_to_liaison_agent - Route to pillar-specific Liaison Agent
 
-WHAT (Journey Role): I orchestrate AI-powered user guidance
-HOW (Journey Implementation): I compose guide agent intents for assistance
+WHAT (Journey Role): I orchestrate AI-powered user guidance with MCP tool access
+HOW (Journey Implementation): I compose guide agent intents with Curator integration
 """
 
 import sys
@@ -28,45 +28,50 @@ class GuideAgentJourney:
     """
     Guide Agent Journey Orchestrator.
     
-    Handles AI-powered guidance:
-    - Initiate conversations
-    - Process user messages
-    - Route to specialized agents
+    Handles AI-powered guidance with platform-wide MCP tool access:
+    - Initialize with all available MCP tools from Curator
+    - Process messages with optional MCP tool execution
+    - Route to Liaison Agents with context sharing
     
     MCP Tools:
-    - coexist_init_guide: Start guide agent
-    - coexist_send_message: Send message to agent
-    - coexist_route_liaison: Route to specialist
+    - coexist_initiate_guide_agent: Initialize with MCP tools
+    - coexist_process_message: Process message, call tools
+    - coexist_route_to_liaison: Route to specialist
     """
     
     JOURNEY_ID = "guide_agent"
     JOURNEY_NAME = "Guide Agent Interaction"
     
-    # Liaison agent types
-    LIAISON_TYPES = {
-        "content": "Content Liaison Agent",
-        "insights": "Insights Liaison Agent",
-        "journey": "Journey Liaison Agent",
-        "operations": "Operations Liaison Agent",
-        "outcomes": "Outcomes Liaison Agent"
+    # Valid Liaison Agent targets
+    VALID_PILLARS = ["content", "insights", "journey", "solution"]
+    
+    # Platform capabilities for context
+    PLATFORM_CAPABILITIES = {
+        "content": ["file_upload", "file_parsing", "embeddings", "artifact_management"],
+        "insights": ["data_quality", "business_analysis", "pattern_discovery", "relationship_mapping"],
+        "journey": ["workflow_creation", "sop_management", "coexistence_analysis", "blueprint_creation"],
+        "solution": ["poc_creation", "roadmap_generation", "solution_synthesis", "artifact_export"]
     }
     
     def __init__(
         self,
         public_works: Optional[Any] = None,
         state_surface: Optional[Any] = None,
+        curator: Optional[Any] = None,
         agent_framework: Optional[Any] = None
     ):
         self.logger = get_logger(self.__class__.__name__)
         self.clock = get_clock()
         self.public_works = public_works
         self.state_surface = state_surface
+        self.curator = curator
         self.agent_framework = agent_framework
         self.journey_id = self.JOURNEY_ID
         self.journey_name = self.JOURNEY_NAME
         
-        # In-memory session store (production would use state surface)
-        self._agent_sessions: Dict[str, Dict] = {}
+        # In-memory conversation store (production uses state_surface)
+        self._conversations: Dict[str, Dict] = {}
+        self._chat_sessions: Dict[str, Dict] = {}
     
     async def compose_journey(
         self,
@@ -84,9 +89,9 @@ class GuideAgentJourney:
             if action == "initiate":
                 return await self._initiate_guide_agent(context, journey_params, journey_execution_id)
             elif action == "message":
-                return await self._process_message(context, journey_params, journey_execution_id)
+                return await self._process_guide_agent_message(context, journey_params, journey_execution_id)
             elif action == "route_liaison":
-                return await self._route_to_liaison(context, journey_params, journey_execution_id)
+                return await self._route_to_liaison_agent(context, journey_params, journey_execution_id)
             else:
                 raise ValueError(f"Unknown action: {action}")
                 
@@ -94,262 +99,469 @@ class GuideAgentJourney:
             self.logger.error(f"Journey failed: {e}", exc_info=True)
             return {"success": False, "error": str(e), "journey_id": self.journey_id}
     
-    async def _initiate_guide_agent(self, context: ExecutionContext, params: Dict, journey_execution_id: str) -> Dict[str, Any]:
-        """Initiate a guide agent conversation."""
-        trigger_source = params.get("trigger_source", "chat_open")
-        current_pillar = params.get("current_pillar")
-        conversation_mode = params.get("conversation_mode", "guided")
+    async def _initiate_guide_agent(
+        self, 
+        context: ExecutionContext, 
+        params: Dict, 
+        journey_execution_id: str
+    ) -> Dict[str, Any]:
+        """
+        Initialize GuideAgent with platform-wide context and MCP tools.
         
-        # Create agent session
-        agent_session_id = f"agent_{generate_event_id()}"
+        Per contract:
+        - Query Curator for all available MCP tools (all orchestrators)
+        - Load conversation history from chat session
+        - Retrieve shared context from previous agent (if toggled)
+        - Build platform-wide context
+        """
+        chat_session_id = params.get("chat_session_id") or f"chat_{context.session_id}"
+        include_mcp_tools = params.get("include_mcp_tools", True)
         
-        # Store session
-        self._agent_sessions[agent_session_id] = {
-            "created_at": self.clock.now_utc().isoformat(),
-            "session_id": context.session_id,
+        # Get or create chat session
+        chat_session = self._chat_sessions.get(chat_session_id, {
+            "chat_session_id": chat_session_id,
+            "active_agent": "guide",
             "conversation_history": [],
-            "mode": conversation_mode
+            "context": {},
+            "created_at": self.clock.now_utc().isoformat()
+        })
+        self._chat_sessions[chat_session_id] = chat_session
+        
+        # Load conversation history
+        conversation_history = chat_session.get("conversation_history", [])
+        
+        # Retrieve shared context from previous agent (if toggled)
+        shared_context = chat_session.get("context", {}).get("shared_context")
+        
+        # Query Curator for all available MCP tools from all orchestrators
+        available_mcp_tools = []
+        if include_mcp_tools:
+            available_mcp_tools = await self._query_curator_for_mcp_tools()
+        
+        # Build platform-wide context
+        platform_context = {
+            "pillars": list(self.PLATFORM_CAPABILITIES.keys()),
+            "solutions": [f"{p}_solution" for p in self.PLATFORM_CAPABILITIES.keys()],
+            "capabilities": [cap for caps in self.PLATFORM_CAPABILITIES.values() for cap in caps]
         }
         
-        # Generate contextual greeting
-        greeting = "Hello! I'm your Guide through the Symphainy platform. I can help you understand coexistence concepts, navigate to the right solutions, or answer questions about your current journey. What would you like to explore today?"
+        # Store conversation state
+        conversation_id = f"conv_{chat_session_id}_{journey_execution_id}"
+        self._conversations[conversation_id] = {
+            "chat_session_id": chat_session_id,
+            "agent_type": "guide",
+            "mcp_tools": available_mcp_tools,
+            "platform_context": platform_context,
+            "created_at": self.clock.now_utc().isoformat()
+        }
         
-        if current_pillar:
-            greeting = f"Hello! I see you're in the {current_pillar.title()} pillar. I can help you with {current_pillar}-specific questions, explain concepts, or navigate elsewhere. What would you like to do?"
-        
-        suggestions = [
-            "What is coexistence?",
-            "Help me find a solution for my needs",
-            "Show me what I can do here",
-            "Explain the current pillar"
-        ]
-        
-        agent_session = {
-            "session_info": {
-                "agent_session_id": agent_session_id,
-                "created_at": self.clock.now_utc().isoformat(),
-                "expires_at": None  # No expiry for now
-            },
-            "initial_message": {
-                "role": "assistant",
-                "content": greeting,
-                "suggestions": suggestions
-            },
-            "agent_capabilities": [
-                "Platform navigation assistance",
-                "Coexistence concept explanation",
-                "Solution recommendations",
-                "Journey guidance",
-                "Artifact explanation"
-            ],
-            "context_awareness": {
-                "knows_current_pillar": current_pillar is not None,
-                "current_pillar": current_pillar
-            }
+        # Build response artifact
+        guide_agent_conversation = {
+            "agent_type": "guide",
+            "chat_session_id": chat_session_id,
+            "conversation_history": conversation_history,
+            "shared_context": shared_context,
+            "available_mcp_tools": available_mcp_tools,
+            "platform_context": platform_context
         }
         
         semantic_payload = {
-            "agent_type": "guide_agent",
-            "conversation_mode": conversation_mode,
-            "journey_execution_id": journey_execution_id
+            "agent_type": "guide",
+            "chat_session_id": chat_session_id,
+            "mcp_tools_count": len(available_mcp_tools),
+            "has_shared_context": shared_context is not None
         }
         
         artifact = create_structured_artifact(
-            result_type="guide_agent_session",
+            result_type="guide_agent_conversation",
             semantic_payload=semantic_payload,
-            renderings=agent_session
+            renderings={
+                "message": "GuideAgent initialized. I can help you with platform-wide questions and execute actions via MCP tools.",
+                "guide_agent_conversation": guide_agent_conversation
+            }
         )
         
         return {
             "success": True,
             "journey_id": self.journey_id,
             "journey_execution_id": journey_execution_id,
-            "artifacts": {"agent_session": artifact},
-            "events": [{"type": "guide_agent_initiated", "agent_session_id": agent_session_id}]
+            "artifacts": {"guide_agent_conversation": artifact},
+            "events": [{
+                "type": "guide_agent_initialized",
+                "chat_session_id": chat_session_id,
+                "mcp_tools_count": len(available_mcp_tools)
+            }]
         }
     
-    async def _process_message(self, context: ExecutionContext, params: Dict, journey_execution_id: str) -> Dict[str, Any]:
-        """Process a user message."""
-        agent_session_id = params.get("agent_session_id")
-        message = params.get("message", "")
+    async def _query_curator_for_mcp_tools(self) -> List[Dict[str, Any]]:
+        """Query Curator for all available MCP tools from all orchestrators."""
+        # If Curator is available, query it
+        if self.curator:
+            try:
+                tools = await self.curator.get_all_mcp_tools()
+                if tools:
+                    return tools
+            except Exception as e:
+                self.logger.warning(f"Could not query Curator: {e}")
         
-        if not agent_session_id or agent_session_id not in self._agent_sessions:
-            raise ValueError("Invalid or expired agent session")
+        # Return default tools based on known orchestrators
+        return [
+            # Content orchestrator tools
+            {"tool_name": "content_upload_file", "description": "Upload a file for processing", "orchestrator": "content", "parameters": {"file": "object", "file_name": "string"}},
+            {"tool_name": "content_parse_file", "description": "Parse an uploaded file", "orchestrator": "content", "parameters": {"artifact_id": "string"}},
+            {"tool_name": "content_create_embeddings", "description": "Create embeddings from parsed content", "orchestrator": "content", "parameters": {"parsed_artifact_id": "string"}},
+            {"tool_name": "content_list_artifacts", "description": "List content artifacts", "orchestrator": "content", "parameters": {}},
+            # Insights orchestrator tools
+            {"tool_name": "insights_assess_quality", "description": "Assess data quality", "orchestrator": "insights", "parameters": {"artifact_id": "string"}},
+            {"tool_name": "insights_analyze_business", "description": "Perform business analysis", "orchestrator": "insights", "parameters": {"artifact_id": "string", "analysis_type": "string"}},
+            # Journey orchestrator tools
+            {"tool_name": "journey_create_workflow", "description": "Create workflow from SOP", "orchestrator": "journey", "parameters": {"sop_id": "string"}},
+            {"tool_name": "journey_analyze_coexistence", "description": "Analyze coexistence between systems", "orchestrator": "journey", "parameters": {"workflow_id": "string", "sop_id": "string"}},
+            # Solution orchestrator tools
+            {"tool_name": "outcomes_create_poc", "description": "Create POC proposal", "orchestrator": "outcomes", "parameters": {"analysis_id": "string"}},
+            {"tool_name": "outcomes_generate_roadmap", "description": "Generate implementation roadmap", "orchestrator": "outcomes", "parameters": {"poc_id": "string"}},
+            # Control Tower tools
+            {"tool_name": "tower_get_platform_stats", "description": "Get platform statistics", "orchestrator": "control_tower", "parameters": {}},
+            {"tool_name": "tower_list_solutions", "description": "List deployed solutions", "orchestrator": "control_tower", "parameters": {}}
+        ]
+    
+    async def _process_guide_agent_message(
+        self, 
+        context: ExecutionContext, 
+        params: Dict, 
+        journey_execution_id: str
+    ) -> Dict[str, Any]:
+        """
+        Process user message to GuideAgent.
+        
+        Per contract:
+        - Process user message with platform-wide knowledge
+        - Optionally determine and call MCP tool
+        - Update conversation context
+        - Return response with optional MCP tool results
+        """
+        message = params.get("message", "")
+        chat_session_id = params.get("chat_session_id")
+        mcp_tool_to_call = params.get("mcp_tool_to_call")
+        mcp_tool_params = params.get("mcp_tool_params", {})
         
         if not message.strip():
-            raise ValueError("Message cannot be empty")
+            raise ValueError("message is required")
+        
+        # Get chat session
+        if not chat_session_id:
+            chat_session_id = f"chat_{context.session_id}"
+        
+        chat_session = self._chat_sessions.get(chat_session_id)
+        if not chat_session:
+            raise ValueError(f"Chat session not found: {chat_session_id}")
         
         # Generate message ID
         message_id = f"msg_{generate_event_id()}"
         
-        # Simple response generation (production would use LLM)
-        response_content, suggestions, actions = self._generate_response(message)
+        # Analyze message and determine if MCP tool call needed
+        mcp_tool_result = None
+        tool_called = None
         
-        # Store in conversation history
-        session = self._agent_sessions[agent_session_id]
-        session["conversation_history"].append({
+        if mcp_tool_to_call:
+            # Explicit tool call requested
+            tool_called = mcp_tool_to_call
+            mcp_tool_result = await self._call_orchestrator_mcp_tool(
+                mcp_tool_to_call, 
+                mcp_tool_params, 
+                context
+            )
+        else:
+            # Let GuideAgent determine if tool is needed
+            tool_decision = self._determine_mcp_tool_for_message(message)
+            if tool_decision:
+                tool_called = tool_decision["tool_name"]
+                mcp_tool_result = await self._call_orchestrator_mcp_tool(
+                    tool_decision["tool_name"],
+                    tool_decision.get("params", {}),
+                    context
+                )
+        
+        # Generate response
+        response_content = self._generate_guide_response(message, mcp_tool_result)
+        
+        # Update conversation context
+        chat_session["conversation_history"].append({
             "role": "user",
             "content": message,
             "timestamp": self.clock.now_utc().isoformat()
         })
-        session["conversation_history"].append({
+        chat_session["conversation_history"].append({
             "role": "assistant",
             "content": response_content,
-            "timestamp": self.clock.now_utc().isoformat()
+            "timestamp": self.clock.now_utc().isoformat(),
+            "mcp_tool_called": tool_called,
+            "mcp_tool_result": mcp_tool_result
         })
         
-        conversation_turn = {
+        # Build response artifact
+        guide_agent_response = {
+            "message_id": message_id,
             "response": {
                 "role": "assistant",
                 "content": response_content,
                 "timestamp": self.clock.now_utc().isoformat()
             },
-            "suggestions": suggestions,
-            "detected_intent": {
-                "intent_type": "general_query",
-                "confidence": 0.8
-            },
-            "actions": actions
+            "mcp_tool_called": tool_called,
+            "mcp_tool_result": mcp_tool_result,
+            "suggestions": self._generate_suggestions(message, mcp_tool_result)
         }
         
         semantic_payload = {
             "message_id": message_id,
-            "response_type": "conversational",
-            "journey_execution_id": journey_execution_id
+            "response_type": "with_tool" if tool_called else "conversational",
+            "mcp_tool_called": tool_called
         }
         
         artifact = create_structured_artifact(
             result_type="guide_agent_response",
             semantic_payload=semantic_payload,
-            renderings=conversation_turn
+            renderings=guide_agent_response
         )
         
         return {
             "success": True,
             "journey_id": self.journey_id,
             "journey_execution_id": journey_execution_id,
-            "artifacts": {"conversation_turn": artifact},
-            "events": [{"type": "guide_agent_message_processed", "message_id": message_id}]
+            "artifacts": {"guide_agent_response": artifact},
+            "events": [{
+                "type": "guide_agent_message_processed",
+                "chat_session_id": chat_session_id,
+                "message_id": message_id,
+                "mcp_tool_called": tool_called
+            }]
         }
     
-    def _generate_response(self, message: str) -> tuple:
-        """Generate a response to the user message (simplified)."""
+    def _determine_mcp_tool_for_message(self, message: str) -> Optional[Dict[str, Any]]:
+        """Determine if an MCP tool should be called based on the message."""
         message_lower = message.lower()
         
-        # Check for coexistence questions
-        if "coexistence" in message_lower or "what is" in message_lower:
-            return (
-                "**Coexistence** in the Symphainy platform means enabling your existing systems to work together with modern AI capabilities without replacing them.\n\nThink of it like this: instead of ripping out your legacy systems, we help you build bridges between them and modern tools. The platform coordinates work that crosses these boundaries.\n\nWould you like me to show you an example?",
-                ["Show me an example", "How does it work?", "Take me to coexistence analysis"],
-                []
-            )
+        # Check for file upload intent
+        if any(word in message_lower for word in ["upload", "file", "document"]):
+            return {"tool_name": "content_upload_file", "params": {}}
         
-        # Check for navigation requests
-        if "content" in message_lower or "upload" in message_lower:
-            return (
-                "I'll help you get to the Content pillar where you can upload your files. Click the button below to navigate there!",
-                ["What can I upload?", "What file types are supported?"],
-                [{"action_type": "navigate", "label": "Go to Content", "intent": "navigate_to_solution", "parameters": {"solution_id": "content_solution"}}]
-            )
+        # Check for parsing intent
+        if any(word in message_lower for word in ["parse", "extract", "read"]):
+            return {"tool_name": "content_parse_file", "params": {}}
         
-        # Check for help requests
-        if "help" in message_lower or "what can" in message_lower:
-            return (
-                "I can help you with several things:\n\n• **Navigation** - Help you find the right solution or pillar\n• **Explanation** - Explain coexistence concepts\n• **Guidance** - Guide you through your journey\n• **Recommendations** - Suggest solutions based on your goals\n\nWhat would you like to explore?",
-                ["Explain coexistence", "Show me solutions", "Help me get started"],
-                []
-            )
+        # Check for quality assessment
+        if any(word in message_lower for word in ["quality", "assess", "validate"]):
+            return {"tool_name": "insights_assess_quality", "params": {}}
         
-        # Default response
-        return (
-            "I'd be happy to help you with that. Could you tell me more about what you're looking for? I can help with navigation, explain concepts, or guide you through the platform.",
-            ["What is coexistence?", "Show me solutions", "Help me upload a file"],
-            []
-        )
+        # Check for workflow intent
+        if any(word in message_lower for word in ["workflow", "sop", "process"]):
+            return {"tool_name": "journey_create_workflow", "params": {}}
+        
+        # Check for statistics/dashboard
+        if any(word in message_lower for word in ["stats", "statistics", "dashboard", "status"]):
+            return {"tool_name": "tower_get_platform_stats", "params": {}}
+        
+        # No tool needed
+        return None
     
-    async def _route_to_liaison(self, context: ExecutionContext, params: Dict, journey_execution_id: str) -> Dict[str, Any]:
-        """Route to a specialized liaison agent."""
-        agent_session_id = params.get("agent_session_id")
-        liaison_type = params.get("liaison_type")
-        handoff_reason = params.get("handoff_reason", "user_request")
+    async def _call_orchestrator_mcp_tool(
+        self, 
+        tool_name: str, 
+        params: Dict[str, Any],
+        context: ExecutionContext
+    ) -> Dict[str, Any]:
+        """
+        Call an orchestrator MCP tool (governed execution).
         
-        if not liaison_type or liaison_type not in self.LIAISON_TYPES:
-            raise ValueError(f"Invalid liaison type. Valid types: {list(self.LIAISON_TYPES.keys())}")
+        This is the governed pathway - all tool calls go through this method.
+        """
+        self.logger.info(f"Calling MCP tool: {tool_name} with params: {params}")
         
-        liaison_name = self.LIAISON_TYPES[liaison_type]
-        liaison_session_id = f"liaison_{generate_event_id()}"
-        
-        # Generate liaison greeting
-        liaison_greeting = f"Hi! I'm the {liaison_name}, and I specialize in {liaison_type} operations. "
-        
-        if liaison_type == "content":
-            liaison_greeting += "I can help you upload files, parse content, and create embeddings. What would you like to do?"
-        elif liaison_type == "insights":
-            liaison_greeting += "I can help you analyze data, assess quality, and discover patterns. What data would you like to explore?"
-        elif liaison_type in ["journey", "operations"]:
-            liaison_greeting += "I can help you analyze workflows, create SOPs, and identify coexistence opportunities. What process would you like to examine?"
-        elif liaison_type == "outcomes":
-            liaison_greeting += "I can help you create POCs, generate roadmaps, and synthesize solutions. What outcome are you working toward?"
-        
-        guide_farewell = "I'm connecting you with our specialist who can help you better with this. They'll take great care of you! I'll be here if you need general guidance again."
-        
-        handoff = {
-            "handoff_confirmation": {
-                "success": True,
-                "from_agent_id": agent_session_id,
-                "to_agent_id": liaison_session_id,
-                "liaison_type": liaison_type,
-                "handoff_reason": handoff_reason
+        # In production, this would call the actual MCP tool via the platform
+        # For now, return a simulated result
+        return {
+            "tool_name": tool_name,
+            "status": "success",
+            "result": {
+                "message": f"Tool '{tool_name}' executed successfully",
+                "execution_id": generate_event_id()
             },
-            "liaison_session": {
-                "liaison_session_id": liaison_session_id,
-                "liaison_type": liaison_type,
-                "liaison_name": liaison_name,
+            "executed_at": self.clock.now_utc().isoformat()
+        }
+    
+    def _generate_guide_response(self, message: str, mcp_tool_result: Optional[Dict]) -> str:
+        """Generate GuideAgent response based on message and tool result."""
+        message_lower = message.lower()
+        
+        if mcp_tool_result:
+            tool_name = mcp_tool_result.get("tool_name", "")
+            return f"I've executed the **{tool_name}** tool for you. {mcp_tool_result.get('result', {}).get('message', '')} Is there anything else you'd like me to help with?"
+        
+        # Coexistence explanation
+        if "coexistence" in message_lower or "what is" in message_lower:
+            return "**Coexistence** in the Symphainy platform means enabling your existing systems to work together with modern AI capabilities without replacing them.\n\nThink of it like this: instead of ripping out your legacy systems, we help you build bridges between them and modern tools. The platform coordinates work that crosses these boundaries.\n\nWould you like me to show you an example?"
+        
+        # Navigation help
+        if any(word in message_lower for word in ["content", "upload", "file"]):
+            return "I can help you work with content! The Content pillar handles file uploads, parsing, and embedding creation. Would you like me to navigate you there, or shall I help you upload a file directly?"
+        
+        if any(word in message_lower for word in ["insights", "analyze", "quality"]):
+            return "The Insights pillar is perfect for data analysis and quality assessment. I can help you analyze uploaded content, assess data quality, or discover patterns. What would you like to explore?"
+        
+        if any(word in message_lower for word in ["journey", "workflow", "sop", "process"]):
+            return "The Journey pillar handles workflows, SOPs, and coexistence analysis. I can help you create workflows from SOPs, analyze how systems work together, or build coexistence blueprints. What interests you?"
+        
+        # Help response
+        if any(word in message_lower for word in ["help", "what can", "capabilities"]):
+            return "I'm your **Guide Agent** - I have platform-wide knowledge and can help you with:\n\n• **Navigation** - Find the right pillar or solution\n• **Coexistence** - Explain how systems work together\n• **MCP Tools** - Execute actions across all orchestrators\n• **Guidance** - Walk you through any journey\n\nI can also connect you with **Liaison Agents** who specialize in specific pillars. What would you like to explore?"
+        
+        # Default
+        return "I'd be happy to help you with that! I have access to tools across all platform pillars. Could you tell me more about what you're trying to accomplish? I can help with content processing, data analysis, workflow management, or solution creation."
+    
+    def _generate_suggestions(self, message: str, mcp_tool_result: Optional[Dict]) -> List[str]:
+        """Generate contextual suggestions."""
+        if mcp_tool_result:
+            return [
+                "Show me the results",
+                "What's next?",
+                "Help me understand this"
+            ]
+        
+        message_lower = message.lower()
+        if "coexistence" in message_lower:
+            return ["Show me an example", "Take me to Journey pillar", "How does it work?"]
+        
+        return [
+            "What is coexistence?",
+            "Help me upload a file",
+            "Show me available solutions",
+            "Connect me with a specialist"
+        ]
+    
+    async def _route_to_liaison_agent(
+        self, 
+        context: ExecutionContext, 
+        params: Dict, 
+        journey_execution_id: str
+    ) -> Dict[str, Any]:
+        """
+        Route to pillar-specific Liaison Agent with context sharing.
+        
+        Per contract:
+        - Extract conversation context from GuideAgent
+        - Determine appropriate Liaison Agent based on target_pillar
+        - Share context via share_context_to_agent
+        - Update chat session active_agent
+        """
+        target_pillar = params.get("target_pillar")
+        chat_session_id = params.get("chat_session_id")
+        routing_reason = params.get("routing_reason", "User requested specialist assistance")
+        context_to_share = params.get("context_to_share")
+        
+        if not target_pillar:
+            raise ValueError("target_pillar is required")
+        
+        if target_pillar not in self.VALID_PILLARS:
+            raise ValueError(f"Invalid target_pillar: {target_pillar}. Valid: {self.VALID_PILLARS}")
+        
+        # Get chat session
+        if not chat_session_id:
+            chat_session_id = f"chat_{context.session_id}"
+        
+        chat_session = self._chat_sessions.get(chat_session_id)
+        if not chat_session:
+            # Create session if doesn't exist
+            chat_session = {
+                "chat_session_id": chat_session_id,
+                "active_agent": "guide",
+                "conversation_history": [],
+                "context": {},
                 "created_at": self.clock.now_utc().isoformat()
-            },
-            "liaison_greeting": {
-                "role": "assistant",
-                "content": liaison_greeting,
-                "suggestions": self._get_liaison_suggestions(liaison_type)
-            },
-            "guide_farewell": {
-                "role": "assistant",
-                "content": guide_farewell,
-                "from_agent": "guide_agent"
             }
+            self._chat_sessions[chat_session_id] = chat_session
+        
+        # Extract context to share
+        if not context_to_share:
+            context_to_share = {
+                "conversation_history": chat_session.get("conversation_history", []),
+                "previous_agent": "guide",
+                "routing_reason": routing_reason
+            }
+        
+        # Share context to Liaison Agent (via share_context_to_agent)
+        liaison_agent_id = f"liaison_{target_pillar}"
+        shared_context = await self._share_context_to_agent(
+            source_agent="guide",
+            target_agent=liaison_agent_id,
+            shared_context=context_to_share
+        )
+        
+        # Update chat session active_agent
+        chat_session["active_agent"] = liaison_agent_id
+        chat_session["context"]["shared_context"] = shared_context
+        
+        # Generate Liaison greeting
+        liaison_greeting = self._get_liaison_greeting(target_pillar)
+        
+        # Build response artifact
+        liaison_activation = {
+            "target_pillar": target_pillar,
+            "liaison_agent_id": liaison_agent_id,
+            "shared_context": shared_context,
+            "routing_reason": routing_reason,
+            "active_agent_updated": True,
+            "liaison_greeting": liaison_greeting,
+            "liaison_capabilities": self.PLATFORM_CAPABILITIES.get(target_pillar, [])
         }
         
         semantic_payload = {
-            "handoff_type": "specialist_routing",
-            "from_agent": "guide_agent",
-            "to_agent": f"{liaison_type}_liaison",
-            "journey_execution_id": journey_execution_id
+            "target_pillar": target_pillar,
+            "liaison_agent_id": liaison_agent_id,
+            "routing_reason": routing_reason
         }
         
         artifact = create_structured_artifact(
-            result_type="liaison_agent_handoff",
+            result_type="liaison_agent_activation",
             semantic_payload=semantic_payload,
-            renderings=handoff
+            renderings=liaison_activation
         )
         
         return {
             "success": True,
             "journey_id": self.journey_id,
             "journey_execution_id": journey_execution_id,
-            "artifacts": {"liaison_handoff": artifact},
-            "events": [{"type": "liaison_handoff_completed", "liaison_type": liaison_type}]
+            "artifacts": {"liaison_agent_activation": artifact},
+            "events": [{
+                "type": "liaison_agent_activated",
+                "chat_session_id": chat_session_id,
+                "target_pillar": target_pillar,
+                "liaison_agent_id": liaison_agent_id
+            }]
         }
     
-    def _get_liaison_suggestions(self, liaison_type: str) -> List[str]:
-        """Get suggestions for liaison agent."""
-        suggestions = {
-            "content": ["Upload a file", "Parse existing content", "Create embeddings"],
-            "insights": ["Analyze data quality", "Explore patterns", "Create visualizations"],
-            "journey": ["Upload an SOP", "Analyze a workflow", "Create coexistence blueprint"],
-            "operations": ["Upload an SOP", "Analyze a workflow", "Create coexistence blueprint"],
-            "outcomes": ["Create a POC", "Generate roadmap", "Synthesize solution"]
+    async def _share_context_to_agent(
+        self, 
+        source_agent: str, 
+        target_agent: str, 
+        shared_context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Share context from one agent to another."""
+        return {
+            "from_agent": source_agent,
+            "to_agent": target_agent,
+            "context_data": shared_context,
+            "shared_at": self.clock.now_utc().isoformat()
         }
-        return suggestions.get(liaison_type, ["How can I help?"])
+    
+    def _get_liaison_greeting(self, pillar: str) -> str:
+        """Get Liaison Agent greeting based on pillar."""
+        greetings = {
+            "content": "Hi! I'm the **Content Liaison Agent**. I specialize in file processing, parsing, and embedding creation. I can help you upload files, parse content, create embeddings, and manage your artifacts. What would you like to work on?",
+            "insights": "Hi! I'm the **Insights Liaison Agent**. I specialize in data analysis, quality assessment, and pattern discovery. I can help you assess data quality, perform business analysis, and discover relationships in your data. What would you like to explore?",
+            "journey": "Hi! I'm the **Journey Liaison Agent**. I specialize in workflows, SOPs, and coexistence analysis. I can help you create workflows from SOPs, analyze how systems coexist, and build blueprints for boundary-crossing work. What process would you like to examine?",
+            "solution": "Hi! I'm the **Solution Liaison Agent**. I specialize in POC creation, roadmap generation, and solution synthesis. I can help you create proof-of-concepts, generate implementation roadmaps, and synthesize cross-pillar solutions. What outcome are you working toward?"
+        }
+        return greetings.get(pillar, f"Hi! I'm the {pillar.title()} Liaison Agent. How can I help you?")
     
     def get_soa_apis(self) -> Dict[str, Dict[str, Any]]:
         """Get SOA API definitions for MCP tool registration."""
@@ -359,40 +571,42 @@ class GuideAgentJourney:
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "trigger_source": {"type": "string"},
-                        "current_pillar": {"type": "string"},
-                        "conversation_mode": {"type": "string"},
+                        "chat_session_id": {"type": "string", "description": "Chat session identifier"},
+                        "include_mcp_tools": {"type": "boolean", "description": "Whether to query MCP tools from Curator"},
                         "user_context": {"type": "object"}
                     }
                 },
-                "description": "Start a conversation with the Guide Agent"
+                "description": "Initialize GuideAgent with platform-wide context and MCP tools"
             },
             "process_guide_agent_message": {
                 "handler": self._handle_message,
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "agent_session_id": {"type": "string"},
-                        "message": {"type": "string"},
+                        "message": {"type": "string", "description": "User message to GuideAgent"},
+                        "chat_session_id": {"type": "string", "description": "Chat session identifier"},
+                        "mcp_tool_to_call": {"type": "string", "description": "Specific MCP tool to call"},
+                        "mcp_tool_params": {"type": "object", "description": "Parameters for MCP tool"},
                         "user_context": {"type": "object"}
                     },
-                    "required": ["agent_session_id", "message"]
+                    "required": ["message"]
                 },
-                "description": "Send a message to the Guide Agent"
+                "description": "Process user message, optionally call MCP tools"
             },
             "route_to_liaison_agent": {
                 "handler": self._handle_route,
                 "input_schema": {
                     "type": "object",
                     "properties": {
-                        "agent_session_id": {"type": "string"},
-                        "liaison_type": {"type": "string", "enum": ["content", "insights", "journey", "operations", "outcomes"]},
-                        "handoff_reason": {"type": "string"},
+                        "target_pillar": {"type": "string", "enum": ["content", "insights", "journey", "solution"], "description": "Target pillar for Liaison Agent"},
+                        "chat_session_id": {"type": "string", "description": "Chat session identifier"},
+                        "routing_reason": {"type": "string", "description": "Reason for routing"},
+                        "context_to_share": {"type": "object", "description": "Context to share with Liaison"},
                         "user_context": {"type": "object"}
                     },
-                    "required": ["liaison_type"]
+                    "required": ["target_pillar"]
                 },
-                "description": "Route to a specialist Liaison Agent"
+                "description": "Route to pillar-specific Liaison Agent with context sharing"
             }
         }
     

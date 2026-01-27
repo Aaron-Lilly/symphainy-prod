@@ -67,7 +67,8 @@ class CoexistenceSolution:
         public_works: Optional[Any] = None,
         state_surface: Optional[Any] = None,
         solution_registry: Optional[Any] = None,
-        agent_framework: Optional[Any] = None
+        agent_framework: Optional[Any] = None,
+        curator: Optional[Any] = None
     ):
         """
         Initialize Coexistence Solution.
@@ -77,6 +78,7 @@ class CoexistenceSolution:
             state_surface: State Surface for artifact management
             solution_registry: Solution Registry for navigation
             agent_framework: Agent Framework for GuideAgent
+            curator: Curator for MCP tool discovery
         """
         self.logger = get_logger(self.__class__.__name__)
         self.clock = get_clock()
@@ -84,6 +86,7 @@ class CoexistenceSolution:
         self.state_surface = state_surface
         self.solution_registry = solution_registry
         self.agent_framework = agent_framework
+        self.curator = curator
         
         self.solution_id = self.SOLUTION_ID
         self.solution_name = self.SOLUTION_NAME
@@ -117,6 +120,7 @@ class CoexistenceSolution:
         self._journeys["guide_agent"] = GuideAgentJourney(
             public_works=self.public_works,
             state_surface=self.state_surface,
+            curator=self.curator,
             agent_framework=self.agent_framework
         )
         
