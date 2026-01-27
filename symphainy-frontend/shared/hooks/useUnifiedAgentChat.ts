@@ -15,6 +15,8 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+// ✅ PHASE 3: WebSocket Consolidation - Check SessionStatus before connecting
+import { useSessionBoundary, SessionStatus } from '@/shared/state/SessionBoundaryProvider';
 import { RuntimeClient, RuntimeEventType } from '@/shared/services/RuntimeClient';
 import { getRuntimeWebSocketUrl, getApiUrl } from '@/shared/config/api-config';
 
@@ -90,6 +92,10 @@ export function useUnifiedAgentChat(
   const [currentPillar, setCurrentPillar] = useState<PillarType | null>(initialPillar || null);
   const [conversationId, setConversationId] = useState<string | null>(null);
   
+  // ✅ PHASE 3: Get session state from SessionBoundaryProvider
+  const { state: sessionState } = useSessionBoundary();
+  const effectiveSessionToken = sessionToken || sessionState.sessionId;
+  
   const runtimeClientRef = useRef<RuntimeClient | null>(null);
 
   // Generate conversation ID
@@ -98,10 +104,29 @@ export function useUnifiedAgentChat(
     return `${agentType}${pillarPart}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   }, []);
 
+  // ✅ PHASE 3: WebSocket Consolidation - Only connect when SessionStatus === Active
+  useEffect(() => {
+    // Disconnect when session becomes Invalid
+    if (sessionState.status === SessionStatus.Invalid && runtimeClientRef.current) {
+      console.log("🔄 [useUnifiedAgentChat] Session invalid, disconnecting WebSocket");
+      runtimeClientRef.current.disconnect();
+      runtimeClientRef.current = null;
+      setIsConnected(false);
+      setError(null);
+    }
+  }, [sessionState.status]);
+
   // Connect to unified WebSocket
   const connect = useCallback(async () => {
+    // ✅ PHASE 3: WebSocket Consolidation - Only connect when SessionStatus === Active
+    if (!sessionState || sessionState.status !== SessionStatus.Active) {
+      setError(`Cannot connect: Session status is ${sessionState?.status || 'unknown'}`);
+      return;
+    }
+
     // ✅ Safety check: Don't connect if sessionToken is missing, empty, or invalid
-    if (!sessionToken || typeof sessionToken !== 'string' || sessionToken.trim() === '' || sessionToken === 'token_placeholder') {
+    const tokenToUse = effectiveSessionToken;
+    if (!tokenToUse || typeof tokenToUse !== 'string' || tokenToUse.trim() === '' || tokenToUse === 'token_placeholder') {
       setError("Session token required");
       return;
     }
@@ -120,7 +145,7 @@ export function useUnifiedAgentChat(
         const baseUrl = getApiUrl();
         // Get both access_token and session_id from storage
         const accessToken = typeof window !== 'undefined' ? sessionStorage.getItem("access_token") : null;
-        const sessionId = sessionToken; // sessionToken is actually session_id
+        const sessionId = tokenToUse; // tokenToUse is actually session_id
         
         if (!accessToken || !sessionId) {
           console.warn("Missing access_token or session_id, cannot create RuntimeClient");
@@ -211,7 +236,7 @@ export function useUnifiedAgentChat(
         onError(err.message || 'Failed to connect to Unified Agent WebSocket');
       }
     }
-  }, [sessionToken, conversationId, currentAgent, currentPillar, onMessage, onError, generateConversationId, autoConnect]);
+  }, [sessionState.status, effectiveSessionToken, conversationId, currentAgent, currentPillar, onMessage, onError, generateConversationId, autoConnect]);
 
   // Disconnect from Runtime Client
   const disconnect = useCallback(() => {
@@ -358,7 +383,7 @@ export function useUnifiedAgentChat(
     return () => {
       disconnect();
     };
-  }, [autoConnect, sessionToken, connect, disconnect]);
+  }, [autoConnect, sessionState.status, effectiveSessionToken, connect, disconnect]);
 
   return {
     // State

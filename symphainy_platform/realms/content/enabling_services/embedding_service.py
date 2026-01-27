@@ -73,6 +73,34 @@ class EmbeddingService:
             async def process_request(self, request, context):
                 return {}
             
+            async def _process_with_assembled_prompt(
+                self,
+                system_message: str,
+                user_message: str,
+                runtime_context: Any,  # AgentRuntimeContext
+                context: Any  # ExecutionContext
+            ) -> Dict[str, Any]:
+                """
+                Process request with assembled prompt (4-layer model).
+                
+                This is a placeholder implementation for semantic meaning inference.
+                The actual semantic meaning generation is handled elsewhere.
+                
+                Args:
+                    system_message: Assembled system message (from layers 1-3)
+                    user_message: Assembled user message
+                    runtime_context: Runtime context
+                    context: Execution context
+                
+                Returns:
+                    Dict with empty result (semantic meaning handled elsewhere)
+                """
+                return {
+                    "artifact_type": "semantic_meaning",
+                    "artifact": {},
+                    "confidence": 0.0
+                }
+            
             async def get_agent_description(self):
                 return "Semantic meaning inference agent"
         
@@ -353,3 +381,305 @@ What does this column represent? Return ONLY a concise description (1-5 words)."
         self.logger.info(f"Sampled {len(sampled)} rows from {len(data)} total rows (every {n}th row)")
         
         return sampled
+    
+    # ============================================================================
+    # CHUNK-BASED EMBEDDING METHODS (Phase 2 - CTO + CIO Aligned)
+    # ============================================================================
+    
+    async def create_chunk_embeddings(
+        self,
+        chunks: List[Any],  # List[DeterministicChunk]
+        semantic_profile: str = "default",
+        model_name: str = "text-embedding-ada-002",
+        semantic_version: str = "1.0.0",
+        tenant_id: str = None,
+        context: Optional[ExecutionContext] = None
+    ) -> Dict[str, Any]:
+        """
+        Create semantic embeddings for chunks (idempotent, profile-aware).
+        
+        CTO Principle: Chunk-based, idempotent, profile-aware, stores by reference
+        CIO Requirement: Per-chunk embeddings, stable chunk IDs, explicit failures
+        
+        Args:
+            chunks: List of DeterministicChunk objects
+            semantic_profile: Semantic profile name (default: "default")
+            model_name: Embedding model name (default: "text-embedding-ada-002")
+            semantic_version: Semantic version (platform-controlled, default: "1.0.0")
+            tenant_id: Tenant identifier
+            context: Execution context (for tenant_id if not provided)
+        
+        Returns:
+            {
+                "status": "success" | "partial" | "failed",
+                "embedded_chunk_ids": List[str],
+                "failed_chunks": List[Dict[str, Any]],
+                "semantic_profile": str,
+                "model_name": str,
+                "semantic_version": str
+            }
+        """
+        if not chunks:
+            return {
+                "status": "failed",
+                "embedded_chunk_ids": [],
+                "failed_chunks": [],
+                "semantic_profile": semantic_profile,
+                "model_name": model_name,
+                "semantic_version": semantic_version,
+                "error": "No chunks provided"
+            }
+        
+        # Get tenant_id from context if not provided
+        if not tenant_id and context:
+            tenant_id = context.tenant_id
+        
+        if not tenant_id:
+            raise ValueError("tenant_id is required (provide directly or via context)")
+        
+        self.logger.info(
+            f"Creating chunk embeddings: {len(chunks)} chunks, "
+            f"profile={semantic_profile}, model={model_name}"
+        )
+        
+        results = {
+            "status": "success",
+            "embedded_chunk_ids": [],
+            "failed_chunks": [],
+            "semantic_profile": semantic_profile,
+            "model_name": model_name,
+            "semantic_version": semantic_version
+        }
+        
+        # Get LLM adapter for embedding generation
+        llm_adapter = None
+        if self.public_works:
+            llm_adapter = getattr(self.public_works, 'openai_adapter', None)
+            if not llm_adapter:
+                # Try to get from LLM adapter registry
+                llm_adapter_registry = getattr(self.public_works, 'llm_adapter_registry', None)
+                if llm_adapter_registry:
+                    llm_adapter = llm_adapter_registry.get_adapter("openai")
+        
+        if not llm_adapter:
+            raise ValueError("LLM adapter not available for embedding generation")
+        
+        # Process each chunk
+        embedding_documents = []
+        
+        for chunk in chunks:
+            try:
+                # Import DeterministicChunk to check type
+                from .deterministic_chunking_service import DeterministicChunk
+                
+                # Validate chunk type
+                if not isinstance(chunk, DeterministicChunk):
+                    raise ValueError(f"Invalid chunk type: {type(chunk)}")
+                
+                # Idempotency check (CTO principle)
+                if await self._chunk_embedding_exists(
+                    chunk_id=chunk.chunk_id,
+                    semantic_profile=semantic_profile,
+                    model_name=model_name,
+                    semantic_version=semantic_version
+                ):
+                    self.logger.debug(
+                        f"Chunk {chunk.chunk_id} already embedded "
+                        f"(profile={semantic_profile}, model={model_name})"
+                    )
+                    results["embedded_chunk_ids"].append(chunk.chunk_id)
+                    continue  # Skip if already embedded
+                
+                # Create embedding via LLM adapter
+                embedding_vector = await self._create_embedding_vector(
+                    text=chunk.text,
+                    model_name=model_name,
+                    llm_adapter=llm_adapter,
+                    context=context
+                )
+                
+                # Create embedding document (stores by reference, not blob - CTO principle)
+                embedding_doc = {
+                    "_key": generate_event_id(),  # Unique document key
+                    "chunk_id": chunk.chunk_id,  # Reference to deterministic chunk
+                    "chunk_index": chunk.chunk_index,
+                    "source_path": chunk.source_path,
+                    "text_hash": chunk.text_hash,
+                    "structural_type": chunk.structural_type,
+                    "embedding": embedding_vector,  # Vector embedding
+                    "semantic_profile": semantic_profile,
+                    "model_name": model_name,
+                    "semantic_version": semantic_version,  # Platform-controlled (CTO principle)
+                    "schema_fingerprint": chunk.schema_fingerprint,  # Link to schema-level
+                    "pattern_hints": chunk.pattern_hints,
+                    "tenant_id": tenant_id,
+                    "session_id": context.session_id if context else None,
+                    "metadata": {
+                        "chunk_index": chunk.chunk_index,
+                        "source_path": chunk.source_path,
+                        "text_hash": chunk.text_hash,
+                        "structural_type": chunk.structural_type,
+                        "schema_fingerprint": chunk.schema_fingerprint,
+                        "file_id": chunk.metadata.get("file_id") if chunk.metadata else None,
+                        "parsed_file_id": chunk.metadata.get("parsed_file_id") if chunk.metadata else None,
+                        "created_at": datetime.utcnow().isoformat()
+                    }
+                }
+                
+                embedding_documents.append(embedding_doc)
+                results["embedded_chunk_ids"].append(chunk.chunk_id)
+                
+            except Exception as e:
+                # Explicit failure handling (CIO Gap 3)
+                error_info = {
+                    "chunk_id": chunk.chunk_id if hasattr(chunk, 'chunk_id') else "unknown",
+                    "chunk_index": chunk.chunk_index if hasattr(chunk, 'chunk_index') else "unknown",
+                    "error": str(e),
+                    "error_type": type(e).__name__
+                }
+                results["failed_chunks"].append(error_info)
+                results["status"] = "partial" if results["embedded_chunk_ids"] else "failed"
+                self.logger.error(
+                    f"Failed to create embedding for chunk {error_info['chunk_id']}: {e}",
+                    exc_info=True
+                )
+        
+        # Store embeddings via SemanticDataAbstraction (if any succeeded)
+        if embedding_documents and self.semantic_data_abstraction:
+            try:
+                storage_result = await self.semantic_data_abstraction.store_semantic_embeddings(
+                    embedding_documents=embedding_documents
+                )
+                self.logger.info(
+                    f"✅ Stored {storage_result.get('stored_count', 0)} chunk embeddings "
+                    f"(profile={semantic_profile}, model={model_name})"
+                )
+            except Exception as e:
+                self.logger.error(f"Failed to store chunk embeddings: {e}", exc_info=True)
+                # Mark all as failed if storage fails
+                for doc in embedding_documents:
+                    results["failed_chunks"].append({
+                        "chunk_id": doc.get("chunk_id"),
+                        "chunk_index": doc.get("chunk_index"),
+                        "error": f"Storage failed: {str(e)}",
+                        "error_type": "StorageError"
+                    })
+                    if doc.get("chunk_id") in results["embedded_chunk_ids"]:
+                        results["embedded_chunk_ids"].remove(doc.get("chunk_id"))
+                results["status"] = "failed"
+        elif embedding_documents and not self.semantic_data_abstraction:
+            self.logger.warning("SemanticDataAbstraction not available - embeddings not stored")
+            # Mark as failed if storage abstraction not available
+            for doc in embedding_documents:
+                results["failed_chunks"].append({
+                    "chunk_id": doc.get("chunk_id"),
+                    "chunk_index": doc.get("chunk_index"),
+                    "error": "SemanticDataAbstraction not available",
+                    "error_type": "ConfigurationError"
+                })
+                if doc.get("chunk_id") in results["embedded_chunk_ids"]:
+                    results["embedded_chunk_ids"].remove(doc.get("chunk_id"))
+            results["status"] = "failed"
+        
+        # Log final status
+        success_count = len(results["embedded_chunk_ids"])
+        failed_count = len(results["failed_chunks"])
+        self.logger.info(
+            f"Chunk embedding creation complete: "
+            f"{success_count} succeeded, {failed_count} failed "
+            f"(status={results['status']})"
+        )
+        
+        return results
+    
+    async def _chunk_embedding_exists(
+        self,
+        chunk_id: str,
+        semantic_profile: str,
+        model_name: str,
+        semantic_version: str
+    ) -> bool:
+        """
+        Check if chunk embedding already exists (idempotency check).
+        
+        CTO Principle: Idempotent - won't re-embed existing chunks
+        """
+        if not self.semantic_data_abstraction:
+            return False
+        
+        try:
+            # Query for existing embedding with matching criteria
+            existing_embeddings = await self.semantic_data_abstraction.get_semantic_embeddings(
+                filter_conditions={
+                    "chunk_id": chunk_id,
+                    "semantic_profile": semantic_profile,
+                    "model_name": model_name,
+                    "semantic_version": semantic_version
+                },
+                limit=1
+            )
+            
+            return len(existing_embeddings) > 0
+            
+        except Exception as e:
+            self.logger.debug(f"Error checking for existing embedding: {e}")
+            return False  # If check fails, proceed with creation
+    
+    async def _create_embedding_vector(
+        self,
+        text: str,
+        model_name: str,
+        llm_adapter: Any,
+        context: Optional[ExecutionContext] = None
+    ) -> List[float]:
+        """
+        Create embedding vector from text using LLM adapter.
+        
+        Args:
+            text: Text to embed
+            model_name: Embedding model name
+            llm_adapter: LLM adapter instance
+            context: Execution context
+        
+        Returns:
+            List of floats (embedding vector)
+        """
+        # Try to use adapter's embedding method
+        if hasattr(llm_adapter, 'create_embeddings'):
+            result = await llm_adapter.create_embeddings(
+                text=text,
+                model=model_name
+            )
+            # Handle different response formats
+            if isinstance(result, dict):
+                return result.get("embedding", result.get("data", [result])[0] if isinstance(result.get("data"), list) else [])
+            elif isinstance(result, list):
+                return result
+            else:
+                raise ValueError(f"Unexpected embedding response format: {type(result)}")
+        elif hasattr(llm_adapter, 'generate_embedding'):
+            # Alternative method name
+            result = await llm_adapter.generate_embedding(
+                text=text,
+                model=model_name
+            )
+            if isinstance(result, dict):
+                return result.get("embedding", [])
+            elif isinstance(result, list):
+                return result
+            else:
+                raise ValueError(f"Unexpected embedding response format: {type(result)}")
+        elif self.embedding_agent:
+            # Fallback to StatelessEmbeddingAgent
+            result = await self.embedding_agent.generate_embedding(
+                text=text,
+                context=context
+            )
+            if isinstance(result, dict):
+                return result.get("embedding", [])
+            elif isinstance(result, list):
+                return result
+            else:
+                raise ValueError(f"Unexpected embedding response format: {type(result)}")
+        else:
+            raise ValueError("No embedding generation method available")

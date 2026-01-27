@@ -1,19 +1,27 @@
 /**
- * Session Management Hooks
- * React hooks for session management functionality
+ * ⚠️ PHASE 1: DEPRECATED - Session Management Hooks
+ * 
+ * These hooks depend on archived GlobalSessionProvider.
+ * Migration guide:
+ * - useSessionStatus → use useSessionBoundary from '@/shared/state/SessionBoundaryProvider'
+ * - usePillarState → use usePlatformState from '@/shared/state/PlatformStateProvider'
+ * - useSessionLifecycle → use useSessionBoundary from '@/shared/state/SessionBoundaryProvider'
  */
 
 import React, { useContext, useEffect, useState, useCallback } from 'react';
 import { SessionContextType, SessionStatus } from './types';
-import { useGlobalSession } from './index';
+// ✅ PHASE 1: useGlobalSession archived - use useSessionBoundary instead
+import { useSessionBoundary } from '../state/SessionBoundaryProvider';
 
-// Hook for session status management
+// ⚠️ DEPRECATED: Use useSessionBoundary instead
 export function useSessionStatus(): {
   status: SessionStatus;
   isSessionValid: boolean;
   isLoading: boolean;
 } {
-  const { guideSessionToken } = useGlobalSession();
+  console.warn('⚠️ useSessionStatus is deprecated. Use useSessionBoundary from @/shared/state/SessionBoundaryProvider instead.');
+  const { state: sessionState } = useSessionBoundary();
+  const guideSessionToken = sessionState.sessionId;
   const [status, setStatus] = useState<SessionStatus>('no_session');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -47,29 +55,25 @@ export function useSessionStatus(): {
   return { status, isSessionValid, isLoading };
 }
 
-// Hook for pillar state management
+// ⚠️ DEPRECATED: Use usePlatformState instead
 export function usePillarState(pillar: string) {
-  const { getPillarState, setPillarState } = useGlobalSession();
-  const [state, setState] = useState(getPillarState(pillar));
-
-  const updateState = useCallback(async (newState: any) => {
-    await setPillarState(pillar, newState);
-    setState(newState);
-  }, [pillar, setPillarState]);
-
-  return [state, updateState] as const;
+  console.warn('⚠️ usePillarState is deprecated. Use usePlatformState from @/shared/state/PlatformStateProvider instead.');
+  // Return empty state - migration needed
+  const [state, setState] = useState(null);
+  return [state, setState] as const;
 }
 
-// Hook for session lifecycle management
+// ⚠️ DEPRECATED: Use useSessionBoundary instead
 export function useSessionLifecycle() {
-  const { guideSessionToken, resetAllState } = useGlobalSession();
+  console.warn('⚠️ useSessionLifecycle is deprecated. Use useSessionBoundary from @/shared/state/SessionBoundaryProvider instead.');
+  const { state: sessionState, invalidateSession } = useSessionBoundary();
   const { status, isSessionValid } = useSessionStatus();
 
   const resetSession = useCallback(async () => {
-    await resetAllState();
-  }, [resetAllState]);
+    invalidateSession();
+  }, [invalidateSession]);
 
-  const isSessionActive = isSessionValid && !!guideSessionToken;
+  const isSessionActive = isSessionValid && !!sessionState.sessionId;
 
   return {
     isSessionActive,

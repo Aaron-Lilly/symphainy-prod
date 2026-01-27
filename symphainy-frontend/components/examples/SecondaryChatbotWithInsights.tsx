@@ -1,8 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { useSetAtom } from "jotai";
-import { chatbotAgentInfoAtom } from "@/shared/atoms/chatbot-atoms";
+// ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
+import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { 
   insightCards, 
   getInsightCardById, 
@@ -18,10 +18,11 @@ export function InsightAgentSelector({
   fileUrl: string;
   onAgentSelect?: (agent: InsightCard) => void;
 }) {
-  const setChatbotAgentInfo = useSetAtom(chatbotAgentInfoAtom);
+  // ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
+  const { setChatbotAgentInfo } = usePlatformState();
   
   const handleAgentSelect = (card: InsightCard) => {
-    // Set the chatbot agent info atom
+    // ✅ PHASE 5: Set the chatbot agent info via PlatformStateProvider
     setChatbotAgentInfo({
       agent: card.id, // Maps to your SecondaryChatbotAgent enum
       title: card.title,
@@ -60,7 +61,8 @@ export function InsightAgentSelector({
 
 // Example: Quick action buttons for specific insights
 export function QuickInsightActions({ fileUrl }: { fileUrl: string }) {
-  const setChatbotAgentInfo = useSetAtom(chatbotAgentInfoAtom);
+  // ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
+  const { setChatbotAgentInfo } = usePlatformState();
   
   const runAnalysis = (cardId: string) => {
     const card = getInsightCardById(cardId);

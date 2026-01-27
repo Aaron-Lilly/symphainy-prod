@@ -2,7 +2,8 @@
 
 import React, { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
-import { isAuthenticated } from "@/lib/auth-utils";
+// ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+import { useSessionBoundary, SessionStatus } from "@/shared/state/SessionBoundaryProvider";
 
 interface AuthGuardProps {
   children: React.ReactNode;
@@ -11,6 +12,8 @@ interface AuthGuardProps {
 export default function AuthGuard({ children }: AuthGuardProps) {
   const router = useRouter();
   const pathname = usePathname();
+  // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+  const { state: sessionState } = useSessionBoundary();
   const [isClient, setIsClient] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
 
@@ -27,14 +30,14 @@ export default function AuthGuard({ children }: AuthGuardProps) {
       return;
     }
 
-    // Check authentication status
-    if (!isAuthenticated()) {
+    // ✅ PHASE 4: Session-First - Check SessionStatus instead of isAuthenticated
+    if (sessionState.status !== SessionStatus.Active) {
       router.push("/login");
       return;
     }
 
     setAuthChecked(true);
-  }, [isClient, pathname, router]);
+  }, [isClient, pathname, router, sessionState.status]);
 
   // Wait for client-side hydration
   if (!isClient) {
@@ -51,8 +54,8 @@ export default function AuthGuard({ children }: AuthGuardProps) {
     return <>{children}</>;
   }
 
-  // If authenticated, show content
-  if (isAuthenticated()) {
+  // ✅ PHASE 4: Session-First - Check SessionStatus instead of isAuthenticated
+  if (sessionState.status === SessionStatus.Active) {
     return <>{children}</>;
   }
 

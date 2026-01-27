@@ -9,7 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from 'sonner';
 import { Brain, Database, Layers, Sparkles, RefreshCw, Wand2, Eye, BookOpen } from 'lucide-react';
-import { listEmbeddings, previewEmbeddings, createEmbeddings, listParsedFilesWithEmbeddings, getMashContext, type EmbeddingFile, type SemanticLayerPreview } from '@/lib/api/content';
+// ✅ PHASE 2: Use service layer hook instead of direct API calls
+import { useContentAPI } from '@/shared/hooks/useContentAPI';
+import type { EmbeddingFile, SemanticLayerPreview } from '@/lib/api/content';
+// ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+import { useSessionBoundary } from '@/shared/state/SessionBoundaryProvider';
 import { usePlatformState } from '@/shared/state/PlatformStateProvider';
 import { useContentAPIManager } from '@/shared/managers/ContentAPIManager';
 import MashContextBanner from './MashContextBanner';
@@ -21,6 +25,8 @@ interface DataMashProps {
 }
 
 export default function DataMash({ selectedFile: propSelectedFile }: DataMashProps) {
+  // ✅ PHASE 2: Use service layer hook
+  const { listEmbeddings, previewEmbeddings, createEmbeddings, listParsedFilesWithEmbeddings, getMashContext } = useContentAPI();
   const { state } = usePlatformState();
   const contentAPIManager = useContentAPIManager();
   
@@ -68,46 +74,73 @@ export default function DataMash({ selectedFile: propSelectedFile }: DataMashPro
   const selectedFile = propSelectedFile || availableFiles.find((f: any) => f.uuid === selectedFileUuid);
 
   // Load parsed files on mount
+  // ✅ PHASE 4: Migrate to intent-based API (list_files intent)
   const loadParsedFiles = useCallback(async () => {
-    if (!state.session.sessionId) {
+    if (!sessionState.sessionId || !sessionState.tenantId) {
       setParsedFiles([]);
       return;
     }
 
     setLoadingParsedFiles(true);
     try {
-      // Load parsed files using new ContentAPIManager
-      // Note: listParsedFiles may need to be added to new ContentAPIManager
-      // For MVP, we'll use the existing endpoint pattern
-      const { getApiEndpointUrl } = require('@/shared/config/api-config');
-      const url = getApiEndpointUrl('/api/v1/content-pillar/list-parsed-files');
-      
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to load parsed files: ${response.statusText}`);
+      // Submit list_files intent to get all files
+      const executionId = await submitIntent(
+        'list_files',
+        {
+          // Optional: Add file_type filter if we want to filter parsed files
+          // For now, get all files and filter client-side for parsed status
+        }
+      );
+
+      // Wait for execution to complete
+      const maxAttempts = 10;
+      let attempts = 0;
+      let files: any[] = [];
+
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const status = await getExecutionStatus(executionId);
+        
+        if (status?.status === "completed") {
+          // Extract files from execution artifacts
+          const fileListArtifact = status.artifacts?.file_list;
+          if (fileListArtifact?.semantic_payload?.files) {
+            files = fileListArtifact.semantic_payload.files;
+          }
+          break;
+        } else if (status?.status === "failed") {
+          throw new Error(status.error || "Failed to load files");
+        }
+        
+        attempts++;
       }
-      
-      const data = await response.json();
-      const parsedFilesList = data.parsed_files || [];
+
+      // Filter for parsed files (files that have been parsed)
+      // Note: This is a client-side filter - in the future, we could add a status filter to the intent
+      const parsedFilesList = files.filter((file: any) => {
+        // Files are considered "parsed" if they have parsing metadata or status
+        // This logic may need adjustment based on actual file structure
+        return file.file_type === 'parsed' || file.status === 'parsed' || file.parsed_file_id;
+      });
+
       setParsedFiles(parsedFilesList);
       
       // Auto-select first parsed file if available and none selected
       if (parsedFilesList.length > 0 && !selectedParsedFileId) {
-        const firstFileId = parsedFilesList[0].parsed_file_id || parsedFilesList[0].id;
+        const firstFileId = parsedFilesList[0].parsed_file_id || parsedFilesList[0].file_id || parsedFilesList[0].id;
         setSelectedParsedFileId(firstFileId);
       }
     } catch (error) {
       console.error('[DataMash] Error loading parsed files:', error);
       setParsedFiles([]);
-      toast.error('Failed to load parsed files');
+      toast.error('Failed to load parsed files', {
+        description: error instanceof Error ? error.message : 'Unknown error'
+      });
     } finally {
       setLoadingParsedFiles(false);
     }
-  }, [state.session.sessionId, selectedParsedFileId]);
+  }, [sessionState.sessionId, sessionState.tenantId, selectedParsedFileId, submitIntent, getExecutionStatus]);
 
   useEffect(() => {
     loadParsedFiles();
@@ -164,67 +197,82 @@ export default function DataMash({ selectedFile: propSelectedFile }: DataMashPro
     }
   }, [selectedFile?.uuid, selectedParsedFileId]);
   
+  // ✅ PHASE 2: Use service layer hook - no need to pass token manually
+  // ✅ PHASE 6: Use { data, error } pattern
   const loadMashContext = async (options: { content_id?: string; file_id?: string; parsed_file_id?: string }) => {
     setLoadingMashContext(true);
-    try {
-      const token = state.session.sessionId || "debug-token";
-      const result = await getMashContext(options, token);
-      if (result.success && result.mash_context) {
-        setMashContext(result.mash_context);
+    const result = await getMashContext(options);
+    if (result.error) {
+      console.error('[DataMash] Error loading mash context:', result.error);
+      setMashContext(null);
+    } else if (result.data) {
+      // Handle both old format (with success) and new format
+      if (typeof result.data === 'object' && 'success' in result.data && result.data.success && 'mash_context' in result.data) {
+        setMashContext(result.data.mash_context);
+      } else if (typeof result.data === 'object' && 'mash_context' in result.data) {
+        setMashContext(result.data.mash_context);
       } else {
         // If no mash context found, that's okay - use derived data
         setMashContext(null);
       }
-    } catch (error) {
-      console.error('[DataMash] Error loading mash context:', error);
+    } else {
       setMashContext(null);
-    } finally {
-      setLoadingMashContext(false);
     }
+    setLoadingMashContext(false);
   };
 
+  // ✅ PHASE 6: Use { data, error } pattern
   const loadEmbeddings = async (fileId: string) => {
     setLoading(true);
-    try {
-      const token = state.session.sessionId || "debug-token";
-      const result = await listEmbeddings(fileId, token);
-      if (result.success) {
-        setEmbeddingFiles(result.embeddings);
-        // Auto-select first embedding if available
-        if (result.embeddings.length > 0) {
-          setSelectedContentId(result.embeddings[0].content_id);
+    const result = await listEmbeddings(fileId);
+    if (result.error) {
+      toast.error(result.error.message || "Failed to load embeddings");
+      setEmbeddingFiles([]);
+    } else if (result.data) {
+      // Handle both old format (with success) and new format
+      const data = result.data as any;
+      if (data.success && data.embeddings) {
+        setEmbeddingFiles(data.embeddings);
+        if (data.embeddings.length > 0) {
+          setSelectedContentId(data.embeddings[0].content_id);
+        } else {
+          setSelectedContentId(null);
+        }
+      } else if (Array.isArray(data)) {
+        setEmbeddingFiles(data);
+        if (data.length > 0 && data[0].content_id) {
+          setSelectedContentId(data[0].content_id);
         } else {
           setSelectedContentId(null);
         }
       } else {
-        toast.error(result.error || "Failed to load embeddings");
         setEmbeddingFiles([]);
       }
-    } catch (error) {
-      toast.error(`Error loading embeddings: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } else {
       setEmbeddingFiles([]);
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   };
 
+  // ✅ PHASE 2: Use service layer hook - no need to pass token manually
+  // ✅ PHASE 6: Use { data, error } pattern
   const loadPreview = async (contentId: string) => {
     setPreviewLoading(true);
-    try {
-      const token = state.session.sessionId || "debug-token";
-      const result = await previewEmbeddings(contentId, token);
-      if (result.success) {
-        setPreview(result);
-      } else {
-        toast.error(result.error || "Failed to load preview");
-        setPreview(null);
-      }
-    } catch (error) {
-      toast.error(`Error loading preview: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    const result = await previewEmbeddings(contentId);
+    if (result.error) {
+      toast.error(result.error.message || "Failed to load preview");
       setPreview(null);
-    } finally {
-      setPreviewLoading(false);
+    } else if (result.data) {
+      const data = result.data as any;
+      if (data.success) {
+        setPreview(data);
+      } else {
+        setPreview(data); // Try to use data as-is
+      }
+    } else {
+      setPreview(null);
     }
+    setPreviewLoading(false);
   };
 
   const handleCreateEmbeddings = async () => {
@@ -236,40 +284,53 @@ export default function DataMash({ selectedFile: propSelectedFile }: DataMashPro
     setCreatingEmbeddings(true);
     setCreateEmbeddingsError(null);
     
-    try {
-      const token = state.session.sessionId || "debug-token";
-      console.log('[DataMash] Creating embeddings for parsed_file_id:', selectedParsedFileId);
-      const result = await createEmbeddings(selectedParsedFileId, token, selectedFile?.uuid);
-      
-      console.log('[DataMash] createEmbeddings result:', result);
-      
-      if (result.success) {
+    // ✅ PHASE 2: Use service layer hook - no need to pass token manually
+    // ✅ PHASE 6: Use { data, error } pattern
+    console.log('[DataMash] Creating embeddings for parsed_file_id:', selectedParsedFileId);
+    const result = await createEmbeddings(selectedParsedFileId, undefined, selectedFile?.uuid);
+    
+    console.log('[DataMash] createEmbeddings result:', result);
+    
+    if (result.error) {
+      const errorMsg = result.error.message || "Failed to create embeddings";
+      console.error('[DataMash] Embedding creation failed:', errorMsg, result);
+      setCreateEmbeddingsError(errorMsg);
+      toast.error(errorMsg);
+      setCreatingEmbeddings(false);
+      return;
+    }
+    
+    if (result.data) {
+      const data = result.data as any;
+      // Handle both old format (with success) and new format
+      if (data.success || data.content_id) {
         // Check for edge case: success but no content_id
-        if (!result.content_id) {
+        if (!data.content_id) {
           const errorMsg = "Embedding creation succeeded but no content_id was returned. Please check logs.";
-          console.error('[DataMash] Embedding creation succeeded but no content_id:', result);
+          console.error('[DataMash] Embedding creation succeeded but no content_id:', data);
           setCreateEmbeddingsError(errorMsg);
           toast.error(errorMsg);
+          setCreatingEmbeddings(false);
           return;
         }
         
         // Success path: we have content_id
-        const count = result.embeddings_count || 0;
+        const count = data.embeddings_count || 0;
         toast.success(`Successfully created ${count} embedding${count !== 1 ? 's' : ''}!`);
         
         // Store embedding info for mash context
         setLastCreatedEmbedding({
-          file_id: result.file_id || selectedFile?.uuid,
+          file_id: data.file_id || selectedFile?.uuid,
           parsed_file_id: selectedParsedFileId,
-          content_id: result.content_id,
-          workflow_id: (result as any).workflow_id || undefined
+          content_id: data.content_id,
+          workflow_id: data.workflow_id || undefined
         });
         
         // Switch to view tab to see the result
         setActiveTab('view');
         
         // Refresh embeddings list for the file (use file_id from result if available, otherwise selectedFile)
-        const fileIdToUse = result.file_id || selectedFile?.uuid;
+        const fileIdToUse = data.file_id || selectedFile?.uuid;
         if (fileIdToUse) {
           await loadEmbeddings(fileIdToUse);
         }
@@ -280,21 +341,15 @@ export default function DataMash({ selectedFile: propSelectedFile }: DataMashPro
         // Refresh parsed files with embeddings list (this should now show the new embeddings)
         await loadParsedFilesWithEmbeddings();
       } else {
-        // Failure path
-        const errorMsg = result.error || "Failed to create embeddings";
-        console.error('[DataMash] Embedding creation failed:', errorMsg, result);
+        const errorMsg = "Failed to create embeddings - invalid response";
         setCreateEmbeddingsError(errorMsg);
         toast.error(errorMsg);
       }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-      setCreateEmbeddingsError(errorMsg);
-      toast.error(`Error creating embeddings: ${errorMsg}`);
-    } finally {
-      setCreatingEmbeddings(false);
     }
+    setCreatingEmbeddings(false);
   };
 
+  // ✅ PHASE 6: Use { data, error } pattern
   const loadParsedFilesWithEmbeddings = useCallback(async () => {
     if (!state.session.sessionId) {
       setParsedFilesWithEmbeddings([]);
@@ -302,32 +357,41 @@ export default function DataMash({ selectedFile: propSelectedFile }: DataMashPro
     }
 
     setLoadingParsedFilesWithEmbeddings(true);
-    try {
-      const token = state.session.sessionId || "debug-token";
-      const result = await listParsedFilesWithEmbeddings(token);
-      if (result.success) {
-        setParsedFilesWithEmbeddings(result.parsed_files);
+    // ✅ PHASE 2: Use service layer hook - no need to pass token manually
+    const result = await listParsedFilesWithEmbeddings();
+    if (result.error) {
+      toast.error(result.error.message || "Failed to load parsed files with embeddings");
+      setParsedFilesWithEmbeddings([]);
+    } else if (result.data) {
+      const data = result.data as any;
+      if (data.success && data.parsed_files) {
+        setParsedFilesWithEmbeddings(data.parsed_files);
         
         // Auto-select first parsed file if available and none selected
-        if (result.parsed_files.length > 0 && !selectedParsedFileWithEmbeddings) {
-          const firstFile = result.parsed_files[0];
+        if (data.parsed_files.length > 0 && !selectedParsedFileWithEmbeddings) {
+          const firstFile = data.parsed_files[0];
           setSelectedParsedFileWithEmbeddings(firstFile.parsed_file_id || firstFile.id);
           // Auto-load preview if content_id is available
           if (firstFile.content_id) {
             setSelectedContentId(firstFile.content_id);
           }
         }
+      } else if (Array.isArray(data)) {
+        setParsedFilesWithEmbeddings(data);
+        if (data.length > 0 && !selectedParsedFileWithEmbeddings) {
+          const firstFile = data[0];
+          setSelectedParsedFileWithEmbeddings(firstFile.parsed_file_id || firstFile.id);
+          if (firstFile.content_id) {
+            setSelectedContentId(firstFile.content_id);
+          }
+        }
       } else {
-        toast.error(result.error || "Failed to load parsed files with embeddings");
         setParsedFilesWithEmbeddings([]);
       }
-    } catch (error) {
-      console.error('[DataMash] Error loading parsed files with embeddings:', error);
+    } else {
       setParsedFilesWithEmbeddings([]);
-      toast.error('Failed to load parsed files with embeddings');
-    } finally {
-      setLoadingParsedFilesWithEmbeddings(false);
     }
+    setLoadingParsedFilesWithEmbeddings(false);
   }, [state.session.sessionId, selectedParsedFileWithEmbeddings]);
 
   // Load parsed files with embeddings on mount

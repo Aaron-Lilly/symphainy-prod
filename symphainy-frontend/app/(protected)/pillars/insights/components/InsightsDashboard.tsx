@@ -27,7 +27,8 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { useAuth } from '@/shared/auth/AuthProvider';
-import { usePlatformState } from '@/shared/state/PlatformStateProvider';
+// ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+import { useSessionBoundary, SessionStatus } from '@/shared/state/SessionBoundaryProvider';
 import { useInsightsOrchestrator } from "@/shared/hooks/usePillarOrchestrator";
 import { toast } from 'sonner';
 
@@ -51,11 +52,11 @@ interface InsightsDashboardNewProps {
 }
 
 export function InsightsDashboard({ contentData, onInsightSelected }: InsightsDashboardNewProps) {
-  const { isAuthenticated, user, sessionToken } = useAuth();
-  const { state } = usePlatformState();
-  
-  // Get session token - prefer auth token (for backward compatibility), fallback to session ID
-  const guideSessionToken = sessionToken || state.session.sessionId;
+  // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+  const { state: sessionState } = useSessionBoundary();
+  const guideSessionToken = sessionState.sessionId;
+  const { user } = useAuth(); // Keep user from AuthProvider for now
+  const isAuthenticated = sessionState.status === SessionStatus.Active;
   
   const { 
     orchestrator, 
@@ -64,6 +65,9 @@ export function InsightsDashboard({ contentData, onInsightSelected }: InsightsDa
     error: orchestratorError,
     executeOperation
   } = useInsightsOrchestrator(guideSessionToken || "");
+  
+  // ✅ PHASE 4: Use InsightsAPIManager (already uses intents)
+  const insightsAPIManager = useInsightsAPIManager();
   
   const [insights, setInsights] = useState<InsightData[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -87,6 +91,13 @@ export function InsightsDashboard({ contentData, onInsightSelected }: InsightsDa
     setGenerationProgress(0);
 
     try {
+      // ✅ PHASE 4: Migrate to intent-based API (via InsightsAPIManager)
+      // Get first file for analysis
+      const firstFile = contentData.files?.[0];
+      if (!firstFile || !firstFile.parsed_file_id) {
+        throw new Error("No parsed file available for analysis");
+      }
+
       // Simulate progress updates
       const progressInterval = setInterval(() => {
         setGenerationProgress(prev => {
@@ -98,28 +109,46 @@ export function InsightsDashboard({ contentData, onInsightSelected }: InsightsDa
         });
       }, 300);
 
-              // Dynamically import InsightsService
-              const { InsightsService } = await import('@/shared/services/insights');
-              const insightsService = new InsightsService(guideSessionToken);
-      const response = await insightsService.getBusinessAnalysis(
-        contentData.files?.[0]?.file_url || "",
-        {
-          session_id: "session_123", // TODO: Use real session ID
-          include_recommendations: true,
-          include_visualizations: true,
-          confidence_threshold: 0.7
-        },
-        guideSessionToken
-      );
+      // Use InsightsAPIManager which already uses intents
+      // Determine if structured or unstructured based on file type
+      const isStructured = firstFile.file_type === 'structured' || firstFile.file_type === 'csv' || firstFile.file_type === 'xlsx';
+      
+      const response = isStructured
+        ? await insightsAPIManager.analyzeStructuredData(firstFile.parsed_file_id, {
+            include_visualizations: true,
+            include_tabular_summary: true,
+            include_recommendations: true,
+            confidence_threshold: 0.7
+          })
+        : await insightsAPIManager.analyzeUnstructuredData(firstFile.parsed_file_id, {
+            include_recommendations: true,
+            include_visualizations: true,
+            confidence_threshold: 0.7
+          });
 
       clearInterval(progressInterval);
       setGenerationProgress(100);
 
-      if (response.success && response.data) {
-        setInsights(response.data);
+      if (response.success && response.analysis) {
+        // Transform analysis result to InsightData format
+        const insights: InsightData[] = (response.analysis.insights || []).map((insight: any, index: number) => ({
+          insight_id: `insight-${Date.now()}-${index}`,
+          title: insight.type || 'Insight',
+          description: insight.description || '',
+          category: insight.category || 'general',
+          confidence_score: insight.confidence || response.analysis.confidence_score || 0.8,
+          impact_level: (insight.impact || 'medium') as 'high' | 'medium' | 'low',
+          data_sources: [firstFile.file_id || firstFile.uuid],
+          generated_at: new Date().toISOString(),
+          tags: insight.tags || [],
+          recommendations: insight.recommendations || [],
+          visualizations: response.analysis.visualizations || []
+        }));
+        
+        setInsights(insights);
         
         toast.success('Insights generated successfully!', {
-          description: `Generated ${response.data.length} insights from your content.`
+          description: `Generated ${insights.length} insights from your content.`
         });
       } else {
         setError(response.error || 'Insights generation failed');
@@ -168,12 +197,21 @@ export function InsightsDashboard({ contentData, onInsightSelected }: InsightsDa
     return 'text-red-600';
   };
 
-  if (!isAuthenticated) {
+  // ✅ PHASE 4: Session-First - Handle all session states
+  if (sessionState.status !== SessionStatus.Active) {
     return (
       <div className="p-6 text-center">
         <AlertCircle className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-        <h3 className="text-lg font-medium text-gray-900 mb-2">Authentication Required</h3>
-        <p className="text-gray-600">Please log in to generate insights.</p>
+        <h3 className="text-lg font-medium text-gray-900 mb-2">
+          {sessionState.status === SessionStatus.Initializing || sessionState.status === SessionStatus.Authenticating 
+            ? 'Initializing...' 
+            : 'Authentication Required'}
+        </h3>
+        <p className="text-gray-600">
+          {sessionState.status === SessionStatus.Initializing || sessionState.status === SessionStatus.Authenticating
+            ? 'Please wait while we set up your session.'
+            : 'Please log in to generate insights.'}
+        </p>
       </div>
     );
   }

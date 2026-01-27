@@ -42,10 +42,15 @@ async def runtime_setup():
         redis_adapter=None  # Will be injected with real adapter in production
     )
     
+    # ✅ Create Data Steward SDK for boundary contract assignment
+    from tests.helpers.data_steward_fixtures import create_data_steward_sdk
+    data_steward_sdk = create_data_steward_sdk(supabase_adapter=None)
+    
     execution_lifecycle_manager = ExecutionLifecycleManager(
         intent_registry=intent_registry,
         state_surface=state_surface,
-        wal=wal
+        wal=wal,
+        data_steward_sdk=data_steward_sdk  # ✅ Required
     )
     
     runtime_api = RuntimeAPI(execution_lifecycle_manager, state_surface)

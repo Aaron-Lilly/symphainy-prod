@@ -23,6 +23,7 @@ from datetime import datetime
 from utilities import get_logger, generate_event_id
 from symphainy_platform.runtime.execution_context import ExecutionContext
 from symphainy_platform.civic_systems.agentic.agent_base import AgentBase
+from symphainy_platform.civic_systems.agentic.models.agent_runtime_context import AgentRuntimeContext
 from symphainy_platform.civic_systems.agentic.agents.stateless_embedding_agent import StatelessEmbeddingAgent
 
 
@@ -38,19 +39,21 @@ class InsightsLiaisonAgent(AgentBase):
     - Recommendations
     """
     
-    def __init__(self, public_works: Optional[Any] = None):
+    def __init__(self, public_works: Optional[Any] = None, **kwargs):
         """
         Initialize Insights Liaison Agent.
         
         Args:
             public_works: Public Works Foundation Service (for accessing abstractions)
+            **kwargs: Additional parameters for 4-layer model support
         """
         # Initialize AgentBase
         super().__init__(
             agent_id="insights_liaison_agent",
             agent_type="insights_liaison",
             capabilities=["answer_questions", "explore_relationships", "identify_patterns", "provide_recommendations"],
-            public_works=public_works
+            public_works=public_works,
+            **kwargs
         )
         
         # Get abstractions from Public Works
@@ -65,41 +68,123 @@ class InsightsLiaisonAgent(AgentBase):
                 agent_id="insights_liaison_embedding_agent",
                 public_works=public_works
             )
+        
+        # PHASE 3: Initialize chunking, parsing, and semantic signal services
+        self.deterministic_chunking_service = None
+        self.file_parser_service = None
+        self.semantic_signal_extractor = None
+        if public_works:
+            from symphainy_platform.realms.content.enabling_services.deterministic_chunking_service import DeterministicChunkingService
+            from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
+            from symphainy_platform.realms.content.enabling_services.semantic_signal_extractor import SemanticSignalExtractor
+            self.deterministic_chunking_service = DeterministicChunkingService(public_works=public_works)
+            self.file_parser_service = FileParserService(public_works=public_works)
+            self.semantic_signal_extractor = SemanticSignalExtractor(public_works=public_works)
     
-    async def process_request(self, request: Dict[str, Any], context: ExecutionContext) -> Dict[str, Any]:
-        """Process agent request (required by AgentBase)."""
+    async def _process_with_assembled_prompt(
+        self,
+        system_message: str,
+        user_message: str,
+        runtime_context: AgentRuntimeContext,
+        context: ExecutionContext
+    ) -> Dict[str, Any]:
+        """
+        Process request with assembled prompt (4-layer model).
+        
+        This method is called by AgentBase.process_request() after assembling
+        the system and user messages from the 4-layer model.
+        
+        Args:
+            system_message: Assembled system message (from layers 1-3)
+            user_message: Assembled user message
+            runtime_context: Runtime context with business_context
+            context: Execution context
+        
+        Returns:
+            Dict with analysis result
+        """
+        # Extract request type and parameters from user_message
+        # Try to parse as JSON first
+        request_data = {}
+        try:
+            import json
+            if user_message.strip().startswith("{"):
+                request_data = json.loads(user_message)
+            else:
+                # Try to extract from runtime_context.business_context
+                if hasattr(runtime_context, 'business_context') and runtime_context.business_context:
+                    request_data = runtime_context.business_context.get("request", {})
+                # If still empty, treat user_message as question
+                if not request_data:
+                    request_data = {"type": "answer_question", "question": user_message.strip()}
+        except (json.JSONDecodeError, ValueError):
+            # Fallback: treat as question
+            request_data = {"type": "answer_question", "question": user_message.strip()}
+        
         # Route to appropriate method based on request type
-        request_type = request.get("type")
+        request_type = request_data.get("type", "answer_question")
+        session_id = request_data.get("session_id", context.session_id)
+        
         if request_type == "answer_question":
             return await self.answer_question(
-                session_id=request.get("session_id"),
-                question=request.get("question"),
+                session_id=session_id,
+                question=request_data.get("question", user_message.strip()),
                 tenant_id=context.tenant_id,
                 context=context
             )
         elif request_type == "explore_relationships":
             return await self.explore_relationships(
-                session_id=request.get("session_id"),
-                entity=request.get("entity"),
+                session_id=session_id,
+                entity=request_data.get("entity"),
                 tenant_id=context.tenant_id,
                 context=context
             )
         elif request_type == "identify_patterns":
             return await self.identify_patterns(
-                session_id=request.get("session_id"),
-                pattern_type=request.get("pattern_type"),
+                session_id=session_id,
+                pattern_type=request_data.get("pattern_type"),
                 tenant_id=context.tenant_id,
                 context=context
             )
         elif request_type == "provide_recommendations":
             return await self.provide_recommendations(
-                session_id=request.get("session_id"),
-                recommendation_type=request.get("recommendation_type"),
+                session_id=session_id,
+                recommendation_type=request_data.get("recommendation_type"),
                 tenant_id=context.tenant_id,
                 context=context
             )
         else:
-            raise ValueError(f"Unknown request type: {request_type}")
+            # Default to answer_question if type unknown
+            return await self.answer_question(
+                session_id=session_id,
+                question=user_message.strip(),
+                tenant_id=context.tenant_id,
+                context=context
+            )
+    
+    async def process_request(
+        self,
+        request: Dict[str, Any],
+        context: ExecutionContext,
+        runtime_context: Optional[AgentRuntimeContext] = None
+    ) -> Dict[str, Any]:
+        """
+        Process agent request (required by AgentBase).
+        
+        ARCHITECTURAL PRINCIPLE: This method delegates to AgentBase.process_request()
+        which implements the 4-layer model. For backward compatibility, it can also
+        be called directly, but the 4-layer flow is preferred.
+        """
+        # If runtime_context is provided, use it; otherwise let AgentBase assemble it
+        if runtime_context:
+            system_message = self._assemble_system_message(runtime_context)
+            user_message = self._assemble_user_message(request, runtime_context)
+            return await self._process_with_assembled_prompt(
+                system_message, user_message, runtime_context, context
+            )
+        else:
+            # Delegate to parent's process_request which implements 4-layer model
+            return await super().process_request(request, context, runtime_context=None)
     
     async def get_agent_description(self) -> str:
         """Get agent description (required by AgentBase)."""
@@ -334,9 +419,25 @@ Provide a clear, specific answer based on the available data."""
             
             if self.semantic_data_abstraction and parsed_file_id:
                 try:
-                    # Query semantic graph for entity relationships
+                    # PHASE 3: Use chunk-based pattern
+                    # 1. Get parsed file and create chunks
+                    parsed_file = await self.file_parser_service.get_parsed_file(
+                        parsed_file_id=parsed_file_id,
+                        tenant_id=tenant_id,
+                        context=context
+                    )
+                    
+                    parsed_content = parsed_file.get("parsed_content") or parsed_file
+                    chunks = await self.deterministic_chunking_service.create_chunks(
+                        parsed_content=parsed_content,
+                        file_id=parsed_file.get("file_id"),
+                        tenant_id=tenant_id,
+                        parsed_file_id=parsed_file_id
+                    )
+                    
+                    # 2. Query semantic graph for entity relationships
                     # Search for embeddings related to the entity
-                    if self.embedding_agent:
+                    if self.embedding_agent and chunks:
                         entity_embedding_result = await self.embedding_agent.generate_embedding(
                             text=entity,
                             context=context
@@ -344,17 +445,18 @@ Provide a clear, specific answer based on the available data."""
                         entity_embedding = entity_embedding_result.get("embedding", [])
                         
                         if entity_embedding:
-                            # Find similar entities
+                            # 3. Find similar entities by chunk_id (not parsed_file_id)
+                            chunk_ids = [chunk.chunk_id for chunk in chunks]
                             similar_entities = await self.semantic_data_abstraction.search_similar_embeddings(
                                 query_embedding=entity_embedding,
-                                filter_conditions={"parsed_file_id": parsed_file_id},
+                                filter_conditions={"chunk_id": {"$in": chunk_ids}},
                                 limit=10,
                                 tenant_id=tenant_id
                             )
                             
-                            # Build relationship network
+                            # 4. Build relationship network
                             for similar in similar_entities:
-                                col_name = similar.get("column_name")
+                                col_name = similar.get("column_name") or similar.get("metadata", {}).get("column_name")
                                 if col_name and col_name != entity:
                                     connected_entities.append(col_name)
                                     relationships.append({

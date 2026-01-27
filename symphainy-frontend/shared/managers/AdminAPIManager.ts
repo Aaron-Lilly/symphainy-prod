@@ -248,11 +248,71 @@ export interface BusinessFeatureRequestResponse {
 // Admin API Manager Class
 // ============================================
 
-export class AdminAPIManager {
-  private baseUrl: string;
+import { usePlatformState } from '@/shared/state/PlatformStateProvider';
+import { validateSession } from '@/shared/utils/sessionValidation';
 
-  constructor(baseUrl?: string) {
-    this.baseUrl = baseUrl || getApiEndpointUrl('');
+export class AdminAPIManager {
+  private getPlatformState: () => ReturnType<typeof usePlatformState>;
+
+  constructor(getPlatformState?: () => ReturnType<typeof usePlatformState>) {
+    this.getPlatformState = getPlatformState || (() => {
+      throw new Error("PlatformStateProvider not available. Use AdminAPIManager with usePlatformState hook.");
+    });
+  }
+
+  /**
+   * Helper method to submit admin intent and wait for execution
+   * 
+   * ✅ PHASE 5.6.5: Intent-based API pattern for admin operations
+   */
+  private async _submitAdminIntent(
+    intentType: string,
+    parameters: Record<string, any> = {}
+  ): Promise<any> {
+    const platformState = this.getPlatformState();
+    
+    // ✅ FIX ISSUE 4: Use standardized session validation
+    validateSession(platformState, `admin operation: ${intentType}`);
+
+    // Submit intent via Experience Plane Client
+    const execution = await platformState.submitIntent(intentType, parameters);
+
+    // Wait for execution completion
+    const result = await this._waitForExecution(execution, platformState);
+
+    if (result.status === "completed" && result.artifacts) {
+      return result.artifacts;
+    } else {
+      throw new Error(result.error || `Failed to execute ${intentType}`);
+    }
+  }
+
+  /**
+   * Wait for execution completion
+   */
+  private async _waitForExecution(
+    executionId: string,
+    platformState: ReturnType<typeof usePlatformState>,
+    maxWaitTime: number = 60000,
+    pollInterval: number = 1000
+  ): Promise<any> {
+    const startTime = Date.now();
+    
+    while (Date.now() - startTime < maxWaitTime) {
+      const status = await platformState.getExecutionStatus(executionId);
+      
+      if (!status) {
+        throw new Error("Execution not found");
+      }
+
+      if (status.status === "completed" || status.status === "failed" || status.status === "cancelled") {
+        return status;
+      }
+
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+    }
+
+    throw new Error("Execution timeout");
   }
 
   // ============================================
@@ -260,103 +320,53 @@ export class AdminAPIManager {
   // ============================================
 
   /**
-   * Get platform statistics
+   * Get platform statistics (admin_get_platform_statistics intent)
+   * 
+   * ✅ PHASE 5.6.5: Migrated to intent-based API
    */
   async getPlatformStatistics(): Promise<PlatformStatistics> {
-    const url = getApiEndpointUrl('/api/admin/control-room/statistics');
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Failed to get platform statistics' }));
-      throw new Error(error.detail || `Failed to get platform statistics: ${response.statusText}`);
-    }
-
-    return response.json();
+    const artifacts = await this._submitAdminIntent('admin_get_platform_statistics');
+    return artifacts.platform_statistics;
   }
 
   /**
-   * Get execution metrics
+   * Get execution metrics (admin_get_execution_metrics intent)
+   * 
+   * ✅ PHASE 5.6.5: Migrated to intent-based API
    */
   async getExecutionMetrics(timeRange: string = '1h'): Promise<ExecutionMetrics> {
-    const url = getApiEndpointUrl(`/api/admin/control-room/execution-metrics?time_range=${encodeURIComponent(timeRange)}`);
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Failed to get execution metrics' }));
-      throw new Error(error.detail || `Failed to get execution metrics: ${response.statusText}`);
-    }
-
-    return response.json();
+    const artifacts = await this._submitAdminIntent('admin_get_execution_metrics', { time_range: timeRange });
+    return artifacts.execution_metrics;
   }
 
   /**
-   * Get realm health
+   * Get realm health (admin_get_realm_health intent)
+   * 
+   * ✅ PHASE 5.6.5: Migrated to intent-based API
    */
   async getRealmHealth(): Promise<RealmHealth> {
-    const url = getApiEndpointUrl('/api/admin/control-room/realm-health');
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Failed to get realm health' }));
-      throw new Error(error.detail || `Failed to get realm health: ${response.statusText}`);
-    }
-
-    return response.json();
+    const artifacts = await this._submitAdminIntent('admin_get_realm_health');
+    return artifacts.realm_health;
   }
 
   /**
-   * Get solution registry status
+   * Get solution registry status (admin_get_solution_registry_status intent)
+   * 
+   * ✅ PHASE 5.6.5: Migrated to intent-based API
    */
   async getSolutionRegistryStatus(): Promise<SolutionRegistryStatus> {
-    const url = getApiEndpointUrl('/api/admin/control-room/solution-registry');
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Failed to get solution registry status' }));
-      throw new Error(error.detail || `Failed to get solution registry status: ${response.statusText}`);
-    }
-
-    return response.json();
+    const artifacts = await this._submitAdminIntent('admin_get_solution_registry_status');
+    return artifacts.solution_registry_status;
   }
 
   /**
-   * Get system health
+   * Get system health (admin_get_system_health intent)
+   * 
+   * ✅ PHASE 5.6.5: Migrated to intent-based API
    */
   async getSystemHealth(): Promise<SystemHealth> {
-    const url = getApiEndpointUrl('/api/admin/control-room/system-health');
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Failed to get system health' }));
-      throw new Error(error.detail || `Failed to get system health: ${response.statusText}`);
-    }
-
-    return response.json();
+    const artifacts = await this._submitAdminIntent('admin_get_system_health');
+    return artifacts.system_health;
   }
 
   // ============================================
@@ -364,132 +374,63 @@ export class AdminAPIManager {
   // ============================================
 
   /**
-   * Get Platform SDK documentation
+   * Get Platform SDK documentation (admin_get_documentation intent)
+   * 
+   * ✅ PHASE 5.6.5: Migrated to intent-based API
    */
   async getDocumentation(section?: string): Promise<Documentation> {
-    const url = section
-      ? getApiEndpointUrl(`/api/admin/developer/docs?section=${encodeURIComponent(section)}`)
-      : getApiEndpointUrl('/api/admin/developer/docs');
-    
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Failed to get documentation' }));
-      throw new Error(error.detail || `Failed to get documentation: ${response.statusText}`);
-    }
-
-    return response.json();
+    const artifacts = await this._submitAdminIntent('admin_get_documentation', { section });
+    return artifacts.documentation;
   }
 
   /**
-   * Get code examples
+   * Get code examples (admin_get_code_examples intent)
+   * 
+   * ✅ PHASE 5.6.5: Migrated to intent-based API
    */
   async getCodeExamples(category?: string): Promise<CodeExamples> {
-    const url = category
-      ? getApiEndpointUrl(`/api/admin/developer/examples?category=${encodeURIComponent(category)}`)
-      : getApiEndpointUrl('/api/admin/developer/examples');
-    
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Failed to get code examples' }));
-      throw new Error(error.detail || `Failed to get code examples: ${response.statusText}`);
-    }
-
-    return response.json();
+    const artifacts = await this._submitAdminIntent('admin_get_code_examples', { category });
+    return artifacts.code_examples;
   }
 
   /**
-   * Get patterns and best practices
+   * Get patterns and best practices (admin_get_patterns intent)
+   * 
+   * ✅ PHASE 5.6.5: Migrated to intent-based API
    */
   async getPatterns(): Promise<Patterns> {
-    const url = getApiEndpointUrl('/api/admin/developer/patterns');
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Failed to get patterns' }));
-      throw new Error(error.detail || `Failed to get patterns: ${response.statusText}`);
-    }
-
-    return response.json();
+    const artifacts = await this._submitAdminIntent('admin_get_patterns');
+    return artifacts.patterns;
   }
 
   /**
-   * Validate solution configuration (Playground - gated)
+   * Validate solution configuration (admin_validate_solution intent)
+   * 
+   * ✅ PHASE 5.6.5: Migrated to intent-based API
    */
   async validateSolution(request: SolutionValidationRequest): Promise<SolutionValidationResponse> {
-    const url = getApiEndpointUrl('/api/admin/developer/solution-builder/validate');
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Failed to validate solution' }));
-      throw new Error(error.detail || `Failed to validate solution: ${response.statusText}`);
-    }
-
-    return response.json();
+    const artifacts = await this._submitAdminIntent('admin_validate_solution', request);
+    return artifacts.solution_validation;
   }
 
   /**
-   * Preview solution structure (Playground - gated)
+   * Preview solution structure (admin_preview_solution intent)
+   * 
+   * ✅ PHASE 5.6.5: Migrated to intent-based API
    */
   async previewSolution(request: SolutionValidationRequest): Promise<SolutionValidationResponse> {
-    const url = getApiEndpointUrl('/api/admin/developer/solution-builder/preview');
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Failed to preview solution' }));
-      throw new Error(error.detail || `Failed to preview solution: ${response.statusText}`);
-    }
-
-    return response.json();
+    const artifacts = await this._submitAdminIntent('admin_preview_solution', request);
+    return artifacts.solution_preview;
   }
 
   /**
-   * Submit feature request (gated - "Coming Soon" for MVP)
+   * Submit feature request (admin_submit_feature_request intent)
+   * 
+   * ✅ PHASE 5.6.5: Migrated to intent-based API
    */
   async submitFeatureRequest(request: FeatureRequestSubmission): Promise<FeatureRequestResponse> {
-    const url = getApiEndpointUrl('/api/admin/developer/features/submit');
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Failed to submit feature request' }));
-      throw new Error(error.detail || `Failed to submit feature request: ${response.statusText}`);
-    }
-
-    return response.json();
+    const artifacts = await this._submitAdminIntent('admin_submit_feature_request', request);
+    return artifacts.feature_request;
   }
 
   // ============================================
@@ -497,110 +438,58 @@ export class AdminAPIManager {
   // ============================================
 
   /**
-   * Get solution composition guide
+   * Get solution composition guide (admin_get_composition_guide intent)
+   * 
+   * ✅ PHASE 5.6.5: Migrated to intent-based API
    */
   async getCompositionGuide(): Promise<CompositionGuide> {
-    const url = getApiEndpointUrl('/api/admin/business/composition-guide');
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Failed to get composition guide' }));
-      throw new Error(error.detail || `Failed to get composition guide: ${response.statusText}`);
-    }
-
-    return response.json();
+    const artifacts = await this._submitAdminIntent('admin_get_composition_guide');
+    return artifacts.composition_guide;
   }
 
   /**
-   * Get solution templates (gated)
+   * Get solution templates (admin_get_solution_templates intent)
+   * 
+   * ✅ PHASE 5.6.5: Migrated to intent-based API
    */
   async getSolutionTemplates(): Promise<SolutionTemplates> {
-    const url = getApiEndpointUrl('/api/admin/business/solution-templates');
-    const response = await fetch(url, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Failed to get solution templates' }));
-      throw new Error(error.detail || `Failed to get solution templates: ${response.statusText}`);
-    }
-
-    return response.json();
+    const artifacts = await this._submitAdminIntent('admin_get_solution_templates');
+    return artifacts.solution_templates;
   }
 
   /**
-   * Compose solution (advanced builder - gated)
+   * Compose solution (admin_compose_solution intent)
+   * 
+   * ✅ PHASE 5.6.5: Migrated to intent-based API
    */
   async composeSolution(request: SolutionCompositionRequest): Promise<SolutionCompositionResponse> {
-    const url = getApiEndpointUrl('/api/admin/business/solutions/compose');
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Failed to compose solution' }));
-      throw new Error(error.detail || `Failed to compose solution: ${response.statusText}`);
-    }
-
-    return response.json();
+    const artifacts = await this._submitAdminIntent('admin_compose_solution', request);
+    return artifacts.solution_composition;
   }
 
   /**
-   * Register composed solution
+   * Register composed solution (admin_register_solution intent)
+   * 
+   * ✅ PHASE 5.6.5: Migrated to intent-based API
    */
   async registerSolution(request: SolutionCompositionRequest): Promise<SolutionCompositionResponse> {
-    const url = getApiEndpointUrl('/api/admin/business/solutions/register');
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Failed to register solution' }));
-      throw new Error(error.detail || `Failed to register solution: ${response.statusText}`);
-    }
-
-    return response.json();
+    const artifacts = await this._submitAdminIntent('admin_register_solution', request);
+    return artifacts.solution_registration;
   }
 
   /**
-   * Submit business feature request
+   * Submit business feature request (admin_submit_business_feature_request intent)
+   * 
+   * ✅ PHASE 5.6.5: Migrated to intent-based API
    */
   async submitBusinessFeatureRequest(request: BusinessFeatureRequest): Promise<BusinessFeatureRequestResponse> {
-    const url = getApiEndpointUrl('/api/admin/business/feature-requests/submit');
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(request),
-    });
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ detail: 'Failed to submit feature request' }));
-      throw new Error(error.detail || `Failed to submit feature request: ${response.statusText}`);
-    }
-
-    return response.json();
+    const artifacts = await this._submitAdminIntent('admin_submit_business_feature_request', request);
+    return artifacts.business_feature_request;
   }
 }
 
 // Factory function for use in components
 export function useAdminAPIManager(): AdminAPIManager {
-  return new AdminAPIManager();
+  const platformState = usePlatformState();
+  return new AdminAPIManager(() => platformState);
 }

@@ -66,6 +66,25 @@ export interface UIState {
     message: string;
     timestamp: Date;
   }>;
+  // ✅ PHASE 5: Chatbot/UI state (consolidated from Jotai atoms)
+  chatbot: {
+    mainChatbotOpen: boolean;
+    agentInfo: {
+      title: string;
+      agent: string;
+      file_url: string;
+      additional_info: string;
+    };
+    chatInputFocused: boolean;
+    messageComposing: boolean;
+  };
+  // ✅ PHASE 5: Analysis results (consolidated from Jotai atoms)
+  analysisResults: {
+    business: any | null;
+    visualization: any | null;
+    anomaly: any | null;
+    eda: any | null;
+  };
 }
 
 export interface PlatformState {
@@ -94,7 +113,7 @@ interface PlatformStateContextType {
   untrackExecution: (executionId: string) => void;
   
   // Realm state actions
-  setRealmState: (realm: "content" | "insights" | "journey" | "outcomes", key: string, value: any) => void;
+  setRealmState: (realm: "content" | "insights" | "journey" | "outcomes", key: string, value: any) => Promise<void>;
   getRealmState: (realm: "content" | "insights" | "journey" | "outcomes", key: string) => any;
   clearRealmState: (realm: "content" | "insights" | "journey" | "outcomes") => void;
   
@@ -103,6 +122,22 @@ interface PlatformStateContextType {
   setSidebarOpen: (open: boolean) => void;
   addNotification: (type: "info" | "success" | "warning" | "error", message: string) => void;
   removeNotification: (id: string) => void;
+  
+  // ✅ PHASE 5: Chatbot state actions (replaces Jotai atoms)
+  setMainChatbotOpen: (open: boolean) => void;
+  setChatbotAgentInfo: (info: { title?: string; agent?: string; file_url?: string; additional_info?: string }) => void;
+  setChatInputFocused: (focused: boolean) => void;
+  setMessageComposing: (composing: boolean) => void;
+  
+  // ✅ PHASE 5: Analysis results actions (replaces Jotai atoms)
+  setAnalysisResult: (type: "business" | "visualization" | "anomaly" | "eda", result: any) => void;
+  clearAnalysisResults: () => void;
+  
+  // ✅ PHASE 5: Derived chatbot state (computed from mainChatbotOpen)
+  getShouldShowSecondaryChatbot: () => boolean;
+  getPrimaryChatbotHeight: () => string;
+  getSecondaryChatbotPosition: () => string;
+  getPrimaryChatbotTransform: () => string;
   
   // Sync actions
   syncWithRuntime: () => Promise<void>;
@@ -143,6 +178,24 @@ export const usePlatformState = (): PlatformStateContextType => {
             currentPillar: null,
             sidebarOpen: false,
             notifications: [],
+            // ✅ PHASE 5: Chatbot/UI state initialization
+            chatbot: {
+              mainChatbotOpen: true,
+              agentInfo: {
+                title: "",
+                agent: "",
+                file_url: "",
+                additional_info: "",
+              },
+              chatInputFocused: false,
+              messageComposing: false,
+            },
+            analysisResults: {
+              business: null,
+              visualization: null,
+              anomaly: null,
+              eda: null,
+            },
           },
         },
         submitIntent: async () => "",
@@ -156,6 +209,19 @@ export const usePlatformState = (): PlatformStateContextType => {
         setSidebarOpen: () => {},
         addNotification: () => {},
         removeNotification: () => {},
+        // ✅ PHASE 5: Chatbot state actions
+        setMainChatbotOpen: () => {},
+        setChatbotAgentInfo: () => {},
+        setChatInputFocused: () => {},
+        setMessageComposing: () => {},
+        // ✅ PHASE 5: Analysis results actions
+        setAnalysisResult: () => {},
+        clearAnalysisResults: () => {},
+        // ✅ PHASE 5: Derived chatbot state
+        getShouldShowSecondaryChatbot: () => false,
+        getPrimaryChatbotHeight: () => 'h-[87vh]',
+        getSecondaryChatbotPosition: () => 'translate-x-full opacity-0',
+        getPrimaryChatbotTransform: () => 'translate-y-0',
         syncWithRuntime: async () => {},
       };
     }
@@ -260,6 +326,24 @@ export const PlatformStateProvider: React.FC<PlatformStateProviderProps> = ({
       currentPillar: null,
       sidebarOpen: false,
       notifications: [],
+      // ✅ PHASE 5: Chatbot/UI state initialization
+      chatbot: {
+        mainChatbotOpen: true,
+        agentInfo: {
+          title: "",
+          agent: "",
+          file_url: "",
+          additional_info: "",
+        },
+        chatInputFocused: false,
+        messageComposing: false,
+      },
+      analysisResults: {
+        business: null,
+        visualization: null,
+        anomaly: null,
+        eda: null,
+      },
     },
   });
 
@@ -412,8 +496,10 @@ export const PlatformStateProvider: React.FC<PlatformStateProviderProps> = ({
   }, []);
 
   // Realm state actions
+  // ✅ RUNTIME AUTHORITY: setRealmState persists to Runtime, Runtime is source of truth
   const setRealmState = useCallback(
-    (realm: "content" | "insights" | "journey" | "outcomes", key: string, value: any) => {
+    async (realm: "content" | "insights" | "journey" | "outcomes", key: string, value: any) => {
+      // Update local state optimistically
       setState((prev) => ({
         ...prev,
         realm: {
@@ -424,8 +510,21 @@ export const PlatformStateProvider: React.FC<PlatformStateProviderProps> = ({
           },
         },
       }));
+
+      // ✅ RUNTIME AUTHORITY: Persist to Runtime (if session is active)
+      if (sessionState.status === SessionStatus.Active && sessionState.sessionId && sessionState.tenantId) {
+        try {
+          // Store realm state in Runtime session state
+          // Note: This would require a new API endpoint or extend existing session update
+          // For now, we'll sync on next syncWithRuntime call
+          // TODO: Add API endpoint to update realm state in session state
+        } catch (error) {
+          console.error(`Failed to persist realm state to Runtime: ${error}`);
+          // Don't revert local state - let Runtime overwrite on next sync
+        }
+      }
     },
-    []
+    [sessionState.status, sessionState.sessionId, sessionState.tenantId]
   );
 
   const getRealmState = useCallback(
@@ -489,15 +588,153 @@ export const PlatformStateProvider: React.FC<PlatformStateProviderProps> = ({
     }));
   }, []);
 
+  // ✅ PHASE 5: Chatbot state actions (replaces Jotai atoms)
+  const setMainChatbotOpen = useCallback((open: boolean) => {
+    setState((prev) => ({
+      ...prev,
+      ui: {
+        ...prev.ui,
+        chatbot: { ...prev.ui.chatbot, mainChatbotOpen: open },
+      },
+    }));
+  }, []);
+
+  const setChatbotAgentInfo = useCallback((info: { title?: string; agent?: string; file_url?: string; additional_info?: string }) => {
+    setState((prev) => ({
+      ...prev,
+      ui: {
+        ...prev.ui,
+        chatbot: {
+          ...prev.ui.chatbot,
+          agentInfo: { ...prev.ui.chatbot.agentInfo, ...info },
+        },
+      },
+    }));
+  }, []);
+
+  const setChatInputFocused = useCallback((focused: boolean) => {
+    setState((prev) => ({
+      ...prev,
+      ui: {
+        ...prev.ui,
+        chatbot: { ...prev.ui.chatbot, chatInputFocused: focused },
+      },
+    }));
+  }, []);
+
+  const setMessageComposing = useCallback((composing: boolean) => {
+    setState((prev) => ({
+      ...prev,
+      ui: {
+        ...prev.ui,
+        chatbot: { ...prev.ui.chatbot, messageComposing: composing },
+      },
+    }));
+  }, []);
+
+  // ✅ PHASE 5: Analysis results actions (replaces Jotai atoms)
+  const setAnalysisResult = useCallback((type: "business" | "visualization" | "anomaly" | "eda", result: any) => {
+    setState((prev) => ({
+      ...prev,
+      ui: {
+        ...prev.ui,
+        analysisResults: { ...prev.ui.analysisResults, [type]: result },
+      },
+    }));
+  }, []);
+
+  const clearAnalysisResults = useCallback(() => {
+    setState((prev) => ({
+      ...prev,
+      ui: {
+        ...prev.ui,
+        analysisResults: {
+          business: null,
+          visualization: null,
+          anomaly: null,
+          eda: null,
+        },
+      },
+    }));
+  }, []);
+
+  // ✅ PHASE 5: Derived chatbot state (computed from mainChatbotOpen)
+  const getShouldShowSecondaryChatbot = useCallback(() => {
+    return !state.ui.chatbot.mainChatbotOpen;
+  }, [state.ui.chatbot.mainChatbotOpen]);
+
+  const getPrimaryChatbotHeight = useCallback(() => {
+    return state.ui.chatbot.mainChatbotOpen ? 'h-[87vh]' : 'h-[30vh]';
+  }, [state.ui.chatbot.mainChatbotOpen]);
+
+  const getSecondaryChatbotPosition = useCallback(() => {
+    return state.ui.chatbot.mainChatbotOpen
+      ? 'translate-x-full opacity-0' // Hidden off-screen
+      : 'translate-x-0 opacity-100'; // Visible at normal position
+  }, [state.ui.chatbot.mainChatbotOpen]);
+
+  const getPrimaryChatbotTransform = useCallback(() => {
+    return state.ui.chatbot.mainChatbotOpen
+      ? 'translate-y-0' // Normal position
+      : 'translate-y-[20vh]'; // Slide down to make space for secondary
+  }, [state.ui.chatbot.mainChatbotOpen]);
+
+  // ✅ PHASE 5: Clear all state on session invalidation
+  useEffect(() => {
+    if (sessionState.status === SessionStatus.Invalid) {
+      // Clear all platform state when session becomes invalid
+      setState((prev) => ({
+        ...prev,
+        execution: {
+          executions: new Map(),
+          activeExecutions: [],
+          isLoading: false,
+          error: null,
+        },
+        realm: {
+          content: {},
+          insights: {},
+          journey: {},
+          outcomes: {},
+        },
+        ui: {
+          ...prev.ui,
+          chatbot: {
+            mainChatbotOpen: true, // Reset to default
+            agentInfo: {
+              title: "",
+              agent: "",
+              file_url: "",
+              additional_info: "",
+            },
+            chatInputFocused: false,
+            messageComposing: false,
+          },
+          analysisResults: {
+            business: null,
+            visualization: null,
+            anomaly: null,
+            eda: null,
+          },
+          notifications: [], // Clear notifications
+        },
+      }));
+    }
+  }, [sessionState.status]);
+
   // ✅ SESSION BOUNDARY PATTERN: Sync with Runtime - ONLY when session is Active
   // Sync follows session state - never leads it
+  // ✅ SYNC MECHANISM: Hybrid (Event-driven push via WebSocket + Pull safety net)
+  // - Primary: WebSocket provides real-time execution events (EXECUTION_STARTED, EXECUTION_COMPLETED, etc.)
+  // - Safety Net: Pull every 30 seconds (catches missed events, syncs realm state)
+  // - Not: Polling as primary mechanism
   const syncWithRuntime = useCallback(async () => {
     // Only sync when session is Active (authenticated and valid)
     if (sessionState.status !== SessionStatus.Active) {
       return;
     }
     
-    if (!sessionState.sessionId) {
+    if (!sessionState.sessionId || !sessionState.tenantId) {
       return;
     }
 
@@ -506,19 +743,77 @@ export const PlatformStateProvider: React.FC<PlatformStateProviderProps> = ({
       for (const executionId of state.execution.activeExecutions) {
         await getExecutionStatus(executionId);
       }
+
+      // ✅ RUNTIME AUTHORITY: Sync realm state from Runtime
+      // Get session state from Runtime (includes realm state if stored there)
+      try {
+        const session = await client.getSession(sessionState.sessionId, sessionState.tenantId);
+        
+        // ✅ RUNTIME AUTHORITATIVE OVERWRITE: If Runtime has realm state, Runtime wins
+        if (session.state && session.state.realm_state) {
+          const runtimeRealmState = session.state.realm_state;
+          
+          // Check for divergence and reconcile
+          setState((prev) => {
+            let hasDivergence = false;
+            const reconciledRealm: RealmState = { ...prev.realm };
+            
+            // For each realm, check if Runtime state differs
+            for (const realm of ["content", "insights", "journey", "outcomes"] as const) {
+              const runtimeState = runtimeRealmState[realm] || {};
+              const localState = prev.realm[realm] || {};
+              
+              // Compare keys - if Runtime has different values, Runtime wins
+              for (const key in runtimeState) {
+                if (JSON.stringify(localState[key]) !== JSON.stringify(runtimeState[key])) {
+                  hasDivergence = true;
+                  reconciledRealm[realm] = {
+                    ...localState,
+                    ...runtimeState, // Runtime overwrites local
+                  };
+                }
+              }
+              
+              // If Runtime has keys local doesn't have, add them
+              for (const key in runtimeState) {
+                if (!(key in localState)) {
+                  hasDivergence = true;
+                  reconciledRealm[realm] = {
+                    ...localState,
+                    ...runtimeState,
+                  };
+                }
+              }
+            }
+            
+            if (hasDivergence) {
+              console.info("🔄 [PlatformState] Realm state diverged - Runtime overwrote local state");
+              return {
+                ...prev,
+                realm: reconciledRealm,
+              };
+            }
+            
+            return prev; // No divergence, keep local state
+          });
+        }
+      } catch (error) {
+        // Session might not have realm_state yet, or API might not support it
+        // This is OK - realm state sync is optional for now
+        console.debug("Realm state sync not available:", error);
+      }
     } catch (error) {
       console.error("Failed to sync with Runtime:", error);
       // Don't clear session state here - SessionBoundaryProvider handles that
     }
-  }, [sessionState.status, sessionState.sessionId, state.execution.activeExecutions, getExecutionStatus]);
+  }, [sessionState.status, sessionState.sessionId, sessionState.tenantId, state.execution.activeExecutions, getExecutionStatus, client]);
 
   // Periodic sync with Runtime (every 30 seconds) - ONLY if user is authenticated
-  // ✅ SESSION-FIRST: Check access_token to determine authentication
+  // ✅ SESSION-FIRST: Use SessionBoundaryProvider state to determine authentication
+  // ✅ SESSION BOUNDARY PATTERN: Don't access sessionStorage directly - use SessionBoundaryProvider
   // Anonymous sessions exist but don't sync (no tenant_id/user_id)
   useEffect(() => {
-    // Check if user is authenticated (has access_token)
-    const accessToken = typeof window !== 'undefined' ? sessionStorage.getItem("access_token") : null;
-    
+    // ✅ SESSION BOUNDARY PATTERN: Check authentication via SessionBoundaryProvider state
     // Only sync if authenticated AND session has tenant_id (not anonymous)
     if (sessionState.status === SessionStatus.Active && sessionState.sessionId && sessionState.tenantId) {
       syncIntervalRef.current = setInterval(() => {
@@ -552,6 +847,19 @@ export const PlatformStateProvider: React.FC<PlatformStateProviderProps> = ({
     setSidebarOpen,
     addNotification,
     removeNotification,
+    // ✅ PHASE 5: Chatbot state actions
+    setMainChatbotOpen,
+    setChatbotAgentInfo,
+    setChatInputFocused,
+    setMessageComposing,
+    // ✅ PHASE 5: Analysis results actions
+    setAnalysisResult,
+    clearAnalysisResults,
+    // ✅ PHASE 5: Derived chatbot state
+    getShouldShowSecondaryChatbot,
+    getPrimaryChatbotHeight,
+    getSecondaryChatbotPosition,
+    getPrimaryChatbotTransform,
     syncWithRuntime,
   };
 

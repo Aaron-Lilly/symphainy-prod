@@ -1,15 +1,19 @@
 /**
  * Liaison Agents API Manager
  * 
- * Centralizes all Liaison Agent API calls using semantic endpoints.
- * Provides a clean interface for pillar-specific agent interactions.
+ * ✅ PHASE 5.6.4: Migrated to intent-based API
+ * 
+ * Centralizes all Liaison Agent API calls using intent-based architecture.
+ * 
+ * Note: This manager now delegates to JourneyAPIManager for intent-based operations.
+ * Liaison agent operations use intent-based API through Journey realm.
  */
 
 // ============================================
 // Liaison Agents API Manager Types
 // ============================================
 
-export type PillarType = 'content' | 'insights' | 'operations' | 'business-outcomes';
+export type PillarType = 'content' | 'insights' | 'journey' | 'outcomes';
 
 export interface SendMessageRequest {
   message: string;
@@ -41,112 +45,59 @@ export interface ConversationHistoryResponse {
 // Liaison Agents API Manager Class
 // ============================================
 
+import { useJourneyAPIManager } from '@/shared/hooks/useJourneyAPIManager';
+
+/**
+ * ✅ PHASE 5.6.4: Liaison Agents API Manager (Migrated to Intent-Based API)
+ * 
+ * This manager now uses JourneyAPIManager for all operations.
+ * Liaison agent operations use intent-based API through Journey realm.
+ */
 export class LiaisonAgentsAPIManager {
-  private baseURL: string;
-  private sessionToken: string;
+  private journeyAPIManager: ReturnType<typeof useJourneyAPIManager>;
 
-  constructor(sessionToken: string, baseURL?: string) {
-    this.sessionToken = sessionToken;
-    // Use centralized API config (NO hardcoded values)
-    if (baseURL) {
-      this.baseURL = baseURL.replace(':8000', '').replace(/\/$/, '');
-    } else {
-      // Import here to avoid circular dependency issues
-      const { getApiUrl } = require('@/shared/config/api-config');
-      this.baseURL = getApiUrl();
-    }
+  constructor(journeyAPIManager: ReturnType<typeof useJourneyAPIManager>) {
+    this.journeyAPIManager = journeyAPIManager;
   }
 
-  // ============================================
-  // Send Message to Pillar Agent
-  // ============================================
-
+  /**
+   * Send message to pillar agent
+   * 
+   * ✅ PHASE 5.6.4: Uses JourneyAPIManager (intent-based API)
+   */
   async sendMessageToPillarAgent(request: SendMessageRequest): Promise<SendMessageResponse> {
-    try {
-      const response = await fetch(`${this.baseURL}/api/v1/liaison-agents/send-message-to-pillar-agent`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.sessionToken}`,
-          'Content-Type': 'application/json',
-          'X-Session-Token': this.sessionToken || request.session_token || ''
-        },
-        body: JSON.stringify({
-          message: request.message,
-          pillar: request.pillar,
-          session_id: request.session_id,
-          conversation_id: request.conversation_id,
-          user_id: request.user_id
-        })
-      });
+    const result = await this.journeyAPIManager.sendMessageToPillarAgent(
+      request.message,
+      request.pillar,
+      request.conversation_id,
+      { session_id: request.session_id, user_id: request.user_id }
+    );
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        return {
-          success: false,
-          error: errorData.message || errorData.error || 'Failed to send message'
-        };
-      }
-
-      const data = await response.json();
-      return {
-        success: data.success,
-        response: data.response,
-        session_id: data.session_id,
-        pillar: data.pillar,
-        timestamp: data.timestamp,
-        message: data.message,
-        error: data.error
-      };
-    } catch (error) {
-      console.error('Error sending message to pillar agent:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to send message'
-      };
-    }
+    return {
+      success: result.success,
+      response: result.response,
+      error: result.error
+    };
   }
 
-  // ============================================
-  // Get Conversation History
-  // ============================================
-
+  /**
+   * Get pillar conversation history
+   * 
+   * ✅ PHASE 5.6.4: Uses JourneyAPIManager (intent-based API)
+   */
   async getPillarConversationHistory(sessionId: string, pillar: PillarType): Promise<ConversationHistoryResponse> {
-    try {
-      const response = await fetch(`${this.baseURL}/api/v1/liaison-agents/get-pillar-conversation-history/${sessionId}/${pillar}`, {
-        headers: {
-          'Authorization': `Bearer ${this.sessionToken}`,
-          'Content-Type': 'application/json',
-          'X-Session-Token': this.sessionToken
-        }
-      });
+    const result = await this.journeyAPIManager.getPillarConversationHistory(sessionId, pillar);
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        return {
-          success: false,
-          error: errorData.message || errorData.error || 'Failed to get conversation history'
-        };
-      }
-
-      const data = await response.json();
-      return {
-        success: data.success,
-        conversation: data.conversation,
-        message: data.message,
-        error: data.error
-      };
-    } catch (error) {
-      console.error('Error getting conversation history:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to get conversation history'
-      };
-    }
+    return {
+      success: result.success,
+      conversation: result.conversation,
+      error: result.error
+    };
   }
 }
 
-
-
-
-
-
+// Factory function for use in components
+export function useLiaisonAgentsAPIManager(): LiaisonAgentsAPIManager {
+  const journeyAPIManager = useJourneyAPIManager();
+  return new LiaisonAgentsAPIManager(journeyAPIManager);
+}

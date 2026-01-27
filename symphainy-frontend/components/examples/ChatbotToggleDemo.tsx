@@ -1,23 +1,19 @@
 "use client";
 
 import React from 'react';
-import { useAtom, useAtomValue } from 'jotai';
-import { 
-  mainChatbotOpenAtom,
-  shouldShowSecondaryChatbotAtom,
-  primaryChatbotTransformAtom,
-  secondaryChatbotPositionAtom
-} from '@/shared/atoms';
+// ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
+import { usePlatformState } from '@/shared/state/PlatformStateProvider';
 import { Button } from '@/components/ui/button';
 
 export default function ChatbotToggleDemo() {
-  // 🎯 SINGLE SOURCE OF TRUTH - Only atom you need to use/set
-  const [mainChatbotOpen, setMainChatbotOpen] = useAtom(mainChatbotOpenAtom);
+  // ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
+  const { state, setMainChatbotOpen, getShouldShowSecondaryChatbot, getPrimaryChatbotTransform, getSecondaryChatbotPosition } = usePlatformState();
+  const mainChatbotOpen = state.ui.chatbot.mainChatbotOpen;
   
   // Debug info - all derived automatically
-  const shouldShowSecondary = useAtomValue(shouldShowSecondaryChatbotAtom);
-  const primaryTransform = useAtomValue(primaryChatbotTransformAtom);
-  const secondaryPosition = useAtomValue(secondaryChatbotPositionAtom);
+  const shouldShowSecondary = getShouldShowSecondaryChatbot();
+  const primaryTransform = getPrimaryChatbotTransform();
+  const secondaryPosition = getSecondaryChatbotPosition();
 
   return (
     <div className="fixed top-4 left-4 z-[60] bg-white p-4 rounded-lg shadow-lg border">
@@ -69,11 +65,12 @@ export default function ChatbotToggleDemo() {
       </div>
       
       <div className="mt-3 p-2 bg-green-50 rounded text-xs">
-        <strong>✅ Simplified Usage:</strong><br/>
-        • Only use <code>mainChatbotOpenAtom</code><br/>
-        • All other states derive automatically<br/>
-        • <code>setMainChatbotOpen(true)</code> = Main only<br/>
-        • <code>setMainChatbotOpen(false)</code> = Both visible
+        <strong>✅ PHASE 5: PlatformStateProvider Usage:</strong><br/>
+        • Use <code>usePlatformState()</code> hook<br/>
+        • Access <code>state.ui.chatbot.mainChatbotOpen</code><br/>
+        • Call <code>setMainChatbotOpen(true)</code> = Main only<br/>
+        • Call <code>setMainChatbotOpen(false)</code> = Both visible<br/>
+        • Derived state via <code>getShouldShowSecondaryChatbot()</code> etc.
       </div>
     </div>
   );

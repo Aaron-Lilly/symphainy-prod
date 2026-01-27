@@ -19,6 +19,7 @@ from symphainy_platform.runtime.state_surface import StateSurface
 from symphainy_platform.runtime.wal import WriteAheadLog, WALEventType
 from symphainy_platform.runtime.transactional_outbox import TransactionalOutbox
 from tests.infrastructure.test_fixtures import test_redis, test_arango, clean_test_db
+from tests.helpers.data_steward_fixtures import data_steward_sdk
 
 
 @pytest.mark.integration
@@ -31,9 +32,10 @@ class TestExecutionLifecycle:
     def execution_manager(
         self,
         test_redis: RedisAdapter,
-        test_arango: ArangoAdapter
+        test_arango: ArangoAdapter,
+        data_steward_sdk  # ✅ Require Data Steward SDK
     ) -> ExecutionLifecycleManager:
-        """Create ExecutionLifecycleManager with real adapters."""
+        """Create ExecutionLifecycleManager with real adapters and Data Steward SDK."""
         # Create dependencies
         state_abstraction = StateManagementAbstraction(
             redis_adapter=test_redis,
@@ -46,12 +48,13 @@ class TestExecutionLifecycle:
         # Create intent registry
         intent_registry = IntentRegistry()
         
-        # Create execution lifecycle manager
+        # ✅ Create execution lifecycle manager with Data Steward SDK (required)
         return ExecutionLifecycleManager(
             intent_registry=intent_registry,
             state_surface=state_surface,
             wal=wal,
-            transactional_outbox=transactional_outbox
+            transactional_outbox=transactional_outbox,
+            data_steward_sdk=data_steward_sdk  # ✅ Required
         )
     
     @pytest.fixture
@@ -247,6 +250,48 @@ class TestExecutionLifecycle:
         assert result.success is False, "Invalid intent should fail"
         assert result.error is not None, "Error should be set"
         assert "Invalid intent" in result.error or "validation" in result.error.lower(), "Error should mention validation"
+    
+    @pytest.mark.asyncio
+    async def test_runtime_fails_without_data_steward(
+        self,
+        test_redis: RedisAdapter,
+        test_arango: ArangoAdapter
+    ):
+        """Test that Runtime fails if Data Steward SDK is not provided."""
+        # Create dependencies
+        state_abstraction = StateManagementAbstraction(
+            redis_adapter=test_redis,
+            arango_adapter=test_arango
+        )
+        state_surface = StateSurface(state_abstraction=state_abstraction)
+        wal = WriteAheadLog(redis_adapter=test_redis)
+        transactional_outbox = TransactionalOutbox(redis_adapter=test_redis, wal=wal)
+        intent_registry = IntentRegistry()
+        
+        # ✅ Create ExecutionLifecycleManager WITHOUT Data Steward SDK
+        execution_manager = ExecutionLifecycleManager(
+            intent_registry=intent_registry,
+            state_surface=state_surface,
+            wal=wal,
+            transactional_outbox=transactional_outbox,
+            data_steward_sdk=None  # ❌ Not provided
+        )
+        
+        # Create ingest_file intent (requires boundary contract)
+        intent = IntentFactory.create_intent(
+            intent_type="ingest_file",
+            tenant_id="tenant_1",
+            session_id="session_1",
+            solution_id="solution_1",
+            parameters={"ui_name": "test.txt", "file_type": "text"}
+        )
+        
+        # ✅ Execute should fail with clear error
+        result = await execution_manager.execute(intent)
+        
+        assert result.success is False, "Execution should fail without Data Steward SDK"
+        assert result.error is not None, "Error should be set"
+        assert "Data Steward SDK required" in result.error, "Error should mention Data Steward SDK requirement"
     
     @pytest.mark.asyncio
     async def test_execution_artifacts(

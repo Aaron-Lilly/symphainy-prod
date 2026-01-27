@@ -32,37 +32,72 @@ export class FileProcessingService {
     this.contentService = contentService;
   }
 
+  /**
+   * Upload file - uses intent-based API pattern.
+   * 
+   * ✅ PHASE 4: Migrated to intent-based API
+   * - Uses ingest_file intent
+   * - File goes to GCS, materialization is pending
+   * - User must explicitly save to persist
+   */
   async uploadFile(request: FileUploadRequest): Promise<FileUploadResponse> {
-    const formData = new FormData();
-    formData.append('file', request.file);
-    
-    if (request.userId) {
-      formData.append('user_id', request.userId);
-    }
-    
-    if (request.sessionToken) {
-      formData.append('session_token', request.sessionToken);
-    }
-    
-    if (request.metadata) {
-      formData.append('metadata', JSON.stringify(request.metadata));
+    // ✅ PHASE 4: Convert file to hex-encoded bytes for ingest_file intent
+    const fileBuffer = await request.file.arrayBuffer();
+    const fileContentHex = Array.from(new Uint8Array(fileBuffer))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+
+    // ✅ PHASE 4: Get session state
+    const sessionId = typeof window !== 'undefined' ? sessionStorage.getItem('session_id') : null;
+    const tenantId = typeof window !== 'undefined' ? sessionStorage.getItem('tenant_id') : null;
+
+    if (!sessionId || !tenantId) {
+      throw new Error("Session required to upload file");
     }
 
-    const sessionToken = request.sessionToken || (typeof window !== 'undefined' ? sessionStorage.getItem('session_token') : '') || '';
-    
-    const response = await fetch('/api/v1/business_enablement/content/upload-file', {
+    // ✅ PHASE 4: Submit ingest_file intent via intent-based API
+    const response = await fetch('/api/intent/submit', {
       method: 'POST',
       headers: {
-        'X-Session-Token': sessionToken
+        'Content-Type': 'application/json',
+        'Authorization': typeof window !== 'undefined' ? `Bearer ${sessionStorage.getItem('access_token') || ''}` : ''
       },
-      body: formData,
+      body: JSON.stringify({
+        intent_type: 'ingest_file',
+        tenant_id: tenantId,
+        session_id: sessionId,
+        parameters: {
+          ingestion_type: 'upload',
+          file_content: fileContentHex,
+          ui_name: request.file.name,
+          file_type: request.metadata?.file_type || 'unstructured',
+          mime_type: request.file.type,
+          filename: request.file.name,
+          user_id: request.userId
+        },
+        metadata: request.metadata
+      })
     });
 
     if (!response.ok) {
-      throw new Error(`File upload failed: ${response.status} ${response.statusText}`);
+      const errorData = await response.json().catch(() => ({ detail: 'File upload failed' }));
+      throw new Error(errorData.detail || `File upload failed: ${response.status} ${response.statusText}`);
     }
 
-    return await response.json();
+    const result = await response.json();
+    
+    // Extract file_id and boundary_contract_id from execution result
+    // Note: May need to poll execution status to get full result
+    return {
+      file_id: result.execution_id, // Temporary - will be updated when execution completes
+      status: 'pending',
+      message: 'File upload initiated. Materialization is pending.',
+      file_data: {
+        file_id: result.execution_id,
+        status: 'pending',
+        materialization_pending: true
+      } as any
+    };
   }
 
   async parseMainframeFile(fileId: string, copybookData?: string): Promise<ParseFileResponse> {

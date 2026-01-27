@@ -148,35 +148,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     setError(null);
 
     try {
-      // Call Experience Plane API for authentication
-      // POST /api/auth/login → Security Guard SDK → Runtime
-      const { getApiEndpointUrl } = require('@/shared/config/api-config');
-      const loginUrl = getApiEndpointUrl('/api/auth/login');
+      // ✅ PHASE 2: Use ServiceLayerAPI instead of direct fetch
+      const { loginUser } = await import('@/shared/services/ServiceLayerAPI');
+      const data = await loginUser({ email, password });
       
-      const response = await fetch(loginUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ email, password }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: 'Login failed' }));
-        throw new Error(errorData.message || errorData.error || `Login failed: ${response.statusText}`);
+      if (!data.success) {
+        throw new Error(data.message || 'Login failed');
       }
-
-      const data = await response.json();
       
-      // Handle different response formats
-      const authData = data.data || data;
-      const accessToken = authData.access_token || authData.token;
-      const userId = authData.user_id || authData.id;
-      const tenantId = authData.tenant_id || "default_tenant";
-      const userEmail = authData.email || email;
-      const userName = authData.name || authData.full_name || email.split("@")[0];
-      const roles = authData.roles || ["user"];
-      const permissions = authData.permissions || ["read", "write"];
+      // ✅ PHASE 2: ServiceLayerAPI returns standardized format
+      const accessToken = data.token;
+      const userId = data.user?.id;
+      const tenantId = data.user?.tenant_id || "default_tenant";
+      const userEmail = data.user?.email || email;
+      const userName = data.user?.name || email.split("@")[0];
+      const permissions = data.user?.permissions || ["read", "write"];
 
       if (!accessToken || !userId) {
         throw new Error("Invalid authentication response: missing token or user ID");
@@ -196,7 +182,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         id: userId,
         email: userEmail,
         name: userName,
-        avatar_url: authData.avatar_url,
+        avatar_url: data.user?.avatar_url,
         tenant_id: tenantId,
         permissions: permissions,
       };
@@ -208,8 +194,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
       if (typeof window !== "undefined") {
         sessionStorage.setItem("user_data", JSON.stringify(userData));
         
-        if (authData.refresh_token) {
-          sessionStorage.setItem("refresh_token", authData.refresh_token);
+        if (data.refresh_token) {
+          sessionStorage.setItem("refresh_token", data.refresh_token);
         }
       }
       
@@ -232,35 +218,21 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
     setError(null);
 
     try {
-      // Call Experience Plane API for registration
-      // POST /api/auth/register → Security Guard SDK → Runtime
-      const { getApiEndpointUrl } = require('@/shared/config/api-config');
-      const registerUrl = getApiEndpointUrl('/api/auth/register');
+      // ✅ PHASE 2: Use ServiceLayerAPI instead of direct fetch
+      const { registerUser } = await import('@/shared/services/ServiceLayerAPI');
+      const data = await registerUser({ name, email, password });
       
-      const response = await fetch(registerUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ name, email, password }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: 'Registration failed' }));
-        throw new Error(errorData.message || errorData.error || `Registration failed: ${response.statusText}`);
+      if (!data.success) {
+        throw new Error(data.message || 'Registration failed');
       }
-
-      const data = await response.json();
       
-      // Handle different response formats
-      const authData = data.data || data;
-      const accessToken = authData.access_token || authData.token;
-      const userId = authData.user_id || authData.id;
-      const tenantId = authData.tenant_id || "default_tenant";
-      const userEmail = authData.email || email;
-      const userName = authData.name || authData.full_name || name;
-      const roles = authData.roles || ["user"];
-      const permissions = authData.permissions || ["read", "write"];
+      // ✅ PHASE 2: ServiceLayerAPI returns standardized format
+      const accessToken = data.token;
+      const userId = data.user?.id;
+      const tenantId = data.user?.tenant_id || "default_tenant";
+      const userEmail = data.user?.email || email;
+      const userName = data.user?.name || name;
+      const permissions = data.user?.permissions || ["read", "write"];
 
       if (!accessToken || !userId) {
         throw new Error("Invalid registration response: missing token or user ID");
@@ -279,7 +251,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
         id: userId,
         email: userEmail,
         name: userName,
-        avatar_url: authData.avatar_url,
+        avatar_url: data.user?.avatar_url,
         tenant_id: tenantId,
         permissions: permissions,
       };
@@ -291,8 +263,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({
       if (typeof window !== "undefined") {
         sessionStorage.setItem("user_data", JSON.stringify(userData));
         
-        if (authData.refresh_token) {
-          sessionStorage.setItem("refresh_token", authData.refresh_token);
+        if (data.refresh_token) {
+          sessionStorage.setItem("refresh_token", data.refresh_token);
         }
       }
       

@@ -2,7 +2,8 @@
 
 import React, { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/shared/auth/AuthProvider";
+// ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+import { useSessionBoundary, SessionStatus } from "@/shared/state/SessionBoundaryProvider";
 
 interface AuthRedirectProps {
   redirectTo?: string;
@@ -12,13 +13,17 @@ export default function AuthRedirect({
   redirectTo = "/login",
 }: AuthRedirectProps) {
   const router = useRouter();
-  const { isAuthenticated, isLoading } = useAuth();
+  // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+  const { state: sessionState } = useSessionBoundary();
+  const isLoading = sessionState.status === SessionStatus.Initializing || sessionState.status === SessionStatus.Authenticating;
+  const isAuthenticated = sessionState.status === SessionStatus.Active;
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
+    // ✅ PHASE 4: Redirect if session is not Active (Invalid, Anonymous, etc.)
+    if (!isLoading && sessionState.status !== SessionStatus.Active) {
       router.push(redirectTo);
     }
-  }, [isAuthenticated, isLoading, router, redirectTo]);
+  }, [sessionState.status, isLoading, router, redirectTo]);
 
   // Show loading while checking authentication
   if (isLoading) {

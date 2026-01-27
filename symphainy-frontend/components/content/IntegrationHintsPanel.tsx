@@ -63,7 +63,7 @@ const getIntegrationHints = (fileType: string, metadata: any, router: any) => {
     if (metadata.columns && metadata.columns > 5) {
       hints.push({
         message: "Complex data structure - Operations pillar can help create workflows",
-        action: () => router.push('/pillars/operation'),
+        action: () => router.push('/pillars/journey'),
         actionLabel: "Go to Operations"
       });
     }
@@ -79,7 +79,7 @@ const getIntegrationHints = (fileType: string, metadata: any, router: any) => {
   if (fileType === "text" || fileType === "pdf") {
     hints.push({
       message: "Text content ready for SOP/Workflow conversion in Operations pillar",
-      action: () => router.push('/pillars/operation'),
+      action: () => router.push('/pillars/journey'),
       actionLabel: "Go to Operations"
     });
     

@@ -9,11 +9,14 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, Loader2, Lightbulb, Target, CheckCircle2, XCircle, Settings, Brain, Sparkles } from "lucide-react";
 import { useApp } from "@/shared/agui/AppProvider";
 import { useAuth } from '@/shared/auth/AuthProvider';
+// ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+import { useSessionBoundary, SessionStatus } from '@/shared/state/SessionBoundaryProvider';
 import { useGuideAgent } from "@/lib/contexts/ExperienceLayerProvider";
 import { pillars } from "@/shared/data/pillars";
 import { toast } from "sonner";
 import { mvpSolutionService } from "@/shared/services/mvp";
 import type { SolutionStructureResponse, SolutionPillar, UserCustomizations } from "@/shared/services/mvp/types";
+import { ArtifactGallery } from "./ArtifactGallery";
 
 export function WelcomeJourney({
   handleWelcomeComplete,
@@ -22,7 +25,10 @@ export function WelcomeJourney({
 }) {
   const router = useRouter();
   const { dispatch } = useApp();
-  const { isAuthenticated, user } = useAuth();
+  // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+  const { state: sessionState } = useSessionBoundary();
+  const { user } = useAuth(); // Keep for user data
+  const isAuthenticated = sessionState.status === SessionStatus.Active;
   const guideAgent = useGuideAgent();
   
   // All hooks must be called before any conditional returns (Rules of Hooks)
@@ -647,6 +653,16 @@ export function WelcomeJourney({
               </>
             )}
           </Button>
+        </div>
+
+        {/* ✅ PHASE 2.1: Artifact Gallery */}
+        <div className="mt-12">
+          <ArtifactGallery />
+        </div>
+
+        {/* ✅ PHASE 3.1: Coexistence Explanation */}
+        <div className="mt-12">
+          <CoexistenceExplanation />
         </div>
       </div>
     </div>

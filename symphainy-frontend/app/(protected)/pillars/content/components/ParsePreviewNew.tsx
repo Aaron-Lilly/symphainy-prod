@@ -30,7 +30,8 @@ import {
   XCircle,
   Download
 } from 'lucide-react';
-import { useAuth } from '@/shared/auth/AuthProvider';
+// ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+import { useSessionBoundary, SessionStatus } from '@/shared/state/SessionBoundaryProvider';
 import { usePlatformState } from '@/shared/state/PlatformStateProvider';
 import { useContentAPIManager } from '@/shared/hooks/useContentAPIManager';
 import { FileMetadata, FileStatus, FileType } from '@/shared/types/file';
@@ -169,8 +170,10 @@ export function ParsePreviewNew({
   onParseError,
   className
 }: ParsePreviewNewProps) {
-  const { isAuthenticated } = useAuth();
+  // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+  const { state: sessionState } = useSessionBoundary();
   const { state, getRealmState } = usePlatformState();
+  const isAuthenticated = sessionState.status === SessionStatus.Active;
   const contentAPIManager = useContentAPIManager();
   
   const [selectedFileUuid, setSelectedFileUuid] = useState<string | null>(null);

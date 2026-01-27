@@ -24,6 +24,8 @@ import {
   ChevronUp
 } from 'lucide-react';
 import { useAuth } from '@/shared/auth/AuthProvider';
+// ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+import { useSessionBoundary, SessionStatus } from '@/shared/state/SessionBoundaryProvider';
 import { usePlatformState } from '@/shared/state/PlatformStateProvider';
 import { useContentAPIManager } from '@/shared/managers/ContentAPIManager';
 import { toast } from 'sonner';
@@ -54,8 +56,11 @@ export function FileDashboard({
   onEnhancedProcessing,
   className
 }: FileDashboardNewProps) {
-  const { isAuthenticated, user } = useAuth();
-  const { state, setRealmState } = usePlatformState();
+  // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+  const { state: sessionState } = useSessionBoundary();
+  const { user } = useAuth(); // Keep user from AuthProvider for now
+  const isAuthenticated = sessionState.status === SessionStatus.Active;
+  const { state, setRealmState, submitIntent, getExecutionStatus, trackExecution } = usePlatformState();
   const contentAPIManager = useContentAPIManager();
   
   const [files, setFiles] = useState<FileMetadata[]>([]);
@@ -74,7 +79,7 @@ export function FileDashboard({
     }
   }, [state.realm.content.files]);
 
-  // Load files from backend using semantic API
+  // Load files from backend using artifact-centric API (Phase 3)
   const loadFiles = useCallback(async () => {
     if (!isAuthenticated) return;
 
@@ -82,40 +87,56 @@ export function FileDashboard({
     setError(null);
 
     try {
-      // Load files using new ContentAPIManager (Runtime-based)
-      const contentFiles = await contentAPIManager.listFiles();
+      const tenantId = state.session.tenantId;
+      if (!tenantId) {
+        throw new Error("Tenant ID not available");
+      }
+
+      // ✅ Phase 3: Use artifact-centric listArtifacts() instead of listFiles()
+      // List all file artifacts (READY state)
+      const artifactList = await contentAPIManager.listArtifacts({
+        tenantId: tenantId,
+        artifactType: "file", // Show all file artifacts
+        lifecycleState: "READY",
+        // Don't filter by eligibleFor - show all files
+      });
       
-      // Map ContentFile to FileMetadata format
-      // Map status string to FileStatus enum (same logic as FileSelector)
-      const mapStatus = (statusStr?: string): FileStatus => {
-        if (!statusStr) return FileStatus.Uploaded;
-        const statusLower = statusStr.toLowerCase();
-        if (statusLower === 'parsed') return FileStatus.Parsed;
-        if (statusLower === 'validated') return FileStatus.Validated;
-        if (statusLower === 'embedded') return FileStatus.Validated; // Map "embedded" to Validated for UI
-        if (statusLower === 'parsing') return FileStatus.Parsing;
-        return FileStatus.Uploaded; // Default to Uploaded
+      // Map ArtifactListItem to FileMetadata format
+      // Map lifecycle_state to FileStatus enum
+      const mapStatus = (lifecycleState: string, artifactType: string): FileStatus => {
+        if (lifecycleState === 'FAILED') return FileStatus.Uploaded; // Treat failed as uploaded for now
+        if (artifactType === 'parsed_content') return FileStatus.Parsed;
+        if (lifecycleState === 'PENDING') return FileStatus.Parsing;
+        return FileStatus.Uploaded; // Default to Uploaded for files
       };
 
-      const mappedFiles: FileMetadata[] = contentFiles.map((cf) => ({
-        uuid: cf.id,
-        file_id: cf.id,
-        ui_name: cf.name,
-        original_filename: cf.name,
-        original_path: cf.metadata?.original_path || '',
-        file_type: cf.type as any,
-        mime_type: cf.metadata?.mime_type || '',
-        file_size: cf.size,
-        status: mapStatus(cf.status), // Use actual status from API
-        metadata: cf.metadata || {},
-        created_at: cf.uploadDate,
-        updated_at: cf.uploadDate,
-        upload_timestamp: cf.uploadDate,
-        deleted: false,
-        // NEW: Materialization fields
-        boundary_contract_id: cf.boundary_contract_id || cf.metadata?.boundary_contract_id,
-        materialization_pending: cf.materialization_pending !== false && (cf.status === 'pending' || cf.metadata?.materialization_pending === true),
-      }));
+      const mappedFiles: FileMetadata[] = artifactList.artifacts.map((artifact) => {
+        const semanticDesc = artifact.semantic_descriptor || {};
+        return {
+          uuid: artifact.artifact_id,
+          file_id: artifact.artifact_id,
+          ui_name: semanticDesc.schema || artifact.artifact_id, // Use schema or artifact_id as name
+          original_filename: semanticDesc.schema || artifact.artifact_id,
+          original_path: artifact.artifact_id,
+          file_type: artifact.artifact_type as any,
+          mime_type: semanticDesc.parser_type || '',
+          file_size: semanticDesc.record_count || 0, // Use record_count as size approximation
+          status: mapStatus(artifact.lifecycle_state, artifact.artifact_type),
+          metadata: {
+            artifact_id: artifact.artifact_id,
+            artifact_type: artifact.artifact_type,
+            lifecycle_state: artifact.lifecycle_state,
+            semantic_descriptor: semanticDesc,
+          },
+          created_at: artifact.created_at,
+          updated_at: artifact.updated_at,
+          upload_timestamp: artifact.created_at,
+          deleted: false,
+          // Materialization fields (from artifact metadata if available)
+          boundary_contract_id: undefined, // Will be populated from artifact resolution if needed
+          materialization_pending: artifact.lifecycle_state === 'PENDING',
+        };
+      });
       
       // Sort by creation date (newest first)
       mappedFiles.sort((a, b) => {
@@ -131,9 +152,9 @@ export function FileDashboard({
       setRealmState('content', 'files', mappedFiles);
       
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Failed to load files';
+      const errorMessage = error instanceof Error ? error.message : 'Failed to load artifacts';
       setError(errorMessage);
-      toast.error('Failed to load files', {
+      toast.error('Failed to load artifacts', {
         description: errorMessage
       });
       
@@ -143,7 +164,7 @@ export function FileDashboard({
     } finally {
       setLoading(false);
     }
-  }, [isAuthenticated, contentAPIManager, state.realm.content.files, setRealmState]);
+  }, [isAuthenticated, contentAPIManager, state.realm.content.files, state.session.tenantId, setRealmState]);
 
   // Load files ONLY once on component mount (when authenticated)
   // Use ref to track if we've already loaded to prevent multiple calls
@@ -187,24 +208,46 @@ export function FileDashboard({
     setProcessingFiles(prev => new Set(prev).add(fileId));
     
     try {
-      // Delete file using new ContentAPIManager (Runtime-based)
-      // Note: deleteFile method may need to be added to new ContentAPIManager
-      // For now, we'll use the existing endpoint pattern
-      const fileType = file.metadata?.file_type || 
-                       (file.status === FileStatus.Parsed ? 'parsed' : 
-                        (file.status === FileStatus.Validated && file.metadata?.parsed_file_id ? 'embedded' : 'original'));
-      
-      // TODO: Add deleteFile method to new ContentAPIManager
-      // For MVP, we'll use direct API call or add to ContentAPIManager
-      const { getApiEndpointUrl } = require('@/shared/config/api-config');
-      const deleteURL = getApiEndpointUrl(`/api/v1/content-pillar/delete-file/${fileId}${fileType ? `?file_type=${fileType}` : ''}`);
-      
-      const response = await fetch(deleteURL, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      
-      const success = response.ok;
+      // ✅ PHASE 4: Delete file using intent-based API (archive_file intent)
+      // Following CTO guidance: Use archive_file for soft delete (preserves data for audit)
+      if (!sessionState.sessionId || !sessionState.tenantId) {
+        throw new Error("Session required to delete file");
+      }
+
+      // Submit archive_file intent (soft delete - preserves data for audit)
+      const executionId = await submitIntent(
+        'archive_file',
+        {
+          file_id: fileId
+        }
+      );
+
+      // Track execution
+      trackExecution(executionId);
+
+      // Wait for execution to complete
+      const maxAttempts = 10;
+      let attempts = 0;
+      let success = false;
+
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const status = await getExecutionStatus(executionId);
+        
+        if (status?.status === "completed") {
+          success = true;
+          break;
+        } else if (status?.status === "failed") {
+          throw new Error(status.error || "File deletion failed");
+        }
+        
+        attempts++;
+      }
+
+      if (!success) {
+        throw new Error("Timeout waiting for file deletion to complete");
+      }
 
       if (success) {
         const updatedFiles = files.filter(f => (f.file_id || f.uuid) !== fileId);

@@ -20,10 +20,10 @@ import { Input } from '@/components/ui/input';
 import { Sparkles, AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
 import { InsightsFileSelector } from './InsightsFileSelector';
 import { MappingResultsDisplay } from './MappingResultsDisplay';
-import { InsightsService } from '@/shared/services/insights';
+// ✅ PHASE 4: Removed InsightsService import - using intent-based API
 import { DataMappingResponse, DataMappingResultsResponse, DataMappingOptions } from '@/shared/services/insights/types';
-import { useAuth } from '@/shared/auth/AuthProvider';
-import { usePlatformState } from '@/shared/state/PlatformStateProvider';
+// ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+import { useSessionBoundary } from '@/shared/state/SessionBoundaryProvider';
 
 interface DataMappingSectionProps {
   onMappingComplete?: (mapping: DataMappingResultsResponse) => void;
@@ -32,9 +32,9 @@ interface DataMappingSectionProps {
 export function DataMappingSection({ 
   onMappingComplete 
 }: DataMappingSectionProps) {
-  const { sessionToken } = useAuth();
-  const { state } = usePlatformState();
-  const guideSessionToken = sessionToken || state.session.sessionId;
+  // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+  const { state: sessionState } = useSessionBoundary();
+  const { submitIntent, getExecutionStatus } = usePlatformState();
   const [sourceFileId, setSourceFileId] = useState<string>('');
   const [targetFileId, setTargetFileId] = useState<string>('');
   const [mappingType, setMappingType] = useState<'auto' | 'unstructured_to_structured' | 'structured_to_structured'>('auto');
@@ -85,34 +85,73 @@ export function DataMappingSection({
       setError(null);
       setStatus('mapping');
 
-      const insightsService = new InsightsService(guideSessionToken);
+      // ✅ PHASE 4: Migrate to intent-based API
+      // NOTE: Data mapping (file-to-file) doesn't have a direct intent mapping yet
+      // map_relationships intent is for relationships within a parsed file, not file-to-file mapping
+      // TODO: Need to determine if this should be:
+      // 1. New intent: `map_data` or `execute_data_mapping`
+      // 2. Use artifact retrieval if mapping results are stored as artifacts
+      // 3. Use a different pattern
       
-      const mappingOptions: DataMappingOptions = {
-        mapping_type: mappingType,
-        quality_validation: qualityValidation,
-        min_confidence: minConfidence,
-        include_citations: includeCitations,
+      if (!sessionState.sessionId || !sessionState.tenantId) {
+        throw new Error("Session required to execute data mapping");
+      }
+
+      // Submit intent (will work when backend implements `map_data` intent)
+      // TODO: Backend needs to implement `map_data` intent for file-to-file mapping
+      const executionId = await submitIntent(
+        'map_data', // New intent needed - see PHASE_4_MIGRATION_GAPS.md
+        {
+          source_file_id: sourceFileId,
+          target_file_id: targetFileId,
+          mapping_type: mappingType,
+          quality_validation: qualityValidation,
+          min_confidence: minConfidence,
+          include_citations: includeCitations
+        }
+      );
+      */
+
+      // Wait for execution to complete
+      const maxAttempts = 30;
+      let attempts = 0;
+      let mappingResult: any = null;
+
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const status = await getExecutionStatus(executionId);
+        
+        if (status?.status === "completed") {
+          // Extract mapping result from execution artifacts
+          const mappingArtifact = status.artifacts?.mapping || status.artifacts?.relationships;
+          if (mappingArtifact?.semantic_payload) {
+            mappingResult = mappingArtifact.semantic_payload;
+          }
+          break;
+        } else if (status?.status === "failed") {
+          throw new Error(status.error || "Data mapping failed");
+        }
+        
+        attempts++;
+      }
+
+      if (!mappingResult) {
+        throw new Error("Mapping result not found in execution result");
+      }
+
+      // Transform to DataMappingResponse format
+      const response: DataMappingResponse = {
+        success: true,
+        mapping_id: mappingResult.mapping_id || executionId,
+        mapping_result: mappingResult
       };
 
-      // Execute mapping - backend returns complete results directly
-      const response: DataMappingResponse = await insightsService.executeDataMapping(
-        sourceFileId,
-        targetFileId,
-        mappingOptions,
-        guideSessionToken
-      );
-
-      if (response.success && response.mapping_id) {
-        setMappingId(response.mapping_id);
-        // Backend returns complete results in the response (no polling needed)
-        setMappingResult(response);
-        setStatus('completed');
-        if (onMappingComplete) {
-          onMappingComplete(response);
-        }
-      } else {
-        setError(response.error || 'Mapping failed');
-        setStatus('failed');
+      setMappingId(response.mapping_id);
+      setMappingResult(response);
+      setStatus('completed');
+      if (onMappingComplete) {
+        onMappingComplete(response);
       }
     } catch (err) {
       console.error('Mapping error:', err);
@@ -309,9 +348,17 @@ export function DataMappingSection({
           mappingResults={mappingResult}
           onExport={(format) => {
             // Handle export
-            const insightsService = new InsightsService(guideSessionToken);
+            // ✅ PHASE 4: Export mapping results - TODO: Migrate to artifact export API
+            // Note: Export functionality may need artifact export API or specific intent
             if (mappingId) {
-              insightsService.exportMappingResults(mappingId, format, guideSessionToken)
+              // TODO: Implement artifact export when available
+              toast.error("Export not yet available", {
+                description: "Mapping results export needs migration to artifact export API"
+              });
+              /* Future implementation:
+              const exportUrl = await getArtifactExportUrl(mappingId, format);
+              // Download file
+              */
                 .then(blob => {
                   const url = window.URL.createObjectURL(blob);
                   const a = document.createElement('a');

@@ -4,16 +4,20 @@
  */
 
 import React, { useCallback } from 'react';
-import { useGlobalSession } from './index';
+// ✅ PHASE 1: useGlobalSession archived - use useSessionBoundary instead
+import { useSessionBoundary } from '../state/SessionBoundaryProvider';
 
-// Hook for session persistence
+// ⚠️ DEPRECATED: SessionBoundaryProvider handles persistence automatically
 export function useSessionPersistence() {
-  const { guideSessionToken, setGuideSessionToken } = useGlobalSession();
+  console.warn('⚠️ useSessionPersistence is deprecated. SessionBoundaryProvider handles persistence automatically.');
+  const { state: sessionState } = useSessionBoundary();
+  const guideSessionToken = sessionState.sessionId;
 
+  // SessionBoundaryProvider handles persistence automatically
   const persistSession = useCallback(async (token: string) => {
-    await setGuideSessionToken(token);
-    localStorage.setItem('guideSessionToken', token);
-  }, [setGuideSessionToken]);
+    console.warn('⚠️ persistSession is deprecated. SessionBoundaryProvider handles persistence automatically.');
+    // No-op - SessionBoundaryProvider manages this
+  }, []);
 
   const clearPersistedSession = useCallback(() => {
     localStorage.removeItem('guideSessionToken');
@@ -31,9 +35,11 @@ export function useSessionPersistence() {
   };
 }
 
-// Hook for Smart City session integration
+// ⚠️ DEPRECATED: Use useSessionBoundary instead
 export function useSmartCitySession() {
-  const { guideSessionToken } = useGlobalSession();
+  console.warn('⚠️ useSmartCitySession is deprecated. Use useSessionBoundary from @/shared/state/SessionBoundaryProvider instead.');
+  const { state: sessionState } = useSessionBoundary();
+  const guideSessionToken = sessionState.sessionId;
 
   // TODO: Replace with actual Smart City integration
   const smartCityFeatures = {

@@ -5,11 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Loader2, ArrowLeft, Send, CheckCircle, FileText, Share2 } from "lucide-react";
-import { wizardChat, wizardPublish, startWizard } from "@/lib/api/operations";
+// ✅ PHASE 2: Use service layer hook instead of direct API calls
+import { useOperationsAPI } from "@/shared/hooks/useOperationsAPI";
 import { useAuth } from "@/shared/auth/AuthProvider";
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
-import { chatbotAgentInfoAtom, mainChatbotOpenAtom } from "@/shared/atoms/chatbot-atoms";
-import { useSetAtom } from "jotai";
+// ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
+// (usePlatformState already imported above)
 
 interface ChatTurn {
   role: 'user' | 'agent';
@@ -21,12 +22,13 @@ interface WizardActiveProps {
 }
 
 export default function WizardActive({ onBack }: WizardActiveProps) {
-  const setAgentInfo = useSetAtom(chatbotAgentInfoAtom);
-  const setMainChatbotOpen = useSetAtom(mainChatbotOpenAtom);
-  const { setRealmState } = usePlatformState();
-  const { user, sessionToken: authSessionToken } = useAuth();
+  // ✅ PHASE 2: Use service layer hook
+  const { startWizard, wizardChat, wizardPublish } = useOperationsAPI();
+  // ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
+  const { setChatbotAgentInfo, setMainChatbotOpen, setRealmState } = usePlatformState();
+  const setAgentInfo = setChatbotAgentInfo; // Alias for compatibility
+  const { user } = useAuth();
   const { state } = usePlatformState();
-  const guideSessionToken = authSessionToken || state.session.sessionId;
   const [chatHistory, setChatHistory] = useState<ChatTurn[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -49,74 +51,86 @@ export default function WizardActive({ onBack }: WizardActiveProps) {
     setMainChatbotOpen(false);
     
     // Start wizard session on mount
+    // ✅ PHASE 6: Use { data, error } pattern
     const initializeWizard = async () => {
       if (wizardStarted) return;
       setLoading(true);
-      try {
-        const userId = user?.id || undefined;
-        const response = await startWizard(guideSessionToken || undefined, userId);
+      const userId = user?.id || undefined;
+      // ✅ PHASE 2: Use service layer hook - no need to pass sessionToken manually
+      const response = await startWizard();
+      if (response.error) {
+        setError(response.error.message || "Failed to start wizard");
+        setLoading(false);
+        return;
+      }
+      if (response.data) {
+        const data = response.data as any;
         // Extract session token from response
-        const token = (response as any).session_token || (response as any).wizard_session_id || (response as any).data?.session_token || guideSessionToken || `wizard-${Math.random().toString(36).slice(2)}`;
+        const token = data.session_token || data.wizard_session_id || data.data?.session_token || `wizard-${Math.random().toString(36).slice(2)}`;
         setWizardSessionToken(token);
         setWizardStarted(true);
         // Add welcome message if provided
-        if (response.message || response.data?.message) {
-          setChatHistory([{ role: 'agent', content: response.message || response.data?.message || 'Welcome! Let\'s create your SOP together.' }]);
+        if (data.message || data.data?.message) {
+          setChatHistory([{ role: 'agent', content: data.message || data.data?.message || 'Welcome! Let\'s create your SOP together.' }]);
         }
-      } catch (e: any) {
-        setError(e.message || "Failed to start wizard");
-      } finally {
-        setLoading(false);
       }
+      setLoading(false);
     };
     
     initializeWizard();
-  }, [setAgentInfo, setMainChatbotOpen, guideSessionToken, user, wizardStarted]);
+  }, [setAgentInfo, setMainChatbotOpen, startWizard, user, wizardStarted]);
 
+  // ✅ PHASE 6: Use { data, error } pattern
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!input.trim() || !wizardSessionToken) return;
+    if (!input.trim()) return;
     setLoading(true);
     setError(null);
-    try {
-      setChatHistory((h) => [...h, { role: 'user', content: input }]);
-      const resp = await wizardChat(wizardSessionToken, input);
-      setChatHistory((h) => [...h, { role: 'agent', content: resp.message || resp.data?.message || 'Response received' }]);
-      if (resp.data?.draft_sop) setDraftSop(resp.data.draft_sop);
-      setInput("");
-    } catch (e: any) {
-      setError(e.message || "Failed to send message");
-    } finally {
+    setChatHistory((h) => [...h, { role: 'user', content: input }]);
+    // ✅ PHASE 2: Use service layer hook - no need to pass sessionToken manually
+    const resp = await wizardChat(input);
+    if (resp.error) {
+      setError(resp.error.message || "Failed to send message");
       setLoading(false);
-    }
-  };
-
-  const handlePublish = async () => {
-    if (!wizardSessionToken) {
-      setError("Wizard session not started");
       return;
     }
+    if (resp.data) {
+      const data = resp.data as any;
+      setChatHistory((h) => [...h, { role: 'agent', content: data.message || data.data?.message || 'Response received' }]);
+      if (data.data?.draft_sop || data.draft_sop) setDraftSop(data.data?.draft_sop || data.draft_sop);
+    }
+    setInput("");
+    setLoading(false);
+  };
+
+  // ✅ PHASE 6: Use { data, error } pattern
+  const handlePublish = async () => {
+    // ✅ PHASE 2: Session token automatically included by hook
     setLoading(true);
     setError(null);
-    try {
-      const userId = user?.id || undefined;
-      const resp = await wizardPublish(wizardSessionToken, userId);
-      setPublishedSop((resp as any).data?.sop || (resp as any).sop);
-      setPublishedWorkflow((resp as any).data?.workflow || (resp as any).workflow);
+    const userId = user?.id || undefined;
+    // ✅ PHASE 2: Use service layer hook - no need to pass sessionToken manually
+    const resp = await wizardPublish();
+    if (resp.error) {
+      setError(resp.error.message || "Failed to publish");
+      setLoading(false);
+      return;
+    }
+    if (resp.data) {
+      const data = resp.data as any;
+      setPublishedSop(data.data?.sop || data.sop);
+      setPublishedWorkflow(data.data?.workflow || data.workflow);
       setPublished(true);
 
       // Save to global session for experience pillar
       setRealmState('journey', 'operations', {
-        sopText: (resp as any).data?.sop || (resp as any).sop,
-        workflowData: (resp as any).data?.workflow || (resp as any).workflow,
+        sopText: data.data?.sop || data.sop,
+        workflowData: data.data?.workflow || data.workflow,
         published: true,
         source: 'wizard'
       });
-    } catch (e: any) {
-      setError(e.message || "Failed to publish");
-    } finally {
-      setLoading(false);
     }
+    setLoading(false);
   };
 
   const handleBack = () => {

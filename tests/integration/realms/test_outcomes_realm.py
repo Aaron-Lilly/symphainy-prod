@@ -44,10 +44,16 @@ class TestOutcomesRealm:
         
         # Create execution lifecycle manager
         intent_registry = IntentRegistry()
+        
+        # ✅ Create Data Steward SDK for boundary contract assignment
+        from tests.helpers.data_steward_fixtures import create_data_steward_sdk
+        data_steward_sdk = create_data_steward_sdk(supabase_adapter=None)
+        
         execution_manager = ExecutionLifecycleManager(
             intent_registry=intent_registry,
             state_surface=state_surface,
-            wal=wal
+            wal=wal,
+            data_steward_sdk=data_steward_sdk  # ✅ Required
         )
         
         return {

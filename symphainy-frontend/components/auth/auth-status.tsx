@@ -2,11 +2,17 @@
 
 import React from "react";
 import { useAuth } from "@/shared/auth/AuthProvider";
+// ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+import { useSessionBoundary, SessionStatus } from "@/shared/state/SessionBoundaryProvider";
 import { LogoutButton } from "@/components/auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 export default function AuthStatus() {
-  const { isAuthenticated, user, isLoading } = useAuth();
+  // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+  const { state: sessionState } = useSessionBoundary();
+  const { user } = useAuth(); // Keep for user data
+  const isLoading = sessionState.status === SessionStatus.Initializing || sessionState.status === SessionStatus.Authenticating;
+  const isAuthenticated = sessionState.status === SessionStatus.Active;
 
   // Don't render if not authenticated or still loading
   if (isLoading || !isAuthenticated || !user) {

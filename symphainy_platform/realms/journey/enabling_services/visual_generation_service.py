@@ -47,15 +47,19 @@ class VisualGenerationService:
         self,
         workflow_data: Dict[str, Any],
         tenant_id: str,
-        context: ExecutionContext
+        context: ExecutionContext,
+        semantic_signals: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Generate workflow visualization.
+        
+        PHASE 3: Uses semantic signals for enhanced visuals (if available).
         
         Args:
             workflow_data: Workflow data (steps, decisions, flows)
             tenant_id: Tenant ID
             context: Execution context
+            semantic_signals: Optional semantic signals (for enhanced visuals)
             
         Returns:
             Dict with visualization result
@@ -66,8 +70,18 @@ class VisualGenerationService:
         try:
             self.logger.info(f"Generating workflow visualization for tenant {tenant_id}")
             
+            # PHASE 3: Enhance workflow_data with semantic signals if available
+            enhanced_workflow_data = workflow_data.copy()
+            if semantic_signals and semantic_signals.get("artifact"):
+                signals_artifact = semantic_signals.get("artifact", {})
+                enhanced_workflow_data["semantic_context"] = {
+                    "key_concepts": signals_artifact.get("key_concepts", []),
+                    "inferred_intents": signals_artifact.get("inferred_intents", []),
+                    "domain_hints": signals_artifact.get("domain_hints", [])
+                }
+            
             result = await self.visual_abstraction.create_workflow_visual(
-                workflow_data=workflow_data,
+                workflow_data=enhanced_workflow_data,
                 tenant_id=tenant_id
             )
             

@@ -6,8 +6,10 @@ import {
   FileMetadata,
   FileStatus,
 } from "@/shared/types/file";
-import { parseFile } from "@/lib/api/fms";
-import { useGlobalSession } from "@/shared/agui/GlobalSessionProvider";
+// ✅ PHASE 2: Use service layer hook instead of direct API calls
+import { useFileAPI } from "@/shared/hooks/useFileAPI";
+import { useSessionBoundary } from "@/shared/state/SessionBoundaryProvider";
+import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import {
   Select,
   SelectContent,
@@ -29,8 +31,12 @@ import { ExportOptions } from "./ExportOptions";
 type ParseState = "idle" | "parsing" | "success" | "error";
 
 export default function ParsePreview() {
-  const { getPillarState, setPillarState, guideSessionToken } =
-    useGlobalSession();
+  // ✅ PHASE 1: Migrated to SessionBoundaryProvider
+  // ✅ PHASE 2: Use service layer hook
+  const { state: sessionState } = useSessionBoundary();
+  const { parseFile } = useFileAPI();
+  // ✅ PHASE 1: Migrated to PlatformStateProvider - use realm state
+  const { getRealmState } = usePlatformState();
 
   const [selectedFileUuid, setSelectedFileUuid] = useState<string | null>(null);
   const [parseState, setParseState] = useState<ParseState>("idle");
@@ -40,20 +46,18 @@ export default function ParsePreview() {
   const [showDetailsModal, setShowDetailsModal] = useState(false); // NEW: Modal state
   const [activeTab, setActiveTab] = useState("preview"); // NEW: Tab state
 
-  // Get files from all pillar states to find uploaded files
-  const parsingState = getPillarState("parsing") || { files: [] };
-  const dataState = getPillarState("data") || { files: [] };
-  const contentState = getPillarState("content") || { files: [] };
-  const insightsState = getPillarState("insights") || { files: [] };
-  const operationsState = getPillarState("operations") || { files: [] };
+  // ✅ PHASE 1: Get files from all realm states to find uploaded files
+  const parsingFiles = getRealmState("content", "parsing_files") || [];
+  const contentFiles = getRealmState("content", "files") || [];
+  const insightsFiles = getRealmState("insights", "files") || [];
+  const journeyFiles = getRealmState("journey", "files") || [];
 
-  // Combine all files and deduplicate by UUID
+  // ✅ PHASE 1: Combine all files and deduplicate by UUID
   const allFiles = [
-    ...(parsingState.files || []),
-    ...(dataState.files || []),
-    ...(contentState.files || []),
-    ...(insightsState.files || []),
-    ...(operationsState.files || []),
+    ...(Array.isArray(parsingFiles) ? parsingFiles : []),
+    ...(Array.isArray(contentFiles) ? contentFiles : []),
+    ...(Array.isArray(insightsFiles) ? insightsFiles : []),
+    ...(Array.isArray(journeyFiles) ? journeyFiles : []),
   ];
 
   const uniqueFilesMap = new Map();
@@ -112,8 +116,8 @@ export default function ParsePreview() {
     setParsedData(null); // Clear previous parsed data
 
     try {
-      const token = guideSessionToken || "debug-token";
-      const result = await parseFile(selectedFile.uuid, token);
+      // ✅ PHASE 2: Use service layer hook - no need to pass token manually
+      const result = await parseFile(selectedFile.uuid);
       
       // Store the parsed data from cloud function
       setParsedData(result);

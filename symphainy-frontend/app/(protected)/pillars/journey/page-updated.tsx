@@ -1,9 +1,12 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { useAuth } from "@/shared/auth/AuthProvider";
+// ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+import { useSessionBoundary } from "@/shared/state/SessionBoundaryProvider";
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { useWebSocket } from "@/shared/agui/WebSocketProvider";
-import { OperationsService } from "@/shared/services/operations";
+// ✅ PHASE 5.6.1: Migrated to intent-based API - OperationsService removed
+import { useJourneyAPIManager } from "@/shared/hooks/useJourneyAPIManager";
+import { useContentAPIManager } from "@/shared/hooks/useContentAPIManager";
 import { useSessionElements } from "@/shared/hooks/useSessionElements";
 import { FileMetadata, FileType, FileStatus } from "@/shared/types/file";
 import { LoadingState, OperationsError } from "@/shared/types/operations";
@@ -31,24 +34,26 @@ import {
 const OPERATION_FILE_TYPES = [FileType.Document, FileType.Pdf, FileType.Text, FileType.SopWorkflow];
 
 export default function OperationsPillarUpdated() {
-  const setAgentInfo = useSetAtom(chatbotAgentInfoAtom);
-  const setMainChatbotOpen = useSetAtom(mainChatbotOpenAtom);
-
-  const { sessionToken } = useAuth();
-  const { state, getRealmState, setRealmState } = usePlatformState();
-  const guideSessionToken = sessionToken || state.session.sessionId;
+  // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+  const { state: sessionState } = useSessionBoundary();
+  // ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
+  const { state, getRealmState, setRealmState, setChatbotAgentInfo, setMainChatbotOpen } = usePlatformState();
+  const setAgentInfo = setChatbotAgentInfo; // Alias for compatibility
+  const guideSessionToken = sessionState.sessionId;
+  // ✅ PHASE 5.6.1: Use JourneyAPIManager instead of OperationsService
+  const journeyAPIManager = useJourneyAPIManager();
+  const contentAPIManager = useContentAPIManager();
   
-  // Compatibility wrappers for old API
-  const getPillarState = (pillar: string) => getRealmState('journey', pillar);
-  const setPillarState = (pillar: string, value: any) => setRealmState('journey', pillar, value);
+  // ✅ PHASE 1: Direct use of PlatformStateProvider (removed compatibility wrappers)
+  // Note: If any code still uses getPillarState/setPillarState, replace with direct getRealmState/setRealmState calls
 
   const pathname = usePathname();
 
   const { connect, isConnected } = useWebSocket();
 
-  // Session state management
+  // Session state management (useSessionElements uses different sessionState variable name)
   const {
-    sessionState,
+    sessionState: sessionElementsState, // Rename to avoid conflict with useSessionBoundary's sessionState
     sessionElements,
     isValid: sessionValid,
     action: sessionAction,
@@ -105,10 +110,11 @@ export default function OperationsPillarUpdated() {
     const getAllFiles = () => {
       setIsLoadingFiles(true);
       try {
-        const contentState = getPillarState('content');
-        const insightsState = getPillarState('insights');
-        const operationsState = getPillarState('operations');
-        const businessOutcomesState = getPillarState('business-outcomes');
+        // ✅ PHASE 1: Use direct realm state access
+        const contentState = getRealmState('content', 'state') || {};
+        const insightsState = getRealmState('insights', 'state') || {};
+        const operationsState = getRealmState('journey', 'state') || {};
+        const businessOutcomesState = getRealmState('outcomes', 'state') || {};
 
         const allFiles: FileMetadata[] = [];
         
@@ -140,7 +146,7 @@ export default function OperationsPillarUpdated() {
     if (guideSessionToken) {
       getAllFiles();
     }
-  }, [guideSessionToken, getPillarState]);
+  }, [guideSessionToken, getRealmState]);
 
   // Initialize conversation
   useEffect(() => {
@@ -159,37 +165,33 @@ export default function OperationsPillarUpdated() {
     setLoadingState(true, 'coexistence_analysis', 'Analyzing coexistence opportunities...');
 
     try {
-      // Use the new CoexistenceEvaluator bypass endpoint
-      const userRequirements = {
-        involves_documents: true,
-        data_heavy: true,
-        needs_analysis: true,
-        involves_processes: true,
-        process_heavy: true,
-        strategic_focus: true,
-        outcome_driven: true,
-        description: "Analyze AI-human coexistence opportunities for the selected process",
-        sop_data: selected.SOP,
-        workflow_data: selected.workflow
-      };
+      // ✅ PHASE 5.6.1: Use JourneyAPIManager (intent-based API) instead of OperationsService
+      // Extract sopContent and workflowContent from selected files
+      const sopContent = selected.SOP ? (typeof selected.SOP === 'string' ? selected.SOP : JSON.stringify(selected.SOP)) : '';
+      const workflowContent = selected.workflow ? (typeof selected.workflow === 'string' ? selected.workflow : JSON.stringify(selected.workflow)) : '';
+      
+      if (!sopContent && !workflowContent) {
+        setErrorState("SOP or workflow content is required for coexistence analysis", 'coexistence_analysis');
+        return;
+      }
 
-      const response = await OperationsService.createCoexistenceBlueprintDirectly(
-        userRequirements,
-        conversationId || `ops-conversation-${Date.now()}`,
-        guideSessionToken
+      const result = await journeyAPIManager.optimizeCoexistenceWithContent(
+        sopContent,
+        workflowContent
       );
 
-      if (response.status === 'success') {
+      if (result.success) {
         setSuccess("Coexistence analysis completed successfully!");
         
-        // Save to global session
-        setPillarState('operations', {
-          coexistence_blueprint: response.blueprint,
-          platform_recommendations: response.deliverable,
+        // ✅ PHASE 5.6.1: Save to Journey realm operations state (matches CoexistenceBlueprint pattern)
+        await setRealmState('journey', 'operations', {
+          optimizedSop: result.optimized_sop,
+          optimizedWorkflow: result.optimized_workflow,
+          blueprint: result.blueprint,
           analysisComplete: true,
         });
       } else {
-        setErrorState(response.message || "Analysis failed", 'coexistence_analysis');
+        setErrorState(result.error || "Analysis failed", 'coexistence_analysis');
       }
     } catch (error: any) {
       setErrorState(error.message || "Failed to analyze coexistence", 'coexistence_analysis');
@@ -208,23 +210,28 @@ export default function OperationsPillarUpdated() {
     setLoadingState(true, 'sop_to_workflow', 'Generating workflow from SOP...');
 
     try {
-      // Use the new real conversion endpoint
-      const response = await OperationsService.convertSopToWorkflowReal(
-        selected.SOP,
-        guideSessionToken
-      );
+      // ✅ PHASE 5.6.1: Use JourneyAPIManager (intent-based API) instead of OperationsService
+      // Note: createWorkflow requires sopId. If selected.SOP is a FileMetadata, use file_id/uuid
+      // If it's file content, we may need to parse it first or create a helper method
+      const sopId = selected.SOP?.uuid || selected.SOP?.file_id || (typeof selected.SOP === 'string' ? selected.SOP : null);
+      
+      if (!sopId) {
+        setErrorState("SOP ID is required to create workflow. File must be uploaded and parsed first.", 'sop_to_workflow');
+        return;
+      }
 
-      if (response.status === 'success') {
+      const result = await journeyAPIManager.createWorkflow(sopId);
+
+      if (result.success && result.workflow) {
         setSuccess("Workflow generated successfully!");
         
-        // Save to global session
-        setPillarState('operations', {
-          workflowData: response.workflow,
-          sopData: selected.SOP,
-          workflowGenerated: true,
+        // Save to realm state
+        await setRealmState('journey', 'workflows', {
+          ...getRealmState('journey', 'workflows') || {},
+          [sopId]: result.workflow
         });
       } else {
-        setErrorState(response.message || "Workflow generation failed", 'sop_to_workflow');
+        setErrorState(result.error || "Workflow generation failed", 'sop_to_workflow');
       }
     } catch (error: any) {
       setErrorState(error.message || "Failed to generate workflow", 'sop_to_workflow');
@@ -243,23 +250,28 @@ export default function OperationsPillarUpdated() {
     setLoadingState(true, 'workflow_to_sop', 'Generating SOP from workflow...');
 
     try {
-      // Use the new real conversion endpoint
-      const response = await OperationsService.convertWorkflowToSopReal(
-        selected.workflow,
-        guideSessionToken
-      );
+      // ✅ PHASE 5.6.1: Use JourneyAPIManager (intent-based API) instead of OperationsService
+      // Note: generateSOP requires workflowId. If selected.workflow is a FileMetadata, use file_id/uuid
+      // If it's file content, we may need to parse it first or create a helper method
+      const workflowId = selected.workflow?.uuid || selected.workflow?.file_id || (typeof selected.workflow === 'string' ? selected.workflow : null);
+      
+      if (!workflowId) {
+        setErrorState("Workflow ID is required to generate SOP. File must be uploaded and parsed first.", 'workflow_to_sop');
+        return;
+      }
 
-      if (response.status === 'success') {
+      const result = await journeyAPIManager.generateSOP(workflowId);
+
+      if (result.success && result.sop) {
         setSuccess("SOP generated successfully!");
         
-        // Save to global session
-        setPillarState('operations', {
-          sopData: response.sop,
-          workflowData: selected.workflow,
-          sopGenerated: true,
+        // Save to realm state
+        await setRealmState('journey', 'sops', {
+          ...getRealmState('journey', 'sops') || {},
+          [workflowId]: result.sop
         });
       } else {
-        setErrorState(response.message || "SOP generation failed", 'workflow_to_sop');
+        setErrorState(result.error || "SOP generation failed", 'workflow_to_sop');
       }
     } catch (error: any) {
       setErrorState(error.message || "Failed to generate SOP", 'workflow_to_sop');
@@ -273,19 +285,39 @@ export default function OperationsPillarUpdated() {
     setLoadingState(true, 'sop_to_workflow', 'Extracting SOP from DOCX...');
 
     try {
-      const response = await OperationsService.extractSopFromDocx(file, guideSessionToken);
+      // ✅ PHASE 5.6.1: Use ContentAPIManager (intent-based API) instead of OperationsService
+      // Upload and parse the DOCX file first, then extract SOP from parsed content
+      try {
+        // Step 1: Upload file
+        const uploadResult = await contentAPIManager.uploadFile(file);
+        if (!uploadResult.success || !uploadResult.file_id) {
+          setErrorState(uploadResult.error || "Failed to upload DOCX file", 'sop_to_workflow');
+          return;
+        }
 
-      if (response.status === 'success') {
-        setSuccess("SOP extracted from DOCX successfully!");
-        
-        // Save extracted SOP data
-        setPillarState('operations', {
-          extractedSop: response.sop,
-          docxFile: file.name,
-          extractionComplete: true,
-        });
-      } else {
-        setErrorState(response.message || "DOCX extraction failed", 'sop_to_workflow');
+        // Step 2: Parse file
+        const parseResult = await contentAPIManager.parseFile(uploadResult.file_id);
+        if (!parseResult.success || !parseResult.parsed_file_id) {
+          setErrorState(parseResult.error || "Failed to parse DOCX file", 'sop_to_workflow');
+          return;
+        }
+
+        // Step 3: Get parsed file content (SOP should be in parsed content)
+        const parsedFile = await contentAPIManager.getParsedFile(uploadResult.file_id, parseResult.parsed_file_reference);
+        if (parsedFile.success && parsedFile.parsed_file) {
+          setSuccess("SOP extracted from DOCX successfully!");
+          
+          // Save extracted SOP data
+          await setRealmState('journey', 'state', {
+            extractedSop: parsedFile.parsed_file,
+            docxFile: file.name,
+            extractionComplete: true,
+          });
+        } else {
+          setErrorState(parsedFile.error || "Failed to extract SOP from parsed file", 'sop_to_workflow');
+        }
+      } catch (error: any) {
+        setErrorState(error.message || "Failed to extract SOP from DOCX", 'sop_to_workflow');
       }
     } catch (error: any) {
       setErrorState(error.message || "Failed to extract SOP from DOCX", 'sop_to_workflow');
@@ -301,21 +333,22 @@ export default function OperationsPillarUpdated() {
     }
 
     try {
-      const response = await OperationsService.processOperationsConversation(
+      // ✅ PHASE 5.6.1: Use JourneyAPIManager (intent-based API) instead of OperationsService
+      const result = await journeyAPIManager.processOperationsConversation(
         message,
         conversationId!,
-        guideSessionToken
+        { session_token: guideSessionToken }
       );
 
-      if (response.status === 'success') {
+      if (result.success) {
         // Add to conversation history
         setConversationHistory(prev => [
           ...prev,
           { type: 'user', message },
-          { type: 'assistant', message: response.message || 'Response received' }
+          { type: 'assistant', message: result.message || 'Response received' }
         ]);
       } else {
-        setErrorState(response.message || "Conversation failed");
+        setErrorState(result.error || "Conversation failed");
       }
     } catch (error: any) {
       setErrorState(error.message || "Failed to process conversation");
@@ -457,17 +490,17 @@ export default function OperationsPillarUpdated() {
       )}
 
       {/* Process Blueprint Display */}
-      {getPillarState('operations')?.workflowData && (
+      {getRealmState('journey', 'workflowData') && (
         <ProcessBlueprint
-          operationsState={getPillarState('operations')}
+          operationsState={getRealmState('journey', 'state') || {}}
         />
       )}
 
       {/* Coexistence Blueprint Display */}
-      {getPillarState('operations')?.coexistence_blueprint && (
+      {getRealmState('journey', 'coexistence')?.coexistence_blueprint && (
         <CoexistenceBlueprint
-          sopText={getPillarState('operations').sopData}
-          workflowData={getPillarState('operations').workflowData}
+          sopText={getRealmState('journey', 'state')?.sopData}
+          workflowData={getRealmState('journey', 'workflowData')}
         />
       )}
 

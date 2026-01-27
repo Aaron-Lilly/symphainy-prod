@@ -96,7 +96,10 @@ class ContentRealm(RealmBase):
             
             # Content Processing
             "parse_content",             # Parse file
-            "extract_embeddings",        # Create embeddings
+            "create_deterministic_embeddings",  # Create deterministic embeddings (required before extract_embeddings)
+            "extract_deterministic_structure",  # Create deterministic chunks (Phase 2)
+            "hydrate_semantic_profile",  # Create embeddings from chunks (Phase 2)
+            "extract_embeddings",        # Create embeddings (legacy, requires deterministic_embedding_id)
             "get_parsed_file",           # Get parsed results
             "get_semantic_interpretation"  # Get semantic interpretation
         ]

@@ -8,12 +8,13 @@
 "use client";
 
 import React from 'react';
-import { ProviderComposer } from '@/lib/contexts/ProviderComposer';
+// ✅ PHASE 1: Use AppProviders instead of deprecated ProviderComposer
+import AppProviders from '@/shared/state/AppProviders';
 import ExperienceLayerExample from '@/components/examples/ExperienceLayerExample';
 
 export default function TestExperienceLayerPage() {
   return (
-    <ProviderComposer>
+    <AppProviders>
       <div className="min-h-screen bg-gray-50">
         <div className="container mx-auto py-8">
           <div className="text-center mb-8">
@@ -28,6 +29,6 @@ export default function TestExperienceLayerPage() {
           <ExperienceLayerExample />
         </div>
       </div>
-    </ProviderComposer>
+    </AppProviders>
   );
 }

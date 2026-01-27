@@ -19,6 +19,8 @@ import {
 } from '@/components/ui/select';
 import { UploadCloud, CheckCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '@/shared/auth/AuthProvider';
+// ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+import { useSessionBoundary, SessionStatus } from '@/shared/state/SessionBoundaryProvider';
 import { usePlatformState } from '@/shared/state/PlatformStateProvider';
 import { useContentAPIManager } from '@/shared/managers/ContentAPIManager';
 import { ContentType, FileTypeCategory, FILE_TYPE_CONFIGS, FileType } from '@/shared/types/file';
@@ -84,7 +86,10 @@ export function FileUploader({
   onUploadError,
   className 
 }: FileUploaderProps = {}) {
-  const { isAuthenticated, user } = useAuth();
+  // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+  const { state: sessionState } = useSessionBoundary();
+  const { user } = useAuth(); // Keep user from AuthProvider for now
+  const isAuthenticated = sessionState.status === SessionStatus.Active;
   const { state, setRealmState } = usePlatformState();
   const contentAPIManager = useContentAPIManager();
   

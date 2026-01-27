@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Loader2, SendHorizontal, DivideCircle } from "lucide-react";
@@ -6,27 +6,32 @@ import { Loader2, SendHorizontal, DivideCircle } from "lucide-react";
 import StreamingMessage from "./StreamingMessage";
 import { useRouter } from "next/navigation";
 import { WorkflowStatus } from "@/components/ui/workflow-status";
-import { useGlobalSession } from "@/shared/agui/GlobalSessionProvider";
-import { RuntimeClient, RuntimeEventType } from "@/shared/services/RuntimeClient";
-import { getApiUrl } from "@/shared/config/api-config";
+import { useSessionBoundary } from "@/shared/state/SessionBoundaryProvider";
+// ✅ PHASE 3: WebSocket Consolidation - Use useUnifiedAgentChat instead of direct RuntimeClient
+import { useUnifiedAgentChat } from "@/shared/hooks/useUnifiedAgentChat";
 
 
 
 export default function ChatAssistant() {
   const router = useRouter();
-  const { guideSessionToken } = useGlobalSession();
+  const { state: sessionState } = useSessionBoundary();
+  const guideSessionToken = sessionState.sessionId;
+  
+  // ✅ PHASE 3: WebSocket Consolidation - Use useUnifiedAgentChat instead of direct RuntimeClient
+  const {
+    messages: unifiedMessages,
+    sendMessage: sendUnifiedMessage,
+    isConnected: unifiedConnected,
+    isLoading: unifiedLoading,
+    error: unifiedError,
+    connect: connectWebSocket,
+  } = useUnifiedAgentChat({
+    sessionToken: guideSessionToken,
+    autoConnect: false, // Don't auto-connect - wait for user interaction
+    initialAgent: 'guide',
+  });
+
   const [message, setMessage] = useState("");
-  const [wsMessages, setWsMessages] = useState<
-    {
-      type: "user" | "agent" | "system";
-      content: string;
-      isStreaming?: boolean;
-      isComplete?: boolean;
-      pillar?: string;
-    }[]
-  >([]);
-  const runtimeClientRef = useRef<RuntimeClient | null>(null);
-  const [loading, setLoading] = useState(false);
   const [isVisible, setIsVisible] = useState(true);
   const [shouldStartAnimation, setShouldStartAnimation] = useState(false);
   const [agentData, setAgentData] = useState<any>(null);
@@ -40,85 +45,35 @@ export default function ChatAssistant() {
     estimatedDuration?: number;
   } | null>(null);
 
-
-
-  // Initialize Runtime Client
-  useEffect(() => {
-    if (!guideSessionToken) return;
-
-    const baseUrl = getApiUrl();
-    // Get both access_token and session_id from storage
-    const accessToken = typeof window !== 'undefined' ? sessionStorage.getItem("access_token") : null;
-    const sessionId = guideSessionToken; // guideSessionToken is actually session_id
-    
-    if (!accessToken || !sessionId) {
-      console.warn("Missing access_token or session_id, cannot create RuntimeClient");
-      return;
-    }
-    
-    const client = new RuntimeClient({
-      baseUrl,
-      accessToken: accessToken,
-      sessionId: sessionId,
-      autoReconnect: true,
-    });
-    runtimeClientRef.current = client;
-
-    // Subscribe to AGENT_RESPONSE events
-    client.on(RuntimeEventType.AGENT_RESPONSE, (data: any) => {
-      setWsMessages((prev) => [
-        ...prev,
-        {
-          type: "agent",
-          content: data.message || data.content || 'Response received',
-          isStreaming: true,
-          isComplete: false,
-        },
-      ]);
-    });
-
-    // Connect
-    client.connect().then(() => {
-      console.log("✅ Runtime Client connected");
-    }).catch((err) => {
-      console.error("❌ Runtime Client connection error", err);
-    });
-
-    return () => {
-      client.disconnect();
-    };
-  }, [guideSessionToken]);
+  // ✅ PHASE 3: Convert unified messages to wsMessages format for display
+  const wsMessages = unifiedMessages.map((msg) => ({
+    type: msg.role === 'user' ? 'user' as const : msg.role === 'assistant' ? 'agent' as const : 'system' as const,
+    content: msg.content,
+    isStreaming: false,
+    isComplete: true,
+    pillar: msg.pillar,
+  }));
 
   const handleSend = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!guideSessionToken || message.trim() === "" || !runtimeClientRef.current) return;
+    if (!guideSessionToken || message.trim() === "") return;
 
-    setLoading(true);
-
-    // Add user message to UI
-    setWsMessages((prev) => [
-      ...prev,
-      { type: "user", content: message, isComplete: true },
-    ]);
-    setMessage("");
+    // ✅ PHASE 3: Connect if not connected
+    if (!unifiedConnected) {
+      try {
+        await connectWebSocket();
+      } catch (err) {
+        console.error("Failed to connect WebSocket:", err);
+        return;
+      }
+    }
 
     try {
-      // Send intent to Runtime Foundation
-      runtimeClientRef.current.submitIntent({
-        intent: message,
-        agent_type: 'guide',
-        metadata: {}
-      });
-
-      // Reset loading state after a short delay (simulating send time)
-      setTimeout(() => {
-        setLoading(false);
-        // Simulate agent response with streaming (until real responses come through)
-        simulateAgentResponse();
-      }, 1000);
+      // ✅ PHASE 3: Send message via useUnifiedAgentChat
+      await sendUnifiedMessage(message, 'guide');
+      setMessage("");
     } catch (err) {
       console.error("Failed to send message:", err);
-      setLoading(false);
     }
   };
 
@@ -132,53 +87,8 @@ export default function ChatAssistant() {
     setIsVisible(false);
   };
 
-  // Simulate agent response with streaming (dummy data for now)
-  const simulateAgentResponse = () => {
-    // Reset animation state for new response
-    setShouldStartAnimation(false);
-
-    const dummyResponses = [
-      "I understand your query. Let me analyze the data you've provided and generate insights based on the patterns I can identify.",
-      "Based on my analysis, I can see several interesting trends in your dataset. The data shows clear correlations between different variables that might be useful for your business decisions.",
-      "Here are the key findings:\n\n1. Data quality appears to be high with minimal missing values\n2. There are clear seasonal patterns in the metrics\n3. Several outliers that may need investigation\n\nWould you like me to dive deeper into any of these areas?",
-      "I've processed your request and here's what I found. The analysis reveals some compelling insights that could help guide your next steps in the project.",
-    ];
-
-    const randomResponse =
-      dummyResponses[Math.floor(Math.random() * dummyResponses.length)];
-
-    // Add streaming message
-    setWsMessages((prev) => [
-      ...prev,
-      {
-        type: "agent",
-        content: randomResponse,
-        isStreaming: true,
-        isComplete: false,
-      },
-    ]);
-
-    // Extract workflow info if this is a workflow response
-    extractWorkflowInfo(randomResponse);
-  };
-
-  const handleStreamingComplete = (messageIndex: number) => {
-    setWsMessages((prev) =>
-      prev.map((msg, idx) =>
-        idx === messageIndex
-          ? { ...msg, isStreaming: false, isComplete: true }
-          : msg,
-      ),
-    );
-
-    // Start animation after streaming completes
-    setTimeout(() => {
-      setShouldStartAnimation(true);
-    }, 500); // Small delay for better UX
-  };
-
-  // Extract workflow information from agent messages
-  const extractWorkflowInfo = (content: string) => {
+  // ✅ PHASE 3: Extract workflow information from agent messages
+  const extractWorkflowInfo = useCallback((content: string) => {
     const workflowIdMatch = content.match(/🆔 Workflow ID: ([^\n]+)/);
     const fileNameMatch = content.match(/📁 File: ([^\n]+)/);
     const statusMatch = content.match(/📊 Status: ([^\n]+)/);
@@ -199,6 +109,24 @@ export default function ChatAssistant() {
         });
       }
     }
+  }, [setWorkflowStatus]);
+
+  // ✅ PHASE 3: Extract workflow info from agent messages
+  useEffect(() => {
+    unifiedMessages.forEach((msg) => {
+      if (msg.role === 'assistant' && msg.content) {
+        extractWorkflowInfo(msg.content);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [unifiedMessages]);
+
+  const handleStreamingComplete = (messageIndex: number) => {
+    // ✅ PHASE 3: Messages are managed by useUnifiedAgentChat
+    // Start animation after streaming completes
+    setTimeout(() => {
+      setShouldStartAnimation(true);
+    }, 500); // Small delay for better UX
   };
 
   return (
@@ -331,15 +259,15 @@ export default function ChatAssistant() {
               value={message}
               onChange={(e) => setMessage(e.target.value)}
               aria-label="Type your message"
-              disabled={!guideSessionToken || loading}
+              disabled={!guideSessionToken || unifiedLoading}
             />
             <Button
               type="submit"
               variant="ghost"
               className="hover:bg-transparent w-14 h-14 pb-6 px-1"
-              disabled={!guideSessionToken || loading || message.trim() === ""}
+              disabled={!guideSessionToken || unifiedLoading || message.trim() === ""}
             >
-              {loading ? (
+              {unifiedLoading ? (
                 <Loader2 className="animate-spin text-[#007A87]" />
               ) : (
                 <SendHorizontal className="text-[#007A87] hover:text-[#006571]" />

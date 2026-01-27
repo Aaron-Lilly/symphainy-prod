@@ -45,8 +45,10 @@ import {
 import { useAGUIEvent } from "@/shared/agui/AGUIEventProvider";
 import { withErrorBoundary } from '@/shared/components/ErrorBoundary';
 // useErrorHandler will be dynamically imported when needed
-import { useGlobalSession } from "@/shared/agui/GlobalSessionProvider";
-import { listFiles } from "@/lib/api/fms-insights";
+import { useSessionBoundary } from "@/shared/state/SessionBoundaryProvider";
+import { usePlatformState } from "@/shared/state/PlatformStateProvider";
+// ✅ PHASE 2: Use service layer hook instead of direct API calls
+import { useInsightsAPI } from "@/shared/hooks/useInsightsAPI";
 import { FileMetadata } from "@/shared/types/file";
 
 // Import types
@@ -85,7 +87,12 @@ function VARKInsightsPanelComponent({
   // State Management
   // ============================================
 
-  const { getPillarState, setPillarState, guideSessionToken } = useGlobalSession();
+  // ✅ PHASE 1: Migrated to SessionBoundaryProvider
+  // ✅ PHASE 2: Use service layer hook
+  const { state: sessionState } = useSessionBoundary();
+  const { listFiles } = useInsightsAPI();
+  // ✅ PHASE 1: Migrated to PlatformStateProvider - use realm state
+  const { getRealmState, setRealmState } = usePlatformState();
   
   // File Selection State
   const [files, setFiles] = useState<FileMetadata[]>([]);
@@ -170,11 +177,17 @@ function VARKInsightsPanelComponent({
   // ============================================
 
   useEffect(() => {
+    // ✅ PHASE 6: Use { data, error } pattern
     async function fetchFiles() {
-      try {
-        setFileLoading(true);
-        const fileList = await listFiles();
-        const parsedFiles = fileList
+      setFileLoading(true);
+      const result = await listFiles();
+      if (result.error) {
+        handleError(new Error(result.error.message || "Failed to load parsed files"));
+        setFileLoading(false);
+        return;
+      }
+      if (result.data) {
+        const parsedFiles = result.data
           .filter((file) => file.parsed_path)
           .sort(
             (a, b) =>
@@ -182,14 +195,13 @@ function VARKInsightsPanelComponent({
               new Date(a.created_at).getTime(),
           );
         setFiles(parsedFiles);
-      } catch (err) {
-        handleError(new Error("Failed to load parsed files"));
-      } finally {
-        setFileLoading(false);
+      } else {
+        setFiles([]);
       }
+      setFileLoading(false);
     }
     fetchFiles();
-  }, [handleError]);
+  }, [listFiles, handleError]);
 
   const handleFileSelect = useCallback((fileUuid: string) => {
     const file = files.find((f) => f.uuid === fileUuid);
@@ -272,7 +284,7 @@ function VARKInsightsPanelComponent({
   // ============================================
 
   const handleGenerateSummary = useCallback(async () => {
-    if (!guideSessionToken) {
+    if (!sessionState.sessionId) {
       handleError(new Error("No active session found"));
       return;
     }
@@ -297,8 +309,8 @@ function VARKInsightsPanelComponent({
       setShowSummary(true);
       
       // Save to global session for experience pillar
-      const currentInsightsState = getPillarState("insights") || {};
-      setPillarState("insights", {
+      const currentInsightsState = getRealmState("insights", "vark_data") || {};
+      await setRealmState("insights", "vark_data", {
         ...currentInsightsState,
         vark_summary: summary,
         selected_file: selectedFile,
@@ -311,7 +323,7 @@ function VARKInsightsPanelComponent({
     } finally {
       setSummaryLoading(false);
     }
-  }, [guideSessionToken, insightsData, learningStyle, selectedFile, getPillarState, setPillarState, handleError, clearError]);
+  }, [sessionState.sessionId, insightsData, learningStyle, selectedFile, getRealmState, setRealmState, handleError, clearError]);
 
   const handleExportSummary = useCallback(() => {
     if (summaryData) {

@@ -18,8 +18,9 @@ import {
   Download,
   Share2
 } from 'lucide-react';
-import { useGlobalSession } from '@/shared/agui/GlobalSessionProvider';
-import { processNaturalLanguageQuery, processChatMessage } from '@/lib/api/insights';
+import { useSessionBoundary } from '@/shared/state/SessionBoundaryProvider';
+// ✅ PHASE 2: Use service layer hook instead of direct API calls
+import { useInsightsAPI } from '@/shared/hooks/useInsightsAPI';
 import VisualizationDisplay from './VisualizationDisplay';
 import { QuerySuggestions } from './QuerySuggestions';
 import InsightsSummaryDisplay from './InsightsSummaryDisplay';
@@ -50,7 +51,10 @@ interface ChatMessage {
 }
 
 export function ConversationalInsightsPanel({ onClose, className = '' }: ConversationalInsightsPanelProps) {
-  const { guideSessionToken } = useGlobalSession();
+  // ✅ PHASE 1: Migrated to SessionBoundaryProvider
+  // ✅ PHASE 2: Use service layer hook
+  const { state: sessionState } = useSessionBoundary();
+  const { processNaturalLanguageQuery, processChatMessage } = useInsightsAPI();
   
   // State management
   const [query, setQuery] = useState('');
@@ -71,27 +75,36 @@ export function ConversationalInsightsPanel({ onClose, className = '' }: Convers
     "Show me trends over time for monthly revenue"
   ];
 
+  // ✅ PHASE 2: Use service layer hook - no need to pass session_id manually
   const handleQuerySubmit = useCallback(async () => {
-    if (!query.trim() || !guideSessionToken) return;
+    if (!query.trim()) return;
 
     setIsProcessing(true);
     setError(null);
 
-    try {
-      const result = await processNaturalLanguageQuery({
-        session_id: guideSessionToken,
-        query: query.trim(),
-        file_url: selectedFile,
-        context: {
-          previous_queries: queryResults.map(q => q.query_id),
-          chat_history: chatMessages.length
-        }
-      });
+    // ✅ PHASE 6: Use { data, error } pattern
+    const result = await processNaturalLanguageQuery({
+      query: query.trim(),
+      file_url: selectedFile || undefined,
+      context: {
+        previous_queries: queryResults.map(q => q.query_id),
+        chat_history: chatMessages.length
+      }
+    });
 
-      if (result.status === 'success') {
+    if (result.error) {
+      setError(result.error.message || 'Failed to process query');
+      setIsProcessing(false);
+      return;
+    }
+
+    if (result.data) {
+      const data = result.data as any;
+      // Handle both old format (with status) and new format
+      if (data.status === 'success' || data.visualization_type) {
         const newResult: QueryResult = {
-          ...result.data,
-          insights: `Generated ${result.data.visualization_type} visualization using ${result.data.agent_selected} with ${Math.round(result.data.confidence_score * 100)}% confidence.`
+          ...(data.data || data),
+          insights: `Generated ${(data.data || data).visualization_type} visualization using ${(data.data || data).agent_selected} with ${Math.round(((data.data || data).confidence_score || 0) * 100)}% confidence.`
         };
 
         setQueryResults(prev => [newResult, ...prev]);
@@ -120,17 +133,15 @@ export function ConversationalInsightsPanel({ onClose, className = '' }: Convers
 
         setChatMessages(prev => [...prev, userMessage, assistantMessage]);
       } else {
-        setError(result.message || 'Failed to process query');
+        setError('Failed to process query - invalid response');
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
-    } finally {
-      setIsProcessing(false);
     }
-  }, [query, guideSessionToken, selectedFile, queryResults, chatMessages]);
+    setIsProcessing(false);
+  }, [query, selectedFile, queryResults, chatMessages, processNaturalLanguageQuery]);
 
+  // ✅ PHASE 2: Use service layer hook - no need to check guideSessionToken
   const handleChatMessage = useCallback(async (message: string) => {
-    if (!message.trim() || !guideSessionToken) return;
+    if (!message.trim()) return;
 
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
@@ -141,34 +152,41 @@ export function ConversationalInsightsPanel({ onClose, className = '' }: Convers
 
     setChatMessages(prev => [...prev, userMessage]);
 
-    try {
-      const result = await processChatMessage({
-        session_id: guideSessionToken,
-        message: message,
-        context: {
-          query_history: queryResults.map(q => q.query_id),
-          chat_history: chatMessages.length
-        }
-      });
+    // ✅ PHASE 6: Use { data, error } pattern
+    // ✅ PHASE 2: Use service layer hook - no need to pass session_id manually
+    const result = await processChatMessage({
+      message: message,
+      context: {
+        query_history: queryResults.map(q => q.query_id),
+        chat_history: chatMessages.length
+      }
+    });
 
-      if (result.status === 'success') {
+    if (result.error) {
+      setError(result.error.message || 'Failed to process message');
+      return;
+    }
+
+    if (result.data) {
+      const data = result.data as any;
+      // Handle both old format (with status) and new format
+      if (data.status === 'success' || data.response || data.message) {
+        const resultData = data.data || data;
         const assistantMessage: ChatMessage = {
           id: (Date.now() + 1).toString(),
           type: 'assistant',
-          content: result.data.response,
+          content: resultData.response || resultData.message || 'Response received',
           timestamp: new Date(),
-          suggestions: result.data.suggestions,
-          visualization_url: result.data.visualization_url
+          suggestions: resultData.suggestions,
+          visualization_url: resultData.visualization_url
         };
 
         setChatMessages(prev => [...prev, assistantMessage]);
       } else {
-        setError(result.message || 'Failed to process message');
+        setError('Failed to process message - invalid response');
       }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
     }
-  }, [guideSessionToken, queryResults, chatMessages]);
+  }, [queryResults, chatMessages, processChatMessage]);
 
   const handleExampleQuery = useCallback((exampleQuery: string) => {
     setQuery(exampleQuery);

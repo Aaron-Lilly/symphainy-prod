@@ -11,8 +11,10 @@
  * Replaces direct API calls with Runtime-based intent flow.
  */
 
-import { ExperiencePlaneClient, getGlobalExperiencePlaneClient } from "@/shared/services/ExperiencePlaneClient";
+import { ExperiencePlaneClient, getGlobalExperiencePlaneClient, ExecutionStatus } from "@/shared/services/ExperiencePlaneClient";
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
+import { validateSession } from "@/shared/utils/sessionValidation";
+import { getApiEndpointUrl } from "@/shared/config/api-config";
 
 // ============================================
 // Content API Manager Types
@@ -44,6 +46,7 @@ export interface SaveMaterializationResponse {
   success: boolean;
   file_id?: string;
   boundary_contract_id?: string;
+  materialization_id?: string;  // ✅ PHASE 2: Added materialization_id
   message?: string;
   error?: string;
 }
@@ -67,6 +70,74 @@ export interface SemanticInterpretationResponse {
   success: boolean;
   interpretation?: any;
   error?: string;
+}
+
+// ============================================
+// Phase 3: Artifact-Centric Types
+// ============================================
+
+export interface ArtifactRecord {
+  artifact_id: string;
+  artifact_type: string;
+  tenant_id: string;
+  produced_by: {
+    intent: string;
+    execution_id: string;
+  };
+  lifecycle_state: string;
+  semantic_descriptor: {
+    schema?: string;
+    record_count?: number;
+    parser_type?: string;
+    embedding_model?: string;
+  };
+  parent_artifacts: string[];
+  materializations: Array<{
+    materialization_id: string;
+    storage_type: string;
+    uri: string;
+    format: string;
+    compression?: string;
+    created_at: string;
+  }>;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ArtifactListItem {
+  artifact_id: string;
+  artifact_type: string;
+  lifecycle_state: string;
+  semantic_descriptor: {
+    schema?: string;
+    record_count?: number;
+    parser_type?: string;
+    embedding_model?: string;
+  };
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ArtifactListResponse {
+  artifacts: ArtifactListItem[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface PendingIntent {
+  intent_id: string;
+  intent_type: string;
+  status: string;
+  target_artifact_id?: string;
+  context: Record<string, any>; // ingestion_profile lives here
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PendingIntentListResponse {
+  intents: PendingIntent[];
+  total: number;
 }
 
 // ============================================
@@ -106,64 +177,32 @@ export class ContentAPIManager {
 
       const platformState = this.getPlatformState();
       
-      if (!platformState.state.session.sessionId || !platformState.state.session.tenantId) {
-        throw new Error("Session required to upload file");
+      // ✅ FIX ISSUE 4: Use standardized session validation
+      validateSession(platformState, "upload file");
+
+      // ✅ FIX ISSUE 3: Parameter validation before submitIntent
+      if (!file) {
+        throw new Error("file is required for ingest_file");
       }
 
-      // For file upload, we still need to use FormData to send the actual file
-      // The intent submission will reference the uploaded file
-      // TODO: In full implementation, file upload might be a separate step before intent submission
-      // For now, we'll use a hybrid approach: upload file first, then submit intent
-      
-      // Step 1: Upload file to Experience Plane (file storage)
-      const formData = new FormData();
-      formData.append('file', file);
-      
-      if (copybookFile) {
-        if (!(copybookFile instanceof File)) {
-          throw new Error("Invalid copybook file: copybookFile must be a File object");
-        }
-        formData.append('copybook', copybookFile);
-      }
-      
-      if (contentType) {
-        formData.append('content_type', contentType);
-      }
-      if (fileTypeCategory) {
-        formData.append('file_type_category', fileTypeCategory);
-      }
+      // ✅ PHASE 4: Convert file to hex-encoded bytes for ingest_file intent
+      // Following CTO guidance: Upload file (goes to GCS), materialization is pending
+      // User must explicitly click "Save" to persist (via save_materialization intent)
+      const fileBuffer = await file.arrayBuffer();
+      const fileContentHex = Array.from(new Uint8Array(fileBuffer))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
 
-      // Upload file (this might need to go through Experience Plane file upload endpoint)
-      // For MVP, we'll assume there's a file upload endpoint that returns file_id
-      const { getApiEndpointUrl } = require('@/shared/config/api-config');
-      const uploadURL = getApiEndpointUrl('/api/v1/content-pillar/upload-file');
-      
-      const uploadResponse = await fetch(uploadURL, {
-        method: 'POST',
-        body: formData,
-      });
-
-      if (!uploadResponse.ok) {
-        const error = await uploadResponse.json().catch(() => ({ detail: 'File upload failed' }));
-        throw new Error(error.detail || `File upload failed: ${uploadResponse.statusText}`);
-      }
-
-      const uploadData = await uploadResponse.json();
-      const fileId = uploadData.file_id || uploadData.uuid;
-      const fileReference = uploadData.file_reference || `file:${platformState.state.session.tenantId}:${platformState.state.session.sessionId}:${fileId}`;
-
-      // Step 2: Submit ingest_file intent to Runtime
+      // ✅ PHASE 4: Submit ingest_file intent (file goes to GCS, materialization pending)
       const executionId = await platformState.submitIntent(
         "ingest_file",
         {
-          file_id: fileId,
-          file_reference: fileReference,
-          filename: file.name,
-          file_size: file.size,
-          file_type: file.type,
-          copybook_reference: copybookFile ? `copybook:${platformState.state.session.tenantId}:${platformState.state.session.sessionId}:${fileId}` : undefined,
-          content_type: contentType,
-          file_type_category: fileTypeCategory,
+          ingestion_type: 'upload',
+          file_content: fileContentHex,
+          ui_name: file.name,
+          file_type: fileTypeCategory || 'unstructured',
+          mime_type: file.type,
+          filename: file.name
         },
         {
           ui_name: file.name, // User-friendly filename
@@ -174,10 +213,10 @@ export class ContentAPIManager {
       // Track execution
       platformState.trackExecution(executionId);
 
-      // Wait for execution to complete to get boundary_contract_id
-      // Poll execution status to get the result with boundary_contract_id
+      // ✅ PHASE 4: Wait for execution to complete to get file_id and boundary_contract_id
       const maxAttempts = 30; // Wait up to 15 seconds (30 * 500ms)
       let attempts = 0;
+      let fileId: string | undefined;
       let boundaryContractId: string | undefined;
       let materializationPending: boolean = true;
       
@@ -187,9 +226,10 @@ export class ContentAPIManager {
         const status = await platformState.getExecutionStatus(executionId);
         
         if (status?.status === "completed") {
-          // Extract boundary_contract_id from execution artifacts
+          // Extract file_id and boundary_contract_id from execution artifacts
           const fileArtifact = status.artifacts?.file;
           if (fileArtifact?.semantic_payload) {
+            fileId = fileArtifact.semantic_payload.file_id;
             boundaryContractId = fileArtifact.semantic_payload.boundary_contract_id;
             materializationPending = fileArtifact.semantic_payload.materialization_pending === true;
           }
@@ -201,26 +241,26 @@ export class ContentAPIManager {
         attempts++;
       }
 
-      // If we didn't get boundary_contract_id, it's not critical for MVP
-      // The file was uploaded, but we may need to handle this case
-      if (!boundaryContractId && attempts >= maxAttempts) {
-        console.warn("Upload completed but boundary_contract_id not found in execution result");
+      // ✅ PHASE 4: Validate we got file_id and boundary_contract_id
+      if (!fileId || !boundaryContractId) {
+        throw new Error("Upload completed but file_id or boundary_contract_id not found in execution result");
       }
+
+      const fileReference = `file:${platformState.state.session.tenantId}:${platformState.state.session.sessionId}:${fileId}`;
 
       const contentFile: ContentFile = {
         id: fileId,
-        name: uploadData.ui_name || file.name,
+        name: file.name,
         type: file.type,
         size: file.size,
         uploadDate: new Date().toISOString(),
-        status: materializationPending ? "pending" : "uploaded",
+        status: materializationPending ? "pending" : "uploaded",  // ✅ Materialization is pending until user clicks "Save"
         metadata: {
           file_id: fileId,
           file_reference: fileReference,
           execution_id: executionId,
           boundary_contract_id: boundaryContractId,
           materialization_pending: materializationPending,
-          ...uploadData,
         },
       };
 
@@ -230,7 +270,7 @@ export class ContentAPIManager {
         file_id: fileId,
         file_reference: fileReference,
         boundary_contract_id: boundaryContractId,
-        materialization_pending: materializationPending,
+        materialization_pending: materializationPending,  // ✅ Key: Materialization is pending
       };
     } catch (error) {
       console.error("Error uploading file:", error);
@@ -247,7 +287,7 @@ export class ContentAPIManager {
    * Explicitly save (materialize) a file that was uploaded.
    * This is the second phase of the two-phase materialization flow.
    * 
-   * Flow: Direct API call to /api/content/save_materialization
+   * Flow: Experience Plane → Runtime → Content Realm (via submitIntent)
    */
   async saveMaterialization(
     boundaryContractId: string,
@@ -256,45 +296,70 @@ export class ContentAPIManager {
     try {
       const platformState = this.getPlatformState();
       
-      if (!platformState.state.session.sessionId || !platformState.state.session.tenantId) {
-        throw new Error("Session required to save materialization");
-      }
+      // ✅ PHASE 2: Use standardized session validation
+      validateSession(platformState, "save materialization");
 
+      // ✅ PHASE 2: Parameter validation before submitIntent
       if (!boundaryContractId || !fileId) {
-        throw new Error("boundary_contract_id and file_id are required");
+        throw new Error("boundary_contract_id and file_id are required for save_materialization");
       }
 
-      // Call save_materialization endpoint directly
-      const { getApiEndpointUrl } = require('@/shared/config/api-config');
-      const url = getApiEndpointUrl(
-        `/api/content/save_materialization?boundary_contract_id=${encodeURIComponent(boundaryContractId)}&file_id=${encodeURIComponent(fileId)}&tenant_id=${encodeURIComponent(platformState.state.session.tenantId)}`
+      // ✅ PHASE 2: Migrate to intent-based API (submitIntent)
+      const executionId = await platformState.submitIntent(
+        "save_materialization",
+        {
+          file_id: fileId,
+          boundary_contract_id: boundaryContractId,
+        }
       );
 
-      // Get user_id from auth context (should be available in platform state or auth)
-      const user_id = platformState.state.session.userId || "system";
-      const session_id = platformState.state.session.sessionId;
+      // Track execution
+      platformState.trackExecution(executionId);
 
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-user-id': user_id,
-          'x-session-id': session_id,
-        },
-      });
-
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ detail: 'Save materialization failed' }));
-        throw new Error(error.detail || `Save materialization failed: ${response.statusText}`);
+      // ✅ PHASE 2: Wait for execution to complete to get materialization_id
+      const maxAttempts = 30; // Wait up to 15 seconds (30 * 500ms)
+      let attempts = 0;
+      let materializationId: string | undefined;
+      let success: boolean = false;
+      
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms
+        
+        const status = await platformState.getExecutionStatus(executionId);
+        
+        if (status?.status === "completed") {
+          // Extract materialization_id from execution artifacts
+          const materializationArtifact = status.artifacts?.materialization;
+          if (materializationArtifact?.semantic_payload) {
+            materializationId = materializationArtifact.semantic_payload.materialization_id;
+            success = materializationArtifact.semantic_payload.success === true;
+          } else if (status.artifacts?.file?.semantic_payload) {
+            // Fallback: check if file artifact has materialization info
+            const filePayload = status.artifacts.file.semantic_payload;
+            materializationId = filePayload.materialization_id;
+            success = filePayload.materialization_pending === false;
+          } else {
+            // If no artifact structure, assume success if execution completed
+            success = true;
+          }
+          break;
+        } else if (status?.status === "failed") {
+          throw new Error(status.error || "Save materialization execution failed");
+        }
+        
+        attempts++;
       }
 
-      const data = await response.json();
+      if (attempts >= maxAttempts) {
+        throw new Error("Timeout waiting for save materialization to complete");
+      }
 
       return {
-        success: data.success === true,
-        file_id: data.file_id || fileId,
-        boundary_contract_id: data.boundary_contract_id || boundaryContractId,
-        message: data.message || "File saved successfully",
+        success: success,
+        file_id: fileId,
+        boundary_contract_id: boundaryContractId,
+        materialization_id: materializationId,
+        message: success ? "File saved successfully" : "Save materialization completed with warnings",
       };
     } catch (error) {
       console.error("Error saving materialization:", error);
@@ -314,9 +379,8 @@ export class ContentAPIManager {
     try {
       const platformState = this.getPlatformState();
       
-      if (!platformState.state.session.sessionId || !platformState.state.session.tenantId) {
-        throw new Error("Session required to list files");
-      }
+      // ✅ FIX ISSUE 4: Use standardized session validation
+      validateSession(platformState, "list files");
 
       // Submit list_files intent to Runtime
       const executionId = await platformState.submitIntent(
@@ -394,8 +458,15 @@ export class ContentAPIManager {
     try {
       const platformState = this.getPlatformState();
       
-      if (!platformState.state.session.sessionId || !platformState.state.session.tenantId) {
-        throw new Error("Session required to parse file");
+      // ✅ FIX ISSUE 4: Use standardized session validation
+      validateSession(platformState, "parse file");
+
+      // ✅ PHASE 2: Parameter validation before submitIntent
+      if (!fileId) {
+        throw new Error("file_id is required for parse_content");
+      }
+      if (!fileReference) {
+        throw new Error("file_reference is required for parse_content");
       }
 
       // Check if file has content_type === DATA_MODEL and set parsing_type accordingly
@@ -422,10 +493,47 @@ export class ContentAPIManager {
       // Track execution
       platformState.trackExecution(executionId);
 
-      // Return execution ID - UI will track execution status
+      // ✅ PHASE 2: Wait for execution to complete to get parsed_file_id
+      const maxAttempts = 30; // Wait up to 15 seconds (30 * 500ms)
+      let attempts = 0;
+      let parsedFileId: string | undefined;
+      let parsedFileReference: string | undefined;
+      
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms
+        
+        const status = await platformState.getExecutionStatus(executionId);
+        
+        if (status?.status === "completed") {
+          // Extract parsed_file_id from execution artifacts
+          const parsedFileArtifact = status.artifacts?.parsed_file;
+          if (parsedFileArtifact?.semantic_payload) {
+            parsedFileId = parsedFileArtifact.semantic_payload.parsed_file_id || fileId;
+            parsedFileReference = parsedFileArtifact.semantic_payload.parsed_file_reference;
+          } else {
+            // Fallback: use fileId if no artifact structure
+            parsedFileId = fileId;
+          }
+          break;
+        } else if (status?.status === "failed") {
+          throw new Error(status.error || "File parsing execution failed");
+        }
+        
+        attempts++;
+      }
+
+      if (attempts >= maxAttempts) {
+        throw new Error("Timeout waiting for file parsing to complete");
+      }
+
+      if (!parsedFileId) {
+        throw new Error("Parsing completed but parsed_file_id not found in execution result");
+      }
+
       return {
         success: true,
-        parsed_file_id: fileId, // Will be updated when execution completes
+        parsed_file_id: parsedFileId,
+        parsed_content: parsedFileReference ? { parsed_file_reference: parsedFileReference } : undefined,
       };
     } catch (error) {
       console.error("Error parsing file:", error);
@@ -448,8 +556,15 @@ export class ContentAPIManager {
     try {
       const platformState = this.getPlatformState();
       
-      if (!platformState.state.session.sessionId || !platformState.state.session.tenantId) {
-        throw new Error("Session required to extract embeddings");
+      // ✅ FIX ISSUE 4: Use standardized session validation
+      validateSession(platformState, "extract embeddings");
+
+      // ✅ PHASE 2: Parameter validation before submitIntent
+      if (!parsedFileId) {
+        throw new Error("parsed_file_id is required for extract_embeddings");
+      }
+      if (!parsedFileReference) {
+        throw new Error("parsed_file_reference is required for extract_embeddings");
       }
 
       // Submit extract_embeddings intent
@@ -464,9 +579,43 @@ export class ContentAPIManager {
       // Track execution
       platformState.trackExecution(executionId);
 
+      // ✅ PHASE 2: Wait for execution to complete to get embedding_id
+      const maxAttempts = 30; // Wait up to 15 seconds (30 * 500ms)
+      let attempts = 0;
+      let embeddingId: string | undefined;
+      let embeddingReference: string | undefined;
+      
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 500)); // Wait 500ms
+        
+        const status = await platformState.getExecutionStatus(executionId);
+        
+        if (status?.status === "completed") {
+          // Extract embedding_id from execution artifacts
+          const embeddingArtifact = status.artifacts?.embeddings;
+          if (embeddingArtifact?.semantic_payload) {
+            embeddingId = embeddingArtifact.semantic_payload.embeddings_id;
+            embeddingReference = embeddingArtifact.semantic_payload.embedding_reference || parsedFileReference;
+          } else {
+            // Fallback: use parsedFileReference if no artifact structure
+            embeddingReference = parsedFileReference;
+          }
+          break;
+        } else if (status?.status === "failed") {
+          throw new Error(status.error || "Embedding extraction execution failed");
+        }
+        
+        attempts++;
+      }
+
+      if (attempts >= maxAttempts) {
+        throw new Error("Timeout waiting for embedding extraction to complete");
+      }
+
       return {
         success: true,
-        embedding_reference: parsedFileReference, // Will be updated when execution completes
+        embedding_id: embeddingId,
+        embedding_reference: embeddingReference || parsedFileReference,
       };
     } catch (error) {
       console.error("Error extracting embeddings:", error);
@@ -486,8 +635,15 @@ export class ContentAPIManager {
     try {
       const platformState = this.getPlatformState();
       
-      if (!platformState.state.session.sessionId || !platformState.state.session.tenantId) {
-        throw new Error("Session required to get parsed file");
+      // ✅ PHASE 2: Use standardized session validation
+      validateSession(platformState, "get parsed file");
+
+      // ✅ PHASE 2: Parameter validation before submitIntent
+      if (!fileId) {
+        throw new Error("file_id is required for get_parsed_file");
+      }
+      if (!fileReference) {
+        throw new Error("file_reference is required for get_parsed_file");
       }
 
       // Submit get_parsed_file intent
@@ -549,8 +705,15 @@ export class ContentAPIManager {
     try {
       const platformState = this.getPlatformState();
       
-      if (!platformState.state.session.sessionId || !platformState.state.session.tenantId) {
-        throw new Error("Session required to get semantic interpretation");
+      // ✅ FIX ISSUE 4: Use standardized session validation
+      validateSession(platformState, "get semantic interpretation");
+
+      // ✅ FIX ISSUE 3: Parameter validation before submitIntent
+      if (!fileId) {
+        throw new Error("file_id is required for get_semantic_interpretation");
+      }
+      if (!fileReference) {
+        throw new Error("file_reference is required for get_semantic_interpretation");
       }
 
       // Submit get_semantic_interpretation intent
@@ -593,6 +756,244 @@ export class ContentAPIManager {
         success: false,
         error: error instanceof Error ? error.message : "Failed to get semantic interpretation",
       };
+    }
+  }
+
+  /**
+   * Wait for execution completion
+   * 
+   * Polls execution status until completion or failure
+   * 
+   * ✅ PHASE 5.5: Added for save_materialization intent-based flow
+   */
+  private async _waitForExecution(
+    executionId: string,
+    platformState: ReturnType<typeof usePlatformState>,
+    maxWaitTime: number = 60000, // 60 seconds
+    pollInterval: number = 1000 // 1 second
+  ): Promise<ExecutionStatus> {
+    const startTime = Date.now();
+    
+    while (Date.now() - startTime < maxWaitTime) {
+      const status = await platformState.getExecutionStatus(executionId);
+      
+      if (!status) {
+        throw new Error("Execution not found");
+      }
+
+      if (status.status === "completed" || status.status === "failed" || status.status === "cancelled") {
+        return status;
+      }
+
+      // Wait before next poll
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+    }
+
+    throw new Error("Execution timeout");
+  }
+
+  // ============================================
+  // Phase 3: Artifact-Centric Methods
+  // ============================================
+
+  /**
+   * Resolve artifact (authoritative resolution via State Surface)
+   * 
+   * Flow: Direct API call to Runtime → State Surface → Artifact Registry
+   * 
+   * This is the single source of truth for artifact resolution.
+   * Returns full artifact record with materializations and lineage.
+   */
+  async resolveArtifact(
+    artifactId: string,
+    artifactType: string,
+    tenantId: string
+  ): Promise<ArtifactRecord> {
+    try {
+      const platformState = this.getPlatformState();
+      validateSession(platformState, "resolve artifact");
+
+      const url = getApiEndpointUrl('/api/artifact/resolve');
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          artifact_id: artifactId,
+          artifact_type: artifactType,
+          tenant_id: tenantId,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Failed to resolve artifact' }));
+        throw new Error(error.detail || `Failed to resolve artifact: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data.artifact;
+    } catch (error) {
+      console.error("Error resolving artifact:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * List artifacts (discovery/indexing via Supabase)
+   * 
+   * Flow: Direct API call to Runtime → RegistryAbstraction → artifact_index
+   * 
+   * Returns artifact metadata (not content) filtered by:
+   * - artifact_type
+   * - lifecycle_state (default: READY)
+   * - eligible_for (next intent that needs this artifact)
+   * 
+   * For actual artifact content, use resolveArtifact().
+   */
+  async listArtifacts(filters: {
+    tenantId: string;
+    artifactType?: string;
+    lifecycleState?: string;
+    eligibleFor?: string; // Next intent that needs this artifact
+    limit?: number;
+    offset?: number;
+  }): Promise<ArtifactListResponse> {
+    try {
+      const platformState = this.getPlatformState();
+      validateSession(platformState, "list artifacts");
+
+      const url = getApiEndpointUrl('/api/artifact/list');
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tenant_id: filters.tenantId,
+          artifact_type: filters.artifactType,
+          lifecycle_state: filters.lifecycleState || 'READY',
+          eligible_for: filters.eligibleFor,
+          limit: filters.limit || 100,
+          offset: filters.offset || 0,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Failed to list artifacts' }));
+        throw new Error(error.detail || `Failed to list artifacts: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error("Error listing artifacts:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Get pending intents (for UI display)
+   * 
+   * Flow: Direct API call to Runtime → RegistryAbstraction → intent_executions
+   * 
+   * Used to show "files with pending parse intents" and similar UI features.
+   * Returns pending intents with context (ingestion_profile lives here).
+   */
+  async getPendingIntents(filters: {
+    tenantId: string;
+    targetArtifactId?: string;
+    intentType?: string;
+  }): Promise<PendingIntentListResponse> {
+    try {
+      const platformState = this.getPlatformState();
+      validateSession(platformState, "get pending intents");
+
+      const url = getApiEndpointUrl('/api/intent/pending/list');
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          tenant_id: filters.tenantId,
+          target_artifact_id: filters.targetArtifactId,
+          intent_type: filters.intentType,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Failed to list pending intents' }));
+        throw new Error(error.detail || `Failed to list pending intents: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return data;
+    } catch (error) {
+      console.error("Error getting pending intents:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Create pending intent (where ingestion_profile lives)
+   * 
+   * Flow: Direct API call to Runtime → RegistryAbstraction → intent_executions
+   * 
+   * This enables resumable workflows - user can upload file, select ingestion_profile,
+   * and resume parsing later (even in a different session).
+   * 
+   * The ingestion_profile is stored in the intent context, not on the artifact.
+   */
+  async createPendingIntent(
+    intentType: string,
+    targetArtifactId: string,
+    context: {
+      ingestion_profile?: string;
+      parse_options?: Record<string, any>;
+      [key: string]: any;
+    },
+    tenantId: string,
+    userId?: string,
+    sessionId?: string
+  ): Promise<{ intentId: string; status: string }> {
+    try {
+      const platformState = this.getPlatformState();
+      validateSession(platformState, "create pending intent");
+
+      const url = getApiEndpointUrl('/api/intent/pending/create');
+      
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          intent_type: intentType,
+          target_artifact_id: targetArtifactId,
+          context: context, // ingestion_profile lives here
+          tenant_id: tenantId,
+          user_id: userId || platformState.state.session.userId,
+          session_id: sessionId || platformState.state.session.sessionId,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ detail: 'Failed to create pending intent' }));
+        throw new Error(error.detail || `Failed to create pending intent: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      return {
+        intentId: data.intent_id,
+        status: data.status,
+      };
+    } catch (error) {
+      console.error("Error creating pending intent:", error);
+      throw error;
     }
   }
 }

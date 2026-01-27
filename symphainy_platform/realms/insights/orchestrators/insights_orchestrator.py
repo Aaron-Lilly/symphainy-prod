@@ -43,6 +43,8 @@ from ..agents.insights_liaison_agent import InsightsLiaisonAgent
 from ..agents.business_analysis_agent import BusinessAnalysisAgent
 from symphainy_platform.civic_systems.artifact_plane.artifact_plane import ArtifactPlane
 from symphainy_platform.civic_systems.smart_city.sdk.data_steward_sdk import DataStewardSDK
+from symphainy_platform.realms.content.enabling_services.deterministic_chunking_service import DeterministicChunkingService
+from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
 
 
 class InsightsOrchestrator:
@@ -58,15 +60,17 @@ class InsightsOrchestrator:
     - Business analysis (structured and unstructured)
     """
     
-    def __init__(self, public_works: Optional[Any] = None):
+    def __init__(self, public_works: Optional[Any] = None, artifact_plane: Optional[ArtifactPlane] = None):
         """
         Initialize Insights Orchestrator.
         
         Args:
             public_works: Public Works Foundation Service (for accessing abstractions)
+            artifact_plane: Artifact Plane for managing Purpose-Bound Outcomes
         """
         self.logger = get_logger(self.__class__.__name__)
         self.public_works = public_works
+        self.artifact_plane = artifact_plane
         
         # Initialize enabling services with Public Works
         self.data_analyzer_service = DataAnalyzerService(public_works=public_works)
@@ -85,6 +89,17 @@ class InsightsOrchestrator:
             agent_definition_id="business_analysis_agent",
             public_works=public_works
         )
+        
+        # PHASE 3: Initialize chunking and parsing services for chunk-based pattern
+        self.deterministic_chunking_service = None
+        self.file_parser_service = None
+        if public_works:
+            self.deterministic_chunking_service = DeterministicChunkingService(public_works=public_works)
+            self.file_parser_service = FileParserService(public_works=public_works)
+        
+        # Initialize health monitoring and telemetry (lazy initialization)
+        self.telemetry_service = None
+        self.health_monitor = None
     
     async def handle_intent(
         self,
@@ -758,7 +773,11 @@ class InsightsOrchestrator:
         tenant_id: str,
         context: ExecutionContext
     ) -> Optional[List[Dict[str, Any]]]:
-        """Get embeddings from ArangoDB for parsed file."""
+        """
+        Get embeddings from ArangoDB for parsed file.
+        
+        PHASE 3: Uses chunk-based pattern (not direct parsed_file_id queries).
+        """
         if not self.public_works:
             return None
         
@@ -770,9 +789,30 @@ class InsightsOrchestrator:
             return None
         
         try:
-            # Query embeddings via abstraction
+            # PHASE 3: Use chunk-based pattern
+            # 1. Get parsed file
+            parsed_file = await self.file_parser_service.get_parsed_file(
+                parsed_file_id=parsed_file_id,
+                tenant_id=tenant_id,
+                context=context
+            )
+            
+            # 2. Create deterministic chunks
+            parsed_content = parsed_file.get("parsed_content") or parsed_file
+            chunks = await self.deterministic_chunking_service.create_chunks(
+                parsed_content=parsed_content,
+                file_id=parsed_file.get("file_id"),
+                tenant_id=tenant_id,
+                parsed_file_id=parsed_file_id
+            )
+            
+            if not chunks:
+                return None
+            
+            # 3. Query embeddings by chunk_id (not parsed_file_id)
+            chunk_ids = [chunk.chunk_id for chunk in chunks]
             embeddings = await semantic_data.get_semantic_embeddings(
-                filter_conditions={"parsed_file_id": parsed_file_id},
+                filter_conditions={"chunk_id": {"$in": chunk_ids}},
                 limit=None
             )
             return embeddings if embeddings else None
@@ -806,7 +846,7 @@ class InsightsOrchestrator:
         
         # Use RegistryAbstraction (governed access)
         # ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
-        registry = self.public_works.get_registry_abstraction()
+        registry = getattr(self.public_works, 'registry_abstraction', None)
         if not registry:
             self.logger.debug("Registry abstraction not available, skipping lineage tracking")
             return
@@ -883,7 +923,7 @@ class InsightsOrchestrator:
         
         # Use RegistryAbstraction (governed access)
         # ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
-        registry = self.public_works.get_registry_abstraction()
+        registry = getattr(self.public_works, 'registry_abstraction', None)
         if not registry:
             self.logger.debug("Registry abstraction not available, skipping lineage tracking")
             return
@@ -935,7 +975,7 @@ class InsightsOrchestrator:
         """
         # Use RegistryAbstraction (governed access)
         # ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
-        registry = self.public_works.get_registry_abstraction()
+        registry = getattr(self.public_works, 'registry_abstraction', None)
         if not registry:
             return (None, None, None)
         
@@ -989,7 +1029,7 @@ class InsightsOrchestrator:
         
         # Use RegistryAbstraction (governed access)
         # ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
-        registry = self.public_works.get_registry_abstraction()
+        registry = getattr(self.public_works, 'registry_abstraction', None)
         if not registry:
             return None
         
@@ -1419,7 +1459,7 @@ class InsightsOrchestrator:
             return None
         
         # Use RegistryAbstraction (governed access)
-        registry = self.public_works.get_registry_abstraction()
+        registry = getattr(self.public_works, 'registry_abstraction', None)
         if not registry:
             self.logger.debug("Registry abstraction not available, skipping lineage tracking")
             return None

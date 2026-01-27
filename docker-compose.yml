@@ -296,6 +296,7 @@ services:
     - --entrypoints.web.transport.respondingTimeouts.readTimeout=0s
     - --entrypoints.web.transport.respondingTimeouts.writeTimeout=0s
     - --entrypoints.web.transport.respondingTimeouts.idleTimeout=3600s
+    - --entrypoints.web.http2.maxConcurrentStreams=100
     ports:
     - ${TRAEFIK_HTTP_PORT:-80}:80
     - ${TRAEFIK_DASHBOARD_PORT:-8080}:8080

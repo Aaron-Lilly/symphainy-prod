@@ -69,11 +69,16 @@ class TestRuntimeSpine:
             handler_function=mock_intent_handler_function
         )
         
+        # ✅ Create Data Steward SDK for boundary contract assignment
+        from tests.helpers.data_steward_fixtures import create_data_steward_sdk
+        data_steward_sdk = create_data_steward_sdk(supabase_adapter=None)
+        
         # Create execution lifecycle manager
         execution_lifecycle_manager = ExecutionLifecycleManager(
             intent_registry=intent_registry,
             state_surface=state_surface,
-            wal=wal
+            wal=wal,
+            data_steward_sdk=data_steward_sdk  # ✅ Required
         )
         
         # Create Runtime API

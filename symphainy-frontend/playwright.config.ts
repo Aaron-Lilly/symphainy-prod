@@ -5,7 +5,7 @@ import path from 'path';
  * @see https://playwright.dev/docs/test-configuration
  */
 export default defineConfig({
-  testDir: './tests/e2e',
+  testDir: './', // Search from root to include scripts directory
   /* Run tests in files in parallel */
   fullyParallel: true,
   /* Fail the build on CI if you accidentally left test.only in the source code. */
@@ -23,7 +23,7 @@ export default defineConfig({
   /* Shared settings for all the projects below. See https://playwright.dev/docs/api/class-testoptions. */
   use: {
     /* Base URL to use in actions like `await page.goto('/')`. */
-    baseURL: 'http://localhost:3000',
+    baseURL: process.env.PLAYWRIGHT_BASE_URL || 'http://localhost', // Use Traefik route by default
 
     /* Load authentication state (authenticated once in global-setup.ts) */
     /* This allows all tests to reuse the same authenticated session */
@@ -101,8 +101,9 @@ export default defineConfig({
   },
 
   /* Global setup and teardown */
-  globalSetup: require.resolve('./tests/e2e/global-setup.ts'),
-  globalTeardown: require.resolve('./tests/e2e/global-teardown.ts'),
+  // Temporarily disable for Phase 7 tests (they don't require auth setup)
+  // globalSetup: require.resolve('./tests/e2e/global-setup.ts'),
+  // globalTeardown: require.resolve('./tests/e2e/global-teardown.ts'),
 
   /* Test output directory */
   outputDir: 'test-results/',
@@ -119,9 +120,8 @@ export default defineConfig({
 
   /* Test patterns */
   testMatch: [
-    '**/mvp-4-pillar-journey.spec.ts',
-    '**/critical-user-journeys.spec.ts',
-    '**/semantic-components.spec.ts',
+    'scripts/test-phase7-routing.spec.ts', // Phase 7 routing tests (priority)
+    'tests/e2e/**/*.spec.ts', // Other E2E tests
   ],
 
   /* Test ignore patterns */

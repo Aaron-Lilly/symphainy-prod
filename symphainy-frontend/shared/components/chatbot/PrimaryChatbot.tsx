@@ -4,18 +4,19 @@ import { Input } from "@/components/ui/input";
 import { Loader2, SendHorizontal, DivideCircle } from "lucide-react";
 import StreamingMessage from "./StreamingMessage";
 import { useRouter } from "next/navigation";
-import { useAtomValue, useSetAtom } from "jotai";
-import { chatbotAgentInfoAtom, mainChatbotOpenAtom } from "@/shared/atoms/chatbot-atoms";
+// ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
+import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { SecondaryChatbotAgent } from "@/shared/types/secondaryChatbot";
 import BusinessAnalysisDisplay from "@/components/insights/BusinessAnalysisDisplay";
-import { useGlobalSession } from "@/shared/agui/GlobalSessionProvider";
+import { useSessionBoundary } from "@/shared/state/SessionBoundaryProvider";
 // import { useAgentManager } from "@/shared/hooks/useAgentManager";
 
 // FileMetadata import removed - file functionality moved to pillars
 
 export default function PrimaryChatbot() {
   const router = useRouter();
-  const { guideSessionToken } = useGlobalSession();
+  const { state: sessionState } = useSessionBoundary();
+  const guideSessionToken = sessionState.sessionId;
   // Temporarily disabled new architecture
   // const { 
   //   webSocketManager, 
@@ -30,8 +31,9 @@ export default function PrimaryChatbot() {
   //   sendToOperationsAgent,
   //   sendToExperienceAgent
   // } = useAgentManager(guideSessionToken || "", "general");
-  const mainChatbotOpen = useAtomValue(mainChatbotOpenAtom);
-  const setMainChatbotOpen = useSetAtom(mainChatbotOpenAtom);
+  // ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
+  const { state, setMainChatbotOpen } = usePlatformState();
+  const mainChatbotOpen = state.ui.chatbot.mainChatbotOpen;
   const [message, setMessage] = useState("");
   const [wsMessages, setWsMessages] = useState<
     {

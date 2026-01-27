@@ -43,8 +43,9 @@ export function getApiUrl(): string {
     );
   }
 
-  // Normalize URL: remove trailing slash, handle port removal if needed
-  return apiUrl.replace(/\/$/, '').replace(':8000', '');
+  // Normalize URL: remove trailing slash only
+  // DO NOT strip ports - they are part of the URL and may be required
+  return apiUrl.replace(/\/$/, '');
 }
 
 /**

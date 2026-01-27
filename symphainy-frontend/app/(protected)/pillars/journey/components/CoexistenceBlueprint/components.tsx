@@ -9,10 +9,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { useAtomValue } from "jotai";
+// ✅ PHASE 5: Removed unused Jotai import
 import ReactMarkdown from "react-markdown";
 import dynamic from "next/dynamic";
 import { CoexistenceBlueprintUIProps } from "./types";
+import { TrendingUp, Clock, DollarSign } from "lucide-react";
 
 // Dynamic import for GraphComponent
 const GraphComponent = dynamic(
@@ -91,17 +92,22 @@ export function CoexistenceBlueprintUI({
         </Card>
       )}
 
-      {/* Input Content Display */}
+      {/* ✅ PHASE 3.2: Enhanced Input Content Display with Dual View */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* SOP Content */}
-        <Card>
+        <Card className="border-2 border-orange-200 bg-orange-50/30">
           <CardHeader>
-            <CardTitle className="flex items-center">
-              <span className="text-lg">Current SOP</span>
-            </CardTitle>
-            <CardDescription>
-              Standard Operating Procedure content
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center">
+                  <span className="text-lg">SOP (Policy)</span>
+                </CardTitle>
+                <CardDescription>
+                  How work <em>should</em> be done according to procedures
+                </CardDescription>
+              </div>
+              <div className="text-xs bg-orange-100 text-orange-800 px-2 py-1 rounded">Policy</div>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="max-h-96 overflow-y-auto">
@@ -112,15 +118,26 @@ export function CoexistenceBlueprintUI({
           </CardContent>
         </Card>
 
-        {/* Workflow Content */}
-        <Card>
+        {/* Workflow Content - Before */}
+        <Card className={`border-2 ${optimizedWorkflow ? 'border-green-200 bg-green-50/30' : 'border-green-200 bg-green-50/30'}`}>
           <CardHeader>
-            <CardTitle className="flex items-center">
-              <span className="text-lg">Current Workflow</span>
-            </CardTitle>
-            <CardDescription>
-              Process workflow diagram and structure
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center">
+                  <span className="text-lg">
+                    {optimizedWorkflow ? 'Workflow (Before)' : 'Workflow (Practice)'}
+                  </span>
+                </CardTitle>
+                <CardDescription>
+                  {optimizedWorkflow
+                    ? 'Original workflow before optimization'
+                    : 'How work <em>is</em> done in practice with actual processes'}
+                </CardDescription>
+              </div>
+              <div className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                {optimizedWorkflow ? 'Before' : 'Practice'}
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="max-h-96 overflow-y-auto">
@@ -132,22 +149,64 @@ export function CoexistenceBlueprintUI({
         </Card>
       </div>
 
-      {/* Optimized Results */}
+      {/* ✅ PHASE 4.2: Enhanced Optimized Results with Metrics */}
       {(optimizedSop || optimizedWorkflow) && (
         <div className="space-y-6">
-          <h3 className="text-xl font-semibold text-gray-800">Optimized Results</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-xl font-semibold text-gray-800">Optimized Results</h3>
+            {/* ✅ PHASE 4.2: Optimization Metrics */}
+            {blueprint?.metrics && (
+              <div className="flex gap-4">
+                {blueprint.metrics.efficiency_gain && (
+                  <div className="text-center">
+                    <div className="text-xs text-gray-600">Efficiency</div>
+                    <div className="text-lg font-bold text-green-600">
+                      +{typeof blueprint.metrics.efficiency_gain === 'number' 
+                        ? `${blueprint.metrics.efficiency_gain}%` 
+                        : blueprint.metrics.efficiency_gain}
+                    </div>
+                  </div>
+                )}
+                {blueprint.metrics.time_savings && (
+                  <div className="text-center">
+                    <div className="text-xs text-gray-600">Time Saved</div>
+                    <div className="text-lg font-bold text-blue-600">
+                      {typeof blueprint.metrics.time_savings === 'number' 
+                        ? `${blueprint.metrics.time_savings}%` 
+                        : blueprint.metrics.time_savings}
+                    </div>
+                  </div>
+                )}
+                {blueprint.metrics.cost_reduction && (
+                  <div className="text-center">
+                    <div className="text-xs text-gray-600">Cost Reduction</div>
+                    <div className="text-lg font-bold text-purple-600">
+                      {typeof blueprint.metrics.cost_reduction === 'number' 
+                        ? `${blueprint.metrics.cost_reduction}%` 
+                        : blueprint.metrics.cost_reduction}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
           
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Optimized SOP */}
+            {/* ✅ PHASE 4.2: Optimized SOP - After */}
             {optimizedSop && (
               <Card className="border-green-200 bg-green-50">
                 <CardHeader>
-                  <CardTitle className="flex items-center text-green-800">
-                    <span className="text-lg">Optimized SOP</span>
-                  </CardTitle>
-                  <CardDescription className="text-green-700">
-                    Enhanced Standard Operating Procedure
-                  </CardDescription>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center text-green-800">
+                        <span className="text-lg">SOP (After)</span>
+                      </CardTitle>
+                      <CardDescription className="text-green-700">
+                        Enhanced Standard Operating Procedure
+                      </CardDescription>
+                    </div>
+                    <div className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">After</div>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="max-h-96 overflow-y-auto">
@@ -159,16 +218,21 @@ export function CoexistenceBlueprintUI({
               </Card>
             )}
 
-            {/* Optimized Workflow */}
+            {/* ✅ PHASE 4.2: Optimized Workflow - After */}
             {optimizedWorkflow && (
               <Card className="border-green-200 bg-green-50">
                 <CardHeader>
-                  <CardTitle className="flex items-center text-green-800">
-                    <span className="text-lg">Optimized Workflow</span>
-                  </CardTitle>
-                  <CardDescription className="text-green-700">
-                    Enhanced process workflow
-                  </CardDescription>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <CardTitle className="flex items-center text-green-800">
+                        <span className="text-lg">Workflow (After)</span>
+                      </CardTitle>
+                      <CardDescription className="text-green-700">
+                        Enhanced process workflow
+                      </CardDescription>
+                    </div>
+                    <div className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">After</div>
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="max-h-96 overflow-y-auto">

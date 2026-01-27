@@ -15,6 +15,8 @@
 
 import { ExperiencePlaneClient, getGlobalExperiencePlaneClient, ExecutionStatus } from "@/shared/services/ExperiencePlaneClient";
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
+import { ensureArtifactLifecycle } from "@/shared/services/artifactLifecycle";
+import { validateSession } from "@/shared/utils/sessionValidation";
 
 // ============================================
 // Outcomes API Manager Types
@@ -119,9 +121,12 @@ export class OutcomesAPIManager {
     try {
       const platformState = this.getPlatformState();
       
-      if (!platformState.state.session.sessionId || !platformState.state.session.tenantId) {
-        throw new Error("Session required to synthesize outcome");
-      }
+      // ✅ FIX ISSUE 4: Use standardized session validation
+      validateSession(platformState, "synthesize outcome");
+
+      // ✅ FIX ISSUE 3: Parameter validation before submitIntent
+      // synthesize_outcome doesn't require parameters (uses synthesis_options which can be empty)
+      // No validation needed - empty object is acceptable
 
       // Submit intent via Experience Plane Client
       const execution = await platformState.submitIntent(
@@ -173,8 +178,9 @@ export class OutcomesAPIManager {
         throw new Error("Session required to generate roadmap");
       }
 
+      // ✅ FIX ISSUE 3: Parameter validation before submitIntent
       if (!goals || goals.length === 0) {
-        throw new Error("Goals are required for roadmap generation");
+        throw new Error("goals array is required for generate_roadmap");
       }
 
       // Submit intent via Experience Plane Client
@@ -190,16 +196,24 @@ export class OutcomesAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.roadmap) {
-        // Update realm state
+        // ✅ PHASE 5.3: Ensure artifact has lifecycle state (purpose, scope, owner)
         const roadmapId = result.artifacts.roadmap.roadmap_id;
+        const roadmapWithLifecycle = ensureArtifactLifecycle(
+          result.artifacts.roadmap,
+          'strategic_planning',
+          'business_transformation',
+          platformState.state.session.userId || 'system'
+        );
+        
+        // Update realm state
         platformState.setRealmState("outcomes", "roadmaps", {
           ...platformState.getRealmState("outcomes", "roadmaps") || {},
-          [roadmapId]: result.artifacts.roadmap
+          [roadmapId]: roadmapWithLifecycle
         });
 
         return {
           success: true,
-          roadmap: result.artifacts.roadmap
+          roadmap: roadmapWithLifecycle
         };
       } else {
         throw new Error(result.error || "Failed to generate roadmap");
@@ -225,9 +239,8 @@ export class OutcomesAPIManager {
     try {
       const platformState = this.getPlatformState();
       
-      if (!platformState.state.session.sessionId || !platformState.state.session.tenantId) {
-        throw new Error("Session required to create POC");
-      }
+      // ✅ FIX ISSUE 4: Use standardized session validation
+      validateSession(platformState, "create POC");
 
       if (!description) {
         throw new Error("Description is required for POC creation");
@@ -246,11 +259,19 @@ export class OutcomesAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.poc_proposal) {
-        // Update realm state
+        // ✅ PHASE 5.3: Ensure artifact has lifecycle state (purpose, scope, owner)
         const pocId = result.artifacts.poc_proposal.poc_id;
+        const pocWithLifecycle = ensureArtifactLifecycle(
+          result.artifacts.poc_proposal,
+          'proof_of_concept',
+          'validation',
+          platformState.state.session.userId || 'system'
+        );
+        
+        // Update realm state
         platformState.setRealmState("outcomes", "pocProposals", {
           ...platformState.getRealmState("outcomes", "pocProposals") || {},
-          [pocId]: result.artifacts.poc_proposal
+          [pocId]: pocWithLifecycle
         });
 
         return {
@@ -286,9 +307,8 @@ export class OutcomesAPIManager {
     try {
       const platformState = this.getPlatformState();
       
-      if (!platformState.state.session.sessionId || !platformState.state.session.tenantId) {
-        throw new Error("Session required to create blueprint");
-      }
+      // ✅ FIX ISSUE 4: Use standardized session validation
+      validateSession(platformState, "create blueprint");
 
       if (!workflowId) {
         throw new Error("workflow_id is required for blueprint creation");
@@ -307,16 +327,24 @@ export class OutcomesAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.blueprint) {
-        // Update realm state
+        // ✅ PHASE 5.3: Ensure artifact has lifecycle state (purpose, scope, owner)
         const blueprintId = result.artifacts.blueprint.blueprint_id || result.artifacts.blueprint_id;
+        const blueprintWithLifecycle = ensureArtifactLifecycle(
+          result.artifacts.blueprint,
+          'coexistence_planning',
+          'workflow_optimization',
+          platformState.state.session.userId || 'system'
+        );
+        
+        // Update realm state
         platformState.setRealmState("outcomes", "blueprints", {
           ...platformState.getRealmState("outcomes", "blueprints") || {},
-          [blueprintId]: result.artifacts.blueprint
+          [blueprintId]: blueprintWithLifecycle
         });
 
         return {
           success: true,
-          blueprint: result.artifacts.blueprint,
+          blueprint: blueprintWithLifecycle,
           blueprint_id: blueprintId
         };
       } else {
@@ -394,9 +422,8 @@ export class OutcomesAPIManager {
     try {
       const platformState = this.getPlatformState();
       
-      if (!platformState.state.session.sessionId || !platformState.state.session.tenantId) {
-        throw new Error("Session required to create solution");
-      }
+      // ✅ FIX ISSUE 4: Use standardized session validation
+      validateSession(platformState, "create solution");
 
       if (!solutionSource || !sourceId || !sourceData) {
         throw new Error("solution_source, source_id, and source_data are required for solution creation");

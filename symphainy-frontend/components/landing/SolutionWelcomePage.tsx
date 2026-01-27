@@ -6,8 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useRouter } from "next/navigation";
 import { useGuideAgent } from "@/shared/agui/GuideAgentProvider";
-import { useSetAtom } from "jotai";
-import { chatbotAgentInfoAtom, mainChatbotOpenAtom } from "@/shared/atoms/chatbot-atoms";
+// ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
+import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { SecondaryChatbotAgent, SecondaryChatbotTitle } from "@/shared/types/secondaryChatbot";
 import { SolutionLiaisonAgent } from "@/components/liaison-agents/SolutionLiaisonAgent";
 import { Loader2, Target, Lightbulb, TrendingUp, FileText, Zap } from "lucide-react";
@@ -47,9 +47,9 @@ export function SolutionWelcomePage() {
   const router = useRouter();
   const { state: guideAgentState, createSolution } = useGuideAgent();
   
-  // Dual chat interface setup
-  const setAgentInfo = useSetAtom(chatbotAgentInfoAtom);
-  const setMainChatbotOpen = useSetAtom(mainChatbotOpenAtom);
+  // ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
+  const { setChatbotAgentInfo, setMainChatbotOpen } = usePlatformState();
+  const setAgentInfo = setChatbotAgentInfo; // Alias for compatibility
 
   // Set up Solution Liaison Agent as secondary option
   useEffect(() => {
@@ -163,7 +163,7 @@ export function SolutionWelcomePage() {
     } else if (solutionResponse?.next_steps.includes("insights_pillar")) {
       router.push("/pillars/insights");
     } else if (solutionResponse?.next_steps.includes("operations_pillar")) {
-      router.push("/pillars/operations");
+      router.push("/pillars/journey");
     } else {
       router.push("/pillars/content"); // Default fallback
     }

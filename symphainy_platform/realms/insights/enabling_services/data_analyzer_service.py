@@ -21,6 +21,8 @@ from typing import Dict, Any, Optional
 
 from utilities import get_logger
 from symphainy_platform.runtime.execution_context import ExecutionContext
+from symphainy_platform.realms.content.enabling_services.deterministic_chunking_service import DeterministicChunkingService
+from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
 
 # Note: Import path for FileParserService (cross-realm access)
 # ARCHITECTURAL PRINCIPLE: Realms can access other realm services via Public Works
@@ -48,6 +50,13 @@ class DataAnalyzerService:
         self.semantic_data_abstraction = None
         if public_works:
             self.semantic_data_abstraction = public_works.get_semantic_data_abstraction()
+        
+        # PHASE 3: Initialize chunking and parsing services for chunk-based pattern
+        self.deterministic_chunking_service = None
+        self.file_parser_service = None
+        if public_works:
+            self.deterministic_chunking_service = DeterministicChunkingService(public_works=public_works)
+            self.file_parser_service = FileParserService(public_works=public_works)
     
     async def analyze_content(
         self,
@@ -160,19 +169,38 @@ class DataAnalyzerService:
         self.logger.info(f"Interpreting data: {parsed_file_id} for tenant: {tenant_id}")
         
         try:
-            # Get semantic embeddings if available
+            # PHASE 3: Use chunk-based pattern (not direct parsed_file_id queries)
+            # 1. Get parsed file
+            parsed_content = await self.file_parser_service.get_parsed_file(
+                parsed_file_id=parsed_file_id,
+                tenant_id=tenant_id,
+                context=context
+            )
+            
+            # 2. Create deterministic chunks
+            parsed_file_content = parsed_content.get("parsed_content") or parsed_content
+            chunks = await self.deterministic_chunking_service.create_chunks(
+                parsed_content=parsed_file_content,
+                file_id=parsed_content.get("file_id"),
+                tenant_id=tenant_id,
+                parsed_file_id=parsed_file_id
+            )
+            
+            # 3. Get semantic embeddings by chunk_id (if available)
             semantic_mapping = {}
-            if self.semantic_data_abstraction:
+            if self.semantic_data_abstraction and chunks:
                 try:
+                    chunk_ids = [chunk.chunk_id for chunk in chunks]
                     embeddings = await self.semantic_data_abstraction.get_semantic_embeddings(
-                        filter_conditions={"parsed_file_id": parsed_file_id},
-                        limit=None,
-                        tenant_id=tenant_id
+                        filter_conditions={"chunk_id": {"$in": chunk_ids}},
+                        limit=None
                     )
                     
                     # Build semantic mapping from embeddings
+                    # Note: Old format had column_name, new format uses chunk_id
+                    # For backward compatibility, we'll extract what we can
                     for emb in embeddings or []:
-                        col_name = emb.get("column_name")
+                        col_name = emb.get("column_name") or emb.get("metadata", {}).get("column_name")
                         if col_name:
                             semantic_mapping[col_name] = {
                                 "semantic_meaning": emb.get("semantic_meaning", ""),
@@ -181,15 +209,6 @@ class DataAnalyzerService:
                             }
                 except Exception as e:
                     self.logger.debug(f"Could not get semantic embeddings: {e}")
-            
-            # Basic interpretation
-            from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
-            file_parser_service = FileParserService(public_works=self.public_works)
-            parsed_content = await file_parser_service.get_parsed_file(
-                parsed_file_id=parsed_file_id,
-                tenant_id=tenant_id,
-                context=context
-            )
             
             interpretation = {
                 "data_type": "structured" if parsed_content and isinstance(parsed_content.get("data"), list) else "unstructured",

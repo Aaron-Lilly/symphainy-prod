@@ -1,7 +1,8 @@
 "use client";
 
 import React from "react";
-import { useGlobalSession } from "@/shared/agui/GlobalSessionProvider";
+import { useSessionBoundary } from "@/shared/state/SessionBoundaryProvider";
+import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 
 interface RoadmapPhase {
   phase: string;
@@ -14,11 +15,12 @@ interface RoadmapTimelineProps {
 }
 
 const RoadmapTimeline: React.FC<RoadmapTimelineProps> = ({ roadmapData }) => {
-  const { getPillarState } = useGlobalSession();
-  const experienceState = getPillarState("experience") || {};
+  // ✅ PHASE 1: Migrated to PlatformStateProvider
+  const { getRealmState } = usePlatformState();
+  const experienceState = getRealmState("outcomes", "roadmap") || {};
   
-  // Use provided roadmapData or fall back to experience state
-  const roadmap = roadmapData || experienceState.roadmapResult?.roadmap;
+  // Use provided roadmapData or fall back to outcomes realm state
+  const roadmap = roadmapData || experienceState.roadmapResult?.roadmap || experienceState.roadmap;
 
   // Parse roadmap string into structured data
   const parseRoadmap = (roadmapText: string): RoadmapPhase[] => {

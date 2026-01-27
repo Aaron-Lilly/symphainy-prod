@@ -353,8 +353,8 @@ export class RuntimeClient {
     const baseUrl = this.config.baseUrl.replace(/^https?:\/\//, '').replace(/\/$/, '');
     const protocol = this.config.baseUrl.startsWith('https') ? 'wss' : 'ws';
     // Use both access_token (for authentication) and session_id (for session state)
-    // Note: Backend expects session_token parameter, not session_id
-    return `${protocol}://${baseUrl}/api/runtime/agent?access_token=${encodeURIComponent(this.config.accessToken)}&session_token=${encodeURIComponent(this.config.sessionId)}`;
+    // Backend validates access_token (JWT) and uses session_id for session state
+    return `${protocol}://${baseUrl}/api/runtime/agent?access_token=${encodeURIComponent(this.config.accessToken)}&session_id=${encodeURIComponent(this.config.sessionId)}`;
   }
 
   private _handleEvent(event: RuntimeEvent): void {

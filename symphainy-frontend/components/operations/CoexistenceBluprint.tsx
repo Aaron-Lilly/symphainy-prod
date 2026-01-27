@@ -1,7 +1,9 @@
 "use client";
 import React, { useState, useEffect } from "react";
-import { useGlobalSession } from "@/shared/agui/GlobalSessionProvider";
-import { optimizeCoexistence, optimizeCoexistenceWithContent, saveBlueprint } from "@/lib/api/operations";
+import { useSessionBoundary } from "@/shared/state/SessionBoundaryProvider";
+import { usePlatformState } from "@/shared/state/PlatformStateProvider";
+// ✅ PHASE 2: Use service layer hook instead of direct API calls
+import { useOperationsAPI } from "@/shared/hooks/useOperationsAPI";
 // import { saveBlueprint } from "@/lib/api/operations";
 // import { CoexistenceDeliverable, OptimizeResponse, isOptimizeResponse } from "@/shared/types/coexistence";
 import ProcessBlueprint from "./ProcessBlueprint";
@@ -13,7 +15,7 @@ import {
   CardHeader,
   CardTitle,
 } from "../ui/card";
-import { useAtomValue } from "jotai";
+// ✅ PHASE 5: Removed unused Jotai import
 import ReactMarkdown from "react-markdown";
 import dynamic from "next/dynamic";
 
@@ -162,11 +164,18 @@ const isOptimizeResponse = (obj: any): obj is OptimizeResponse => {
   return obj && (obj.deliverable || obj.blueprint);
 };
 
-const saveBlueprintLocal = async (data: any): Promise<any> => {
+// ✅ PHASE 2: This function will be refactored to use the hook from within the component
+// For now, keeping it as a placeholder that will be replaced
+const saveBlueprintLocal = async (data: any, saveBlueprintFn?: (params: { blueprint: any }) => Promise<any>): Promise<any> => {
   console.log("Saving blueprint with data:", data);
   
+  if (!saveBlueprintFn) {
+    throw new Error('saveBlueprint function not provided');
+  }
+  
   try {
-    const result = await saveBlueprint(data.blueprint, data.user_id);
+    // ✅ PHASE 2: Use service layer hook - no need to pass user_id manually
+    const result = await saveBlueprintFn({ blueprint: data.blueprint });
     console.log("Blueprint saved successfully:", result);
     return result;
   } catch (error) {
@@ -183,7 +192,8 @@ interface CoexistenceBlueprintProps {
   selectedSopFileUuid?: string | null;
   selectedWorkflowFileUuid?: string | null;
   sessionToken?: string;
-  sessionState?: any;
+  // ✅ PHASE 1: Get session state from SessionBoundaryProvider
+  const { state: sessionState } = useSessionBoundary();
   isEnabled?: boolean;
 }
 
@@ -194,11 +204,16 @@ export default function CoexistenceBlueprint({
   generatedWorkflowUuid,
   selectedSopFileUuid,
   selectedWorkflowFileUuid,
-  sessionToken,
-  sessionState,
+  sessionToken, // ✅ Keep for backward compatibility, but use sessionState from hook
+  sessionState: propSessionState, // ✅ Rename prop to avoid conflict (deprecated, use hook instead)
   isEnabled = false,
 }: CoexistenceBlueprintProps) {
-  const { getPillarState, setPillarState, guideSessionToken } = useGlobalSession();
+  // ✅ PHASE 1: Migrated to SessionBoundaryProvider and PlatformStateProvider
+  // ✅ PHASE 2: Use service layer hook
+  const { state: sessionState } = useSessionBoundary(); // ✅ Use hook, not prop
+  const { optimizeCoexistenceWithContent, saveBlueprint } = useOperationsAPI();
+  // ✅ PHASE 1: Migrated to PlatformStateProvider - use realm state
+  const { getRealmState, setRealmState } = usePlatformState();
 
   // Local state for blueprint functionality
   const [blueprint, setBlueprint] = useState<CoexistenceDeliverable | any | null>(null);
@@ -212,8 +227,9 @@ export default function CoexistenceBlueprint({
   const [optimizedWorkflow, setOptimizedWorkflow] = useState<any>(null);
   const [optimizedWorkflowRaw, setOptimizedWorkflowRaw] = useState<any>(null);
   const [showOptimized, setShowOptimized] = useState(false);
-  // Get operations state for user_id
-  const operationsState = getPillarState('operations') || {};
+  // ✅ PHASE 1: Get Journey realm state for user_id
+  const journeyState = getRealmState('journey', 'state') || {};
+  const operationsState = journeyState; // Compatibility alias
 
   // Domain options for specialization
   const DOMAIN_OPTIONS = [
@@ -244,69 +260,72 @@ export default function CoexistenceBlueprint({
     setBlueprintLoading(true);
     setError(null);
 
-    try {
-      const sessionToken = guideSessionToken || "demo-session";
+    // ✅ PHASE 2: Use service layer hook - no need to pass sessionToken manually
+    // ✅ PHASE 6: Use { data, error } pattern
+    const result = await optimizeCoexistenceWithContent({
+      sopContent: sopText || "",
+      workflowContent: workflowData || "",
+    });
+    setIsStreaming(false);
+    console.log("7. Frontend: API response received:", result);
 
-      // Use the content directly instead of file UUIDs
-      const result: any = await optimizeCoexistenceWithContent(
-        sessionToken,
-        sopText || "",
-        workflowData || "",
-      );
+    if (result.error) {
+      console.error("Coexistence optimization error:", result.error);
+      setError(result.error.message || "Failed to optimize coexistence");
+      setBlueprintLoading(false);
       setIsStreaming(false);
-      console.log("7. Frontend: API response received:", result);
+      return;
+    }
 
+      if (result.data) {
+      const data = result.data as any;
       // Set coexistence analysis if available
-      if (result.coexistence_analysis) {
-        setCoexistenceAnalysis(result.coexistence_analysis);
+      if (data.coexistence_analysis) {
+        setCoexistenceAnalysis(data.coexistence_analysis);
       }
 
       // Handle optimized SOP and workflow
-      if (result.optimized_sop) {
+      if (data.optimized_sop) {
         // Format SOP content properly
-        const sopContent = getSafeFormattedContent(result.optimized_sop, 'sop');
+        const sopContent = getSafeFormattedContent(data.optimized_sop, 'sop');
         setOptimizedSop(sopContent);
         setShowOptimized(true);
       }
 
-      if (result.optimized_workflow) {
+      if (data.optimized_workflow) {
         // Format workflow content properly
-        const workflowContent = getSafeFormattedContent(result.optimized_workflow, 'workflow');
+        const workflowContent = getSafeFormattedContent(data.optimized_workflow, 'workflow');
         setOptimizedWorkflow(workflowContent);
-        setOptimizedWorkflowRaw(result.optimized_workflow); // Store raw object
+        setOptimizedWorkflowRaw(data.optimized_workflow); // Store raw object
         setShowOptimized(true);
       }
 
       // Set the blueprint state for saving
       const blueprintData = {
-        coexistence_analysis: result.coexistence_analysis,
-        optimized_sop: result.optimized_sop,
-        optimized_workflow: result.optimized_workflow,
-        original_sop: result.original_sop,
-        original_workflow: result.original_workflow,
+        coexistence_analysis: data.coexistence_analysis,
+        optimized_sop: data.optimized_sop,
+        optimized_workflow: data.optimized_workflow,
+        original_sop: data.original_sop,
+        original_workflow: data.original_workflow,
         created_at: new Date().toISOString(),
-        user_id: operationsState.user_id || "demo-user"
+        user_id: sessionState.userId || null // ✅ Use actual user ID from session
       };
       setBlueprint(blueprintData);
       console.log("Blueprint state set:", blueprintData);
 
-      // Save to global session for experience pillar
-      const currentOperationsState = getPillarState('operations') || {};
-      setPillarState('operations', {
-        ...currentOperationsState,
-        coexistenceAnalysis: result.coexistence_analysis,
-        optimizedSop: result.optimized_sop,
-        optimizedWorkflow: result.optimized_workflow,
-        workflowData: result.optimized_workflow || currentOperationsState.workflowData,
-        sopText: result.optimized_sop || currentOperationsState.sopText,
+      // ✅ PHASE 1: Save to Journey realm state
+      const currentJourneyState = getRealmState('journey', 'coexistence') || {};
+      await setRealmState('journey', 'coexistence', {
+        ...currentJourneyState,
+        coexistenceAnalysis: data.coexistence_analysis,
+        optimizedSop: data.optimized_sop,
+        optimizedWorkflow: data.optimized_workflow,
+        workflowData: data.optimized_workflow || currentJourneyState.workflowData,
+        sopText: data.optimized_sop || currentJourneyState.sopText,
       });
-
-    } catch (e: any) {
-      setError(e.message || "Failed to optimize blueprint");
-    } finally {
-      setBlueprintLoading(false);
-      setIsStreaming(false);
     }
+    setBlueprintLoading(false);
+    setIsStreaming(false);
   };
 
   // Handler for Save Blueprint
@@ -323,24 +342,21 @@ export default function CoexistenceBlueprint({
     setSaveToast(false);
     setError(null);
 
-    try {
-      console.log("Attempting to save blueprint with data:", blueprint);
-      
-      // Handle both new deliverable format and legacy blueprint format
-      const blueprintData = isOptimizeResponse({ deliverable: blueprint }) ? blueprint : blueprint;
+    console.log("Attempting to save blueprint with data:", blueprint);
+    
+    // Handle both new deliverable format and legacy blueprint format
+    const blueprintData = isOptimizeResponse({ deliverable: blueprint }) ? blueprint : blueprint;
 
-      const result = await saveBlueprintLocal({
-        blueprint: blueprintData,
-        user_id: operationsState.user_id || "demo-user"
-      });
-
-      console.log("Blueprint saved successfully:", result);
-      setSaveToast(true);
-      setTimeout(() => setSaveToast(false), 2000);
-    } catch (e: any) {
-      console.error("Error saving blueprint:", e);
-      setError(e.message || "Failed to save blueprint");
+    // ✅ PHASE 6: Use { data, error } pattern
+    const saveResult = await saveBlueprint({ blueprint: blueprintData });
+    if (saveResult.error) {
+      console.error("Error saving blueprint:", saveResult.error);
+      setError(saveResult.error.message || "Failed to save blueprint");
+      return;
     }
+    console.log("Blueprint saved successfully:", saveResult.data);
+    setSaveToast(true);
+    setTimeout(() => setSaveToast(false), 2000);
   };
 
   return (

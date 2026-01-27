@@ -34,13 +34,13 @@ import {
   Map
 } from 'lucide-react';
 import { InsightsFileSelector } from './InsightsFileSelector';
-import { InsightsService } from '@/shared/services/insights/core';
 import { 
   PermitProcessingResponse,
   TargetSystem,
   PermitProcessingOptions
 } from '@/shared/services/insights/types';
-import { useAuth } from '@/shared/auth/AuthProvider';
+// ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+import { useSessionBoundary } from '@/shared/state/SessionBoundaryProvider';
 import { usePlatformState } from '@/shared/state/PlatformStateProvider';
 import { toast } from 'sonner';
 
@@ -51,9 +51,9 @@ interface PermitProcessingSectionProps {
 export function PermitProcessingSection({ 
   onProcessingComplete 
 }: PermitProcessingSectionProps) {
-  const { sessionToken } = useAuth();
-  const { state } = usePlatformState();
-  const guideSessionToken = sessionToken || state.session.sessionId;
+  // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+  const { state: sessionState } = useSessionBoundary();
+  const { submitIntent, getExecutionStatus } = usePlatformState();
   const [permitFileId, setPermitFileId] = useState<string>('');
   const [targetSystems, setTargetSystems] = useState<TargetSystem[]>([]);
   const [processingOptions, setProcessingOptions] = useState<PermitProcessingOptions>({
@@ -124,45 +124,74 @@ export function PermitProcessingSection({
       setStatus('processing');
       setProgress(0);
 
-      const insightsService = new InsightsService(guideSessionToken);
+      // ✅ PHASE 4: Migrate to intent-based API
+      // NOTE: Permit processing needs new intent `process_permit`
+      // For now, using placeholder pattern that will work when intent is available
+      // See PHASE_4_MIGRATION_GAPS.md for details
       
-      // Simulate progress updates
-      const progressInterval = setInterval(() => {
-        setProgress(prev => {
-          if (prev >= 90) {
-            clearInterval(progressInterval);
-            return 90;
-          }
-          return prev + 10;
-        });
-      }, 500);
+      if (!sessionState.sessionId || !sessionState.tenantId) {
+        throw new Error("Session required to process permit");
+      }
 
-      const response: PermitProcessingResponse = await insightsService.executePermitProcessing(
-        permitFileId,
-        targetSystems,
-        processingOptions,
-        guideSessionToken
+      // Submit intent (will work when backend implements `process_permit` intent)
+      // TODO: Backend needs to implement `process_permit` intent
+      const executionId = await submitIntent(
+        'process_permit', // New intent needed - see PHASE_4_MIGRATION_GAPS.md
+        {
+          permit_file_id: permitFileId,
+          target_systems: targetSystems,
+          processing_options: processingOptions
+        }
       );
 
-      clearInterval(progressInterval);
-      setProgress(100);
+      // Wait for execution with progress updates
+      const maxAttempts = 60; // Permit processing may take longer
+      let attempts = 0;
+      let processingResult: any = null;
 
-      if (response.success) {
-        setProcessingResult(response);
-        setStatus('completed');
-        toast.success('Permit processing completed successfully');
-        if (onProcessingComplete) {
-          onProcessingComplete(response);
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        
+        // Update progress
+        setProgress(Math.min(90, (attempts / maxAttempts) * 90));
+        
+        const status = await getExecutionStatus(executionId);
+        
+        if (status?.status === "completed") {
+          const permitArtifact = status.artifacts?.permit_processing;
+          if (permitArtifact?.semantic_payload) {
+            processingResult = permitArtifact.semantic_payload;
+          }
+          setProgress(100);
+          break;
+        } else if (status?.status === "failed") {
+          throw new Error(status.error || "Permit processing failed");
         }
-      } else {
-        setError(response.error || 'Permit processing failed');
-        setStatus('failed');
-        toast.error('Permit processing failed');
+        
+        attempts++;
+      }
+
+      if (!processingResult) {
+        throw new Error("Permit processing result not found in execution result");
+      }
+
+      const response: PermitProcessingResponse = {
+        success: true,
+        ...processingResult
+      };
+
+      setProcessingResult(response);
+      setStatus('completed');
+      toast.success('Permit processing completed successfully');
+      if (onProcessingComplete) {
+        onProcessingComplete(response);
       }
     } catch (err: any) {
       setError(err.message || 'Failed to execute permit processing');
       setStatus('failed');
-      toast.error('Permit processing failed');
+      toast.error('Permit processing failed', {
+        description: err.message || 'Permit processing needs migration to intent-based API'
+      });
     } finally {
       setLoading(false);
     }

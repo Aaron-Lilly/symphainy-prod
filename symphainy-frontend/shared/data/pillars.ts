@@ -19,7 +19,7 @@ export const pillars = [
     name: "Operations",
     description: "Optimize your processes",
     icon: Settings,
-    href: "/pillars/operation",
+    href: "/pillars/journey",
     color: "bg-purple-500",
   },
   {

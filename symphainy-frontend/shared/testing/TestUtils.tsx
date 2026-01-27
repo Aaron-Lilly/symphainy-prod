@@ -7,7 +7,8 @@
 
 import React from 'react';
 import { render, RenderOptions, RenderResult, renderHook, RenderHookOptions, RenderHookResult } from '@testing-library/react';
-import { SessionProvider } from '../components/SessionProvider';
+// ✅ PHASE 1: SessionProvider archived - use SessionBoundaryProvider in tests instead
+import { SessionBoundaryProvider } from '../state/SessionBoundaryProvider';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { useErrorHandler } from '../hooks/useErrorHandler';
 
@@ -28,13 +29,11 @@ export function TestProvider({
   errorBoundary = true,
   autoInitialize = false 
 }: TestProviderProps) {
+  // ✅ PHASE 1: Use SessionBoundaryProvider instead of archived SessionProvider
   const content = (
-    <SessionProvider 
-      autoInitialize={autoInitialize}
-      initialToken={sessionData?.sessionToken || null}
-    >
+    <SessionBoundaryProvider>
       {children}
-    </SessionProvider>
+    </SessionBoundaryProvider>
   );
 
   if (errorBoundary) {

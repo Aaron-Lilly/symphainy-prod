@@ -117,11 +117,33 @@ export function YourDataMash({ onVisualizationComplete }: YourDataMashProps) {
 
   return (
     <div className="space-y-6">
+      {/* ✅ PHASE 4.1: Enhanced Header - More Prominent */}
+      <Card className="border-2 border-blue-200 bg-gradient-to-br from-blue-50 to-purple-50">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-3 text-2xl">
+                <div className="p-2 bg-blue-100 rounded-lg">
+                  <GitBranch className="h-6 w-6 text-blue-600" />
+                </div>
+                Your Data Mash
+                <Badge variant="secondary" className="ml-2 bg-blue-100 text-blue-800">
+                  Interactive Lineage
+                </Badge>
+              </CardTitle>
+              <CardDescription className="mt-2 text-base">
+                Visualize the complete data pipeline: File → Parsed → Embedding → Interpretation → Analysis
+              </CardDescription>
+            </div>
+          </div>
+        </CardHeader>
+      </Card>
+
       {/* File Selector */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <GitBranch className="h-5 w-5" />
+            <FileText className="h-5 w-5" />
             Select File for Lineage Visualization
           </CardTitle>
           <CardDescription>
@@ -234,38 +256,64 @@ export function YourDataMash({ onVisualizationComplete }: YourDataMashProps) {
         </Card>
       )}
 
-      {/* Lineage Information */}
+      {/* ✅ PHASE 4.1: Enhanced Lineage Metadata Display */}
       {visualization?.visualization && (
-        <Card>
+        <Card className="border-2 border-gray-200">
           <CardHeader>
-            <CardTitle>Lineage Information</CardTitle>
+            <CardTitle className="flex items-center gap-2">
+              <Database className="h-5 w-5" />
+              Lineage Metadata
+            </CardTitle>
             <CardDescription>
-              Details about the data pipeline for this file
+              Detailed information about the data pipeline stages and transformations
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm font-medium text-gray-700">Total Nodes</p>
-                  <p className="text-2xl font-bold">{visualization.visualization.lineage_graph.nodes.length}</p>
+            <div className="space-y-6">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                  <p className="text-xs font-medium text-blue-700 mb-1">Total Nodes</p>
+                  <p className="text-3xl font-bold text-blue-900">{visualization.visualization.lineage_graph.nodes.length}</p>
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-700">Total Connections</p>
-                  <p className="text-2xl font-bold">{visualization.visualization.lineage_graph.edges.length}</p>
+                <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                  <p className="text-xs font-medium text-green-700 mb-1">Connections</p>
+                  <p className="text-3xl font-bold text-green-900">{visualization.visualization.lineage_graph.edges.length}</p>
+                </div>
+                <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
+                  <p className="text-xs font-medium text-purple-700 mb-1">Stages</p>
+                  <p className="text-3xl font-bold text-purple-900">{getUniqueNodeTypes(visualization.visualization.lineage_graph.nodes).length}</p>
+                </div>
+                <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
+                  <p className="text-xs font-medium text-orange-700 mb-1">File ID</p>
+                  <p className="text-sm font-mono text-orange-900 truncate">{visualization.file_id || 'N/A'}</p>
                 </div>
               </div>
 
               <div>
-                <p className="text-sm font-medium text-gray-700 mb-2">Pipeline Stages</p>
+                <p className="text-sm font-semibold text-gray-800 mb-3">Pipeline Stages</p>
                 <div className="flex flex-wrap gap-2">
                   {getUniqueNodeTypes(visualization.visualization.lineage_graph.nodes).map((type) => (
-                    <Badge key={type} variant="secondary">
-                      {type.replace('_', ' ')}
+                    <Badge key={type} variant="secondary" className="text-sm px-3 py-1">
+                      {type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                     </Badge>
                   ))}
                 </div>
               </div>
+
+              {/* ✅ PHASE 4.1: Show lineage metadata if available */}
+              {visualization.visualization.metadata && (
+                <div className="bg-gray-50 border border-gray-200 rounded-lg p-4">
+                  <p className="text-sm font-semibold text-gray-800 mb-2">Additional Metadata</p>
+                  <div className="text-xs text-gray-600 space-y-1">
+                    {Object.entries(visualization.visualization.metadata).map(([key, value]) => (
+                      <div key={key} className="flex justify-between">
+                        <span className="font-medium">{key.replace(/_/g, ' ')}:</span>
+                        <span>{String(value)}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>

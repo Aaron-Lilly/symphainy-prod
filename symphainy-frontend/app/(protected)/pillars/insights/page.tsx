@@ -18,19 +18,21 @@ import {
   CardContent,
 } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { useSetAtom } from "jotai";
-import { chatbotAgentInfoAtom, mainChatbotOpenAtom } from "@/shared/atoms/chatbot-atoms";
+// ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
+import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { SecondaryChatbotAgent, SecondaryChatbotTitle } from "@/shared/types/secondaryChatbot";
 import { DataQualitySection } from "./components/DataQualitySection";
 import { DataInterpretationSection } from "./components/DataInterpretationSection";
 import { YourDataMash } from "./components/YourDataMash";
 import { BusinessAnalysisSection } from "./components/BusinessAnalysisSection";
+import { RelationshipMapping } from "./components/RelationshipMapping";
 import { QualityAssessmentResponse, InterpretationResponse, AnalysisResponse, LineageVisualizationResponse } from "@/shared/managers/InsightsAPIManager";
 import { PillarCompletionMessage } from "../shared/components/PillarCompletionMessage";
 
 export default function InsightsPage() {
-  const setAgentInfo = useSetAtom(chatbotAgentInfoAtom);
-  const setMainChatbotOpen = useSetAtom(mainChatbotOpenAtom);
+  // ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
+  const { setChatbotAgentInfo, setMainChatbotOpen } = usePlatformState();
+  const setAgentInfo = setChatbotAgentInfo; // Alias for compatibility
   
   // State for current analysis (to provide context to agent)
   const [currentAnalysisId, setCurrentAnalysisId] = useState<string | null>(null);
@@ -39,21 +41,14 @@ export default function InsightsPage() {
   const [lineageVisualization, setLineageVisualization] = useState<LineageVisualizationResponse | null>(null);
   const [businessAnalysis, setBusinessAnalysis] = useState<AnalysisResponse | null>(null);
 
-  // Configure Insights Liaison Agent for side panel (not inline)
+  // ✅ PHASE 1.2: Configure Insights Liaison Agent for side panel
   useEffect(() => {
     // Configure the secondary agent but don't show it by default
     setAgentInfo({
       agent: SecondaryChatbotAgent.INSIGHTS_LIAISON,
       title: SecondaryChatbotTitle.INSIGHTS_LIAISON,
       file_url: "",
-        additional_info: JSON.stringify({
-          current_analysis_id: currentAnalysisId,
-          has_data_quality_report: !!dataQualityReport,
-          has_data_interpretation: !!dataInterpretation,
-          has_lineage_visualization: !!lineageVisualization,
-          has_business_analysis: !!businessAnalysis,
-          context: "insights_pillar"
-        })
+      additional_info: "Data quality, interpretation, and business analysis expert. Ask me about data quality assessment, semantic interpretation, lineage visualization, and business insights."
     });
     // Keep main chatbot open by default - GuideAgent will be shown
     setMainChatbotOpen(true);
@@ -102,11 +97,21 @@ export default function InsightsPage() {
     <div className="flex-grow space-y-6">
       {/* Header */}
       <div className="space-y-3">
-        <h2 className="text-h2 font-bold text-gray-800">Insights Pillar</h2>
-        <p className="text-lead text-gray-600">
-          Transform your data into actionable insights with AI-powered analysis.
-          Assess quality, interpret meaning, visualize lineage, and generate business insights.
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-h2 font-bold text-gray-800">Insights Pillar</h2>
+            <p className="text-lead text-gray-600">
+              Transform your data into actionable insights with AI-powered analysis.
+              Assess quality, interpret meaning, visualize lineage, and generate business insights.
+            </p>
+          </div>
+          {/* ✅ PHASE 1.2: Show which Liaison Agent is available */}
+          <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+            <span className="text-xs font-semibold text-blue-900">Available:</span>
+            <span className="text-xs text-blue-700">Insights Liaison Agent</span>
+            <span className="flex h-2 w-2 rounded-full bg-blue-500" title="Liaison agent available" />
+          </div>
+        </div>
       </div>
 
       {/* Tabbed Interface */}
@@ -114,7 +119,11 @@ export default function InsightsPage() {
         <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="data-quality">Data Quality</TabsTrigger>
           <TabsTrigger value="data-interpretation">Data Interpretation</TabsTrigger>
-          <TabsTrigger value="your-data-mash">Your Data Mash</TabsTrigger>
+          {/* ✅ PHASE 4.1: Make "Your Data Mash" more prominent */}
+          <TabsTrigger value="your-data-mash" className="relative">
+            Your Data Mash
+            <span className="ml-2 px-2 py-0.5 text-xs bg-blue-100 text-blue-800 rounded-full">Lineage</span>
+          </TabsTrigger>
           <TabsTrigger value="business-analysis">Business Analysis</TabsTrigger>
         </TabsList>
 
@@ -168,6 +177,27 @@ export default function InsightsPage() {
             <CardContent>
               <YourDataMash 
                 onVisualizationComplete={handleVisualizationComplete}
+              />
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ✅ PHASE 4.3: Relationship Mapping Tab */}
+        <TabsContent value="relationship-mapping">
+          <Card>
+            <CardHeader>
+              <CardTitle>Relationship Mapping</CardTitle>
+              <CardDescription>
+                Visualize entity-relationship graphs to explore connections and patterns in your data.
+                Discover how entities relate to each other with interactive graph exploration.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <RelationshipMapping 
+                onMappingComplete={(result) => {
+                  // Update state if needed
+                  console.log("Relationship mapping completed:", result);
+                }}
               />
             </CardContent>
           </Card>

@@ -28,8 +28,12 @@ from ..enabling_services.workflow_conversion_service import WorkflowConversionSe
 from ..enabling_services.coexistence_analysis_service import CoexistenceAnalysisService
 from ..enabling_services.visual_generation_service import VisualGenerationService
 from ..agents.journey_liaison_agent import JourneyLiaisonAgent
+from ..agents.sop_generation_agent import SOPGenerationAgent
 from symphainy_platform.realms.outcomes.enabling_services.solution_synthesis_service import SolutionSynthesisService
 from symphainy_platform.civic_systems.artifact_plane.artifact_plane import ArtifactPlane
+from symphainy_platform.realms.content.enabling_services.deterministic_chunking_service import DeterministicChunkingService
+from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
+from symphainy_platform.realms.content.enabling_services.semantic_signal_extractor import SemanticSignalExtractor
 
 
 class JourneyOrchestrator:
@@ -74,8 +78,28 @@ class JourneyOrchestrator:
             public_works=public_works,
             sop_generation_agent=self.sop_generation_agent
         )
+        # CoexistenceAnalysisAgent (optional - may not be available)
+        self.coexistence_analysis_agent = None
+        try:
+            from ..agents.coexistence_analysis_agent import CoexistenceAnalysisAgent
+            self.coexistence_analysis_agent = CoexistenceAnalysisAgent(
+                agent_definition_id="coexistence_analysis_agent",
+                public_works=public_works
+            )
+        except (ImportError, AttributeError, TypeError) as e:
+            self.logger.debug(f"CoexistenceAnalysisAgent not available: {e}")
+            self.coexistence_analysis_agent = None
         # Solution synthesis service for converting blueprints to solutions
         self.solution_synthesis_service = SolutionSynthesisService(public_works=public_works)
+        
+        # PHASE 3: Initialize chunking, parsing, and semantic signal services
+        self.deterministic_chunking_service = None
+        self.file_parser_service = None
+        self.semantic_signal_extractor = None
+        if public_works:
+            self.deterministic_chunking_service = DeterministicChunkingService(public_works=public_works)
+            self.file_parser_service = FileParserService(public_works=public_works)
+            self.semantic_signal_extractor = SemanticSignalExtractor(public_works=public_works)
         
         # Initialize runtime context hydration service (for call site responsibility)
         from symphainy_platform.civic_systems.agentic.services.runtime_context_hydration_service import RuntimeContextHydrationService
@@ -318,26 +342,49 @@ class JourneyOrchestrator:
             # Get BPMN file content
             bpmn_xml = None
             
-            # Try to get from parsed file if workflow_file_path is a file_id
+            # PHASE 3: Get parsed file and create chunks + semantic signals
+            parsed_file = None
+            chunks = None
+            semantic_signals = None
+            
             if self.public_works:
                 try:
                     # Check if it's a parsed file ID
-                    from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
-                    file_parser_service = FileParserService(public_works=self.public_works)
-                    parsed_content = await file_parser_service.get_parsed_file(
+                    parsed_file = await self.file_parser_service.get_parsed_file(
                         parsed_file_id=workflow_file_path,
                         tenant_id=context.tenant_id,
                         context=context
                     )
                     
-                    if parsed_content:
+                    if parsed_file:
                         # Extract BPMN XML from parsed content
+                        parsed_content = parsed_file.get("parsed_content") or parsed_file
                         bpmn_xml = parsed_content.get("data") or parsed_content.get("content")
                         if isinstance(bpmn_xml, bytes):
                             bpmn_xml = bpmn_xml.decode('utf-8')
                         elif isinstance(bpmn_xml, dict):
                             # Try to get XML from metadata or content field
-                            bpmn_xml = parsed_content.get("metadata", {}).get("bpmn_xml") or str(parsed_content.get("content", ""))
+                            bpmn_xml = parsed_file.get("metadata", {}).get("bpmn_xml") or str(parsed_content.get("content", ""))
+                        
+                        # PHASE 3: Create deterministic chunks for workflow file
+                        if parsed_content:
+                            chunks = await self.deterministic_chunking_service.create_chunks(
+                                parsed_content=parsed_content,
+                                file_id=parsed_file.get("file_id"),
+                                tenant_id=context.tenant_id,
+                                parsed_file_id=workflow_file_path
+                            )
+                            
+                            # PHASE 3: Extract semantic signals (trigger-based)
+                            if chunks and self.semantic_signal_extractor:
+                                try:
+                                    semantic_signals = await self.semantic_signal_extractor.process_request(
+                                        request={"chunks": chunks},
+                                        context=context
+                                    )
+                                except Exception as e:
+                                    self.logger.debug(f"Could not extract semantic signals: {e}")
+                                    # Degrade gracefully - continue without signals
                 except Exception as e:
                     self.logger.debug(f"Could not get parsed file: {e}, trying file storage")
             
@@ -383,11 +430,12 @@ class JourneyOrchestrator:
                     }
                 }
         
-        # Generate workflow visualization
+        # PHASE 3: Generate workflow visualization with semantic signals
         visual_result = None
         try:
             visual_result = await self.visual_generation_service.generate_workflow_visual(
                 workflow_data=workflow_result,
+                semantic_signals=semantic_signals,  # Pass semantic signals for enhanced visuals
                 tenant_id=context.tenant_id,
                 context=context
             )
@@ -480,23 +528,53 @@ class JourneyOrchestrator:
         if not workflow_id:
             raise ValueError("workflow_id is required for analyze_coexistence intent")
         
-        # Assemble runtime context (call site responsibility)
-        runtime_context = await self.runtime_context_service.create_runtime_context(
-            request={"type": "analyze_coexistence", "workflow_id": workflow_id},
-            context=context
-        )
-        
         # Use CoexistenceAnalysisAgent (agentic forward pattern)
         # Agent reasons about workflow, uses CoexistenceAnalysisService as tool via MCP
-        # Pass runtime context (read-only) to agent
-        agent_result = await self.coexistence_analysis_agent.process_request(
-            {
-                "type": "analyze_coexistence",
-                "workflow_id": workflow_id
-            },
-            context,
-            runtime_context=runtime_context
-        )
+        if not self.coexistence_analysis_agent:
+            # Fallback: Use service directly if agent not available
+            analysis_result = await self.coexistence_analysis_service.analyze_coexistence(
+                workflow_id=workflow_id,
+                tenant_id=context.tenant_id,
+                context=context
+            )
+            return {
+                "artifacts": {
+                    "coexistence": analysis_result
+                },
+                "events": []
+            }
+        
+        # Use agent (agentic forward pattern)
+        # Agent will assemble runtime context internally via AgentBase
+        try:
+            agent_result = await self.coexistence_analysis_agent.process_request(
+                {
+                    "type": "analyze_coexistence",
+                    "workflow_id": workflow_id
+                },
+                context
+            )
+        except (ValueError, AttributeError) as e:
+            # If agent fails (e.g., workflow not found), fallback to service
+            # Fallbacks must obey the same semantic contract as primary agent execution.
+            self.logger.warning(f"Agent failed: {e}, using service fallback")
+            analysis_result = await self.coexistence_analysis_service.analyze_coexistence(
+                workflow_id=workflow_id,
+                tenant_id=context.tenant_id,
+                context=context
+            )
+            # Ensure fallback produces structured artifact with same semantic contract
+            return {
+                "artifacts": {
+                    "coexistence": {
+                        "generation_mode": "agent_fallback",
+                        "confidence": "degraded",
+                        "semantic_payload": analysis_result.get("semantic_payload", analysis_result),
+                        "renderings": analysis_result.get("renderings", {})
+                    }
+                },
+                "events": []
+            }
         
         # Extract outcome from agent result
         analysis_result = agent_result.get("artifact", {})

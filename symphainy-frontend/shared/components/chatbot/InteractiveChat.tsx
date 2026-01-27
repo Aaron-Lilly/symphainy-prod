@@ -13,22 +13,21 @@ import { Input } from "@/components/ui/input";
 import { Loader2, SendHorizontal } from "lucide-react";
 import StreamingMessage from "./StreamingMessage";
 import { useRouter } from "next/navigation";
-import { useAtomValue, useSetAtom } from "jotai";
-import { chatbotAgentInfoAtom, mainChatbotOpenAtom } from "@/shared/atoms/chatbot-atoms";
-import { useAuth } from "@/shared/auth/AuthProvider";
+// ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
+// ✅ PHASE 4: Session-First - Use SessionBoundary instead of AuthProvider for session state
+import { useSessionBoundary, SessionStatus } from "@/shared/state/SessionBoundaryProvider";
 import { useUnifiedAgentChat } from "@/shared/hooks/useUnifiedAgentChat";
 
 export default function InteractiveChat() {
   const router = useRouter();
-  const { isAuthenticated, sessionToken } = useAuth();
-  const { state } = usePlatformState();
+  // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+  const { state: sessionState } = useSessionBoundary();
+  const guideSessionToken = sessionState.sessionId;
   
-  // Get session token - prefer auth token (for backward compatibility), fallback to session ID
-  const guideSessionToken = sessionToken || state.session.sessionId;
-  
-  const mainChatbotOpen = useAtomValue(mainChatbotOpenAtom);
-  const setMainChatbotOpen = useSetAtom(mainChatbotOpenAtom);
+  // ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
+  const { state, setMainChatbotOpen } = usePlatformState();
+  const mainChatbotOpen = state.ui.chatbot.mainChatbotOpen;
   const [message, setMessage] = useState("");
   const [wsMessages, setWsMessages] = useState<
     {
@@ -45,9 +44,9 @@ export default function InteractiveChat() {
   const [agentData, setAgentData] = useState<any>(null);
   const [pillar, setPillar] = useState<string | null>(null);
 
-  // ✅ STRICT Safety check: Only use websocket if authenticated and have valid session token
+  // ✅ PHASE 4: Session-First - Only connect when SessionStatus === Active
   // Additional check: ensure token is substantial (not just a few characters)
-  const shouldConnect = isAuthenticated && 
+  const shouldConnect = sessionState.status === SessionStatus.Active && 
     !!guideSessionToken && 
     typeof guideSessionToken === 'string' && 
     guideSessionToken.trim() !== '' && 
@@ -240,8 +239,48 @@ export default function InteractiveChat() {
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
         {wsMessages.length === 0 ? (
-          <div className="text-gray-500 text-xs">
-            Ask me anything! I'm here to help guide you through your business transformation.
+          // ✅ PHASE 1.1: Enhanced welcome message with quick start suggestions
+          <div className="flex flex-col gap-4 p-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h3 className="text-sm font-semibold text-blue-900 mb-2">👋 Welcome to Guide Agent</h3>
+              <p className="text-xs text-blue-800 mb-3">
+                I'm your AI concierge for the Symphainy platform. Ask me anything about:
+              </p>
+              <ul className="text-xs text-blue-700 space-y-1 list-disc list-inside">
+                <li>Platform navigation and capabilities</li>
+                <li>How to use Content, Insights, Journey, and Outcomes pillars</li>
+                <li>Best practices and workflows</li>
+                <li>Getting started with your business transformation</li>
+              </ul>
+            </div>
+            <div className="space-y-2">
+              <p className="text-xs font-semibold text-gray-700">Quick Start Suggestions:</p>
+              <div className="flex flex-col gap-2">
+                {[
+                  "How do I upload and analyze files?",
+                  "What is the Coexistence Fabric?",
+                  "How do I generate a roadmap?",
+                  "Explain the platform architecture"
+                ].map((suggestion, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => {
+                      setMessage(suggestion);
+                      // Auto-submit after a brief moment
+                      setTimeout(() => {
+                        const form = document.querySelector('form');
+                        if (form) {
+                          form.dispatchEvent(new Event('submit', { cancelable: true, bubbles: true }));
+                        }
+                      }, 100);
+                    }}
+                    className="text-left text-xs px-3 py-2 bg-gray-50 hover:bg-gray-100 border border-gray-200 rounded-md transition-colors"
+                  >
+                    💡 {suggestion}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         ) : (
           wsMessages.map((msg, idx) => (

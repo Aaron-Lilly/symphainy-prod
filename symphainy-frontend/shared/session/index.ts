@@ -39,5 +39,6 @@ export {
   useSmartCitySession
 } from './hooks_persistence';
 
-// Export the enhanced GlobalSessionProvider
-export { GlobalSessionProvider, useGlobalSession } from './GlobalSessionProvider'; 
+// ✅ PHASE 1: GlobalSessionProvider archived - use SessionBoundaryProvider instead
+// export { GlobalSessionProvider, useGlobalSession } from './GlobalSessionProvider';
+// Migration: Use SessionBoundaryProvider from '@/shared/state/SessionBoundaryProvider' 

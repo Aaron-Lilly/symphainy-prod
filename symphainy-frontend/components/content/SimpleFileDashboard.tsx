@@ -1,8 +1,9 @@
 "use client";
 import React, { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { listContentFiles, SimpleFileData } from "@/lib/api/content";
-import { useGlobalSession } from "@/shared/agui/GlobalSessionProvider";
+// ✅ PHASE 2: Use service layer hook instead of direct API calls
+import { useContentAPI, SimpleFileData } from "@/shared/hooks/useContentAPI";
+import { useSessionBoundary } from "@/shared/state/SessionBoundaryProvider";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   Table,
@@ -17,37 +18,39 @@ import { RefreshCw, FileText, FileImage, FileSpreadsheet, ChevronDown, ChevronUp
 import { toast } from "sonner";
 
 export default function SimpleFileDashboard() {
-  const { guideSessionToken } = useGlobalSession();
+  // ✅ PHASE 1: Migrated to SessionBoundaryProvider
+  // ✅ PHASE 2: Use service layer hook
+  const { state: sessionState } = useSessionBoundary();
+  const { listContentFiles } = useContentAPI();
   const [files, setFiles] = useState<SimpleFileData[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
 
+  // ✅ PHASE 2: Use service layer hook - no need to pass token manually
+  // ✅ PHASE 6: Use { data, error } pattern
   const loadFiles = async () => {
-    if (!guideSessionToken) {
-      setError("No session token available");
-      return;
-    }
-
     setIsLoading(true);
     setError(null);
 
-    try {
-      const fileData = await listContentFiles(guideSessionToken);
-      setFiles(fileData);
-      toast.success(`Loaded ${fileData.length} files`);
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to load files";
+    // Service layer hook automatically gets token from SessionBoundaryProvider
+    const result = await listContentFiles();
+    if (result.error) {
+      const errorMessage = result.error.message || "Failed to load files";
       setError(errorMessage);
       toast.error(errorMessage);
-    } finally {
-      setIsLoading(false);
+    } else if (result.data) {
+      setFiles(result.data);
+      toast.success(`Loaded ${result.data.length} files`);
+    } else {
+      setFiles([]);
     }
+    setIsLoading(false);
   };
 
   useEffect(() => {
     loadFiles();
-  }, [guideSessionToken]);
+  }, [listContentFiles]);
 
   const getFileIcon = (fileType: string) => {
     switch (fileType.toLowerCase()) {
@@ -155,7 +158,7 @@ export default function SimpleFileDashboard() {
           </TableHeader>
           <TableBody>
             {displayFiles.map((file) => (
-              <TableRow key={file.id}>
+              <TableRow key={file.id || file.file_id}>
                 <TableCell className="flex items-center space-x-2">
                   {getFileIcon(file.file_type)}
                   <span className="font-medium">{file.ui_name}</span>

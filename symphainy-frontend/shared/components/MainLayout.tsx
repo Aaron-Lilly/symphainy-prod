@@ -22,16 +22,10 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import TopNavBar from "./TopNavBar";
 import ChatbotToggleDemo from "@/components/examples/ChatbotToggleDemo";
-import { 
-  mainChatbotOpenAtom,
-  shouldShowSecondaryChatbotAtom,
-  primaryChatbotTransformAtom,
-  secondaryChatbotPositionAtom,
-  primaryChatbotHeightAtom
-} from "../atoms";
-import { useAtomValue } from "jotai";
+// ✅ PHASE 1: Removed Jotai atoms - using PlatformStateProvider instead
 import { useChatbotRouteReset } from "@/shared/hooks/useChatbotRouteReset";
-import { useAuth } from "@/shared/auth/AuthProvider";
+// ✅ PHASE 4: Session-First - Use SessionBoundary instead of AuthProvider for session state
+import { useSessionBoundary, SessionStatus } from "@/shared/state/SessionBoundaryProvider";
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 
 interface MainLayoutProps {
@@ -42,12 +36,23 @@ export default function MainLayout({ children }: MainLayoutProps) {
   // ✅ ONE line - automatically resets chatbot on route changes
   useChatbotRouteReset();
   
-  // ✅ Check authentication status - only render chat panel when authenticated
-  const { isAuthenticated, isLoading: authLoading, sessionToken } = useAuth();
-  const { state } = usePlatformState();
+  // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+  const { state: sessionState } = useSessionBoundary();
+  const { state, getShouldShowSecondaryChatbot, getPrimaryChatbotHeight, getSecondaryChatbotPosition, getPrimaryChatbotTransform } = usePlatformState();
   
-  // Get session token - prefer auth token (for backward compatibility), fallback to session ID
-  const guideSessionToken = sessionToken || state.session.sessionId;
+  // ✅ PHASE 5: Get chatbot state from PlatformStateProvider (replaces Jotai atoms)
+  const mainChatbotOpen = state.ui.chatbot.mainChatbotOpen;
+  const shouldShowSecondaryChatbot = getShouldShowSecondaryChatbot();
+  const primaryChatbotHeight = getPrimaryChatbotHeight();
+  const secondaryChatbotPosition = getSecondaryChatbotPosition();
+  const primaryChatbotTransform = getPrimaryChatbotTransform();
+  
+  // Get session token from SessionBoundary
+  const guideSessionToken = sessionState.sessionId;
+  
+  // ✅ PHASE 4: Session-First - Map SessionStatus to auth-like flags for compatibility
+  const isAuthenticated = sessionState.status === SessionStatus.Active;
+  const authLoading = sessionState.status === SessionStatus.Initializing || sessionState.status === SessionStatus.Authenticating;
   
   // Get current route to highlight the active tab
   const pathname = usePathname();
@@ -59,9 +64,10 @@ export default function MainLayout({ children }: MainLayoutProps) {
   const isAuthRoute = authRoutes.includes(pathname);
   
   // ✅ CRITICAL: Verify that both access_token and session_id exist
+  // ✅ SESSION BOUNDARY PATTERN: Get tokens from SessionBoundaryProvider, not sessionStorage
   // access_token is for authentication, session_id is for session state
-  const accessToken = typeof window !== 'undefined' ? sessionStorage.getItem("access_token") : null;
-  const sessionId = typeof window !== 'undefined' ? sessionStorage.getItem("session_id") : null;
+  const accessToken = sessionState.userId ? (typeof window !== 'undefined' ? sessionStorage.getItem("access_token") : null) : null;
+  const sessionId = sessionState.sessionId;
   // Both tokens must exist and match what we have
   const tokenMatches = accessToken && sessionId && guideSessionToken === sessionId;
   
@@ -76,9 +82,10 @@ export default function MainLayout({ children }: MainLayoutProps) {
   const [authReady, setAuthReady] = useState(false);
   
   useEffect(() => {
-    // Small delay to ensure auth state is fully settled before allowing chat to render
+    // ✅ PHASE 4: Session-First - Wait for SessionStatus === Active
+    // Small delay to ensure session state is fully settled before allowing chat to render
     // This prevents race conditions where components mount before token is ready
-    if (!authLoading && isAuthenticated && guideSessionToken && tokenMatches) {
+    if (!authLoading && sessionState.status === SessionStatus.Active && guideSessionToken && tokenMatches) {
       const timer = setTimeout(() => {
         setAuthReady(true);
       }, 100); // 100ms delay to ensure state is settled
@@ -86,15 +93,18 @@ export default function MainLayout({ children }: MainLayoutProps) {
     } else {
       setAuthReady(false);
     }
-  }, [authLoading, isAuthenticated, guideSessionToken, tokenMatches]);
+  }, [authLoading, sessionState.status, guideSessionToken, tokenMatches]);
   
-  // ✅ LAZY LOADING: State to control when chat panel should be loaded
-  // Persist in sessionStorage so it survives page refreshes
+  // ✅ PHASE 1.1: Platform Capability Showcase - Make chat panel always visible by default
+  // Chat panel should be prominent to showcase multi-agent collaboration
+  // Still persist in sessionStorage so it survives page refreshes
   const [chatPanelRequested, setChatPanelRequested] = useState(() => {
     if (typeof window !== 'undefined') {
-      return sessionStorage.getItem('chatPanelRequested') === 'true';
+      // Check if user has explicitly closed it, otherwise default to open
+      const explicitlyClosed = sessionStorage.getItem('chatPanelExplicitlyClosed') === 'true';
+      return !explicitlyClosed; // Default to open unless explicitly closed
     }
-    return false;
+    return true; // Default to open
   });
   
   // Update sessionStorage when chat panel is requested
@@ -108,14 +118,17 @@ export default function MainLayout({ children }: MainLayoutProps) {
     }
   }, [chatPanelRequested]);
   
-  // ✅ Clear chatPanelRequested when user logs out (isAuthenticated becomes false)
+  // ✅ PHASE 4: Session-First - Reset chat panel when session becomes Invalid or Anonymous
   useEffect(() => {
-    if (typeof window !== 'undefined' && !isAuthenticated && !authLoading) {
-      // User logged out - clear chat panel state
-      setChatPanelRequested(false);
-      sessionStorage.removeItem('chatPanelRequested');
+    if (typeof window !== 'undefined' && 
+        (sessionState.status === SessionStatus.Invalid || 
+         sessionState.status === SessionStatus.Anonymous) && 
+        !authLoading) {
+      // Session invalidated or user logged out - reset chat panel to default (open)
+      setChatPanelRequested(true);
+      sessionStorage.removeItem('chatPanelExplicitlyClosed');
     }
-  }, [isAuthenticated, authLoading]);
+  }, [sessionState.status, authLoading]);
   
   // Debug: Log auth state for troubleshooting button visibility
   useEffect(() => {
@@ -123,7 +136,8 @@ export default function MainLayout({ children }: MainLayoutProps) {
       console.log('[MainLayout] Auth state:', {
         isAuthRoute,
         authLoading,
-        isAuthenticated,
+        sessionStatus: sessionState.status, // ✅ PHASE 4: Log SessionStatus instead of isAuthenticated
+        isAuthenticated: sessionState.status === SessionStatus.Active,
         hasToken: !!guideSessionToken,
         tokenLength: guideSessionToken?.length || 0,
         tokenMatches,
@@ -131,12 +145,13 @@ export default function MainLayout({ children }: MainLayoutProps) {
         chatPanelRequested
       });
     }
-  }, [isAuthRoute, authLoading, isAuthenticated, guideSessionToken, tokenMatches, authReady, chatPanelRequested]);
+  }, [isAuthRoute, authLoading, sessionState.status, guideSessionToken, tokenMatches, authReady, chatPanelRequested]);
   
+  // ✅ PHASE 4: Session-First - Only render chat when SessionStatus === Active
   const shouldRenderChat = 
     !isAuthRoute && // ✅ CRITICAL: Never render on auth routes, but allow landing page
     !authLoading && 
-    isAuthenticated && 
+    sessionState.status === SessionStatus.Active && // ✅ PHASE 4: Use SessionStatus instead of isAuthenticated
     guideSessionToken && 
     typeof guideSessionToken === 'string' &&
     guideSessionToken.trim() !== '' && 
@@ -145,13 +160,12 @@ export default function MainLayout({ children }: MainLayoutProps) {
     tokenMatches && // ✅ CRITICAL: Token must match auth token
     authReady && // ✅ CRITICAL: Wait for auth state to settle
     chatPanelRequested; // ✅ LAZY LOADING: Only render when user requests it
-  const mainChatbotOpen = useAtomValue(mainChatbotOpenAtom);
   
-  // Get derived atoms for animations
-  const showSecondary = useAtomValue(shouldShowSecondaryChatbotAtom);
-  const primaryTransform = useAtomValue(primaryChatbotTransformAtom);
-  const secondaryPosition = useAtomValue(secondaryChatbotPositionAtom);
-  const primaryHeight = useAtomValue(primaryChatbotHeightAtom);
+  // ✅ PHASE 5: Get derived chatbot state from PlatformStateProvider (replaces Jotai atoms)
+  const showSecondary = shouldShowSecondaryChatbot;
+  const primaryTransform = primaryChatbotTransform;
+  const secondaryPosition = secondaryChatbotPosition;
+  const primaryHeight = primaryChatbotHeight;
 
   return (
     <div className="flex min-h-screen min-w-screen overflow-hidden bg-white">
@@ -163,48 +177,8 @@ export default function MainLayout({ children }: MainLayoutProps) {
           <div className="w-[23%] bg-gray-100">
             {/* ✅ LAZY LOADING: Show launch button if chat not requested, otherwise show chat panel */}
             {/* Debug: Log button visibility conditions - Always log for troubleshooting */}
-            {(() => {
-              const canShowButton = !isAuthRoute && !authLoading && isAuthenticated && guideSessionToken && tokenMatches && authReady && !chatPanelRequested;
-              // Always log for troubleshooting (not just in development)
-              console.log('[MainLayout] Button visibility check:', {
-                isAuthRoute,
-                authLoading,
-                isAuthenticated,
-                hasToken: !!guideSessionToken,
-                tokenLength: guideSessionToken?.length || 0,
-                tokenMatches,
-                authReady,
-                chatPanelRequested,
-                canShowButton,
-                pathname
-              });
-              return canShowButton;
-            })() && (
-              <div className="sticky top-24 h-fit">
-                <div className="bg-white rounded-lg shadow-lg border border-gray-200 p-6">
-                  <div className="flex flex-col items-center space-y-4">
-                    <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
-                      <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                      </svg>
-                    </div>
-                    <div className="text-center">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-2">Chat Experience</h3>
-                      <p className="text-sm text-gray-600 mb-4">
-                        Connect with our AI guide and liaison agents for assistance
-                      </p>
-                      <Button
-                        onClick={() => setChatPanelRequested(true)}
-                        className="w-full bg-blue-600 hover:bg-blue-700 text-white"
-                        size="lg"
-                      >
-                        Launch Chat Experience
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
+            {/* ✅ PHASE 1.1: Chat panel is now always visible by default, so launch button is no longer needed */}
+            {/* Keeping this section empty for now - chat panel renders directly when shouldRenderChat is true */}
           </div>
         </div>
       </div>

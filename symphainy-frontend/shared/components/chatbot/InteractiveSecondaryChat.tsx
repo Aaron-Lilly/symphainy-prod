@@ -13,23 +13,23 @@ import { Input } from "@/components/ui/input";
 import { Loader2, SendHorizontal } from "lucide-react";
 import StreamingMessage from "./StreamingMessage";
 import { useRouter } from "next/navigation";
-import { useAtomValue, useSetAtom } from "jotai";
-import { chatbotAgentInfoAtom, mainChatbotOpenAtom } from "@/shared/atoms/chatbot-atoms";
-import { useAuth } from "@/shared/auth/AuthProvider";
+// ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
+// ✅ PHASE 4: Session-First - Use SessionBoundary instead of AuthProvider for session state
+import { useSessionBoundary, SessionStatus } from "@/shared/state/SessionBoundaryProvider";
 import { SecondaryChatbotAgent } from "@/shared/types/secondaryChatbot";
 import BusinessAnalysisDisplay from "@/components/insights/BusinessAnalysisDisplay";
 import { useUnifiedAgentChat, PillarType } from "@/shared/hooks/useUnifiedAgentChat";
 
 export default function InteractiveSecondaryChat() {
-  const agentInfo = useAtomValue(chatbotAgentInfoAtom);
-  const setMainChatbotOpen = useSetAtom(mainChatbotOpenAtom);
-  const mainChatbotOpen = useAtomValue(mainChatbotOpenAtom);
-  const { isAuthenticated, sessionToken } = useAuth();
-  const { state } = usePlatformState();
+  // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+  const { state: sessionState } = useSessionBoundary();
+  const guideSessionToken = sessionState.sessionId;
   
-  // Get session token - prefer auth token (for backward compatibility), fallback to session ID
-  const guideSessionToken = sessionToken || state.session.sessionId;
+  // ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
+  const { state, setMainChatbotOpen } = usePlatformState();
+  const agentInfo = state.ui.chatbot.agentInfo;
+  const mainChatbotOpen = state.ui.chatbot.mainChatbotOpen;
   const router = useRouter();
   
   const [message, setMessage] = useState("");
@@ -54,7 +54,8 @@ export default function InteractiveSecondaryChat() {
   
   // ✅ STRICT Safety check: Only use websocket if authenticated and have valid session token
   // Additional check: ensure token is substantial (not just a few characters)
-  const shouldConnect = isAuthenticated && 
+  // ✅ PHASE 4: Session-First - Only connect when SessionStatus === Active
+  const shouldConnect = sessionState.status === SessionStatus.Active && 
     !!guideSessionToken && 
     typeof guideSessionToken === 'string' && 
     guideSessionToken.trim() !== '' && 
@@ -70,7 +71,7 @@ export default function InteractiveSecondaryChat() {
     isLoading: unifiedLoading,
     connect: connectWebSocket
   } = useUnifiedAgentChat({
-    sessionToken: shouldConnect ? guideSessionToken : undefined,
+    sessionToken: shouldConnect ? guideSessionToken : undefined, // ✅ PHASE 4: guideSessionToken comes from SessionBoundary
     autoConnect: false, // ✅ Don't auto-connect - wait for user interaction
     initialAgent: 'liaison',
     initialPillar: (currentPillar !== "general" ? currentPillar : undefined) as PillarType | undefined,

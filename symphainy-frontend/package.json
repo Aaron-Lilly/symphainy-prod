@@ -10,7 +10,7 @@
     "format": "prettier --write \"**/*.{js,jsx,ts,tsx,css,md,json}\"",
     "test": "jest",
     "test:unit": "jest",
-    "test:integration": "jest tests/integration --testEnvironment=node",
+    "test:integration": "jest __tests__/integration --testEnvironment=node --setupFilesAfterEnv=./jest.setup.integration.js",
     "test:e2e": "playwright test"
   },
   "dependencies": {
@@ -67,6 +67,7 @@
     "@babel/preset-typescript": "^7.27.1",
     "@playwright/test": "^1.53.1",
     "@tailwindcss/typography": "^0.5.16",
+    "@testing-library/dom": "^10.4.1",
     "@testing-library/jest-dom": "^6.6.3",
     "@testing-library/react": "^16.3.0",
     "@types/jest": "29.5.12",

@@ -25,7 +25,8 @@ import {
   Code,
   RefreshCw
 } from 'lucide-react';
-import { useAuth } from '@/shared/auth/AuthProvider';
+// ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+import { useSessionBoundary, SessionStatus } from '@/shared/state/SessionBoundaryProvider';
 import { usePlatformState } from '@/shared/state/PlatformStateProvider';
 import { useContentAPIManager } from '@/shared/managers/ContentAPIManager';
 import { FileMetadata, FileStatus } from '@/shared/types/file';
@@ -41,8 +42,10 @@ export function ParsePreview({
   selectedFile: propSelectedFile, 
   className
 }: ParsePreviewProps) {
-  const { isAuthenticated } = useAuth();
-  const { state } = usePlatformState();
+  // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+  const { state: sessionState } = useSessionBoundary();
+  const { state, submitIntent, getExecutionStatus } = usePlatformState();
+  const isAuthenticated = sessionState.status === SessionStatus.Active;
   const contentAPIManager = useContentAPIManager();
   
   const [parsedFiles, setParsedFiles] = useState<any[]>([]);
@@ -54,8 +57,9 @@ export function ParsePreview({
 
   // Load ALL parsed files from parsed_data_files table
   // With the backend fix, parsed_file_id now matches the actual GCS UUID, so lookups work correctly
+  // ✅ PHASE 4: Migrate to intent-based API (list_files intent)
   const loadParsedFiles = useCallback(async () => {
-    if (!state.session.sessionId) {
+    if (!sessionState.sessionId || !sessionState.tenantId) {
       setParsedFiles([]);
       setSelectedParsedFileId(null);
       setParsedFilePreview(null);
@@ -65,43 +69,72 @@ export function ParsePreview({
     setLoadingParsedFiles(true);
     setError(null);
     try {
-      // Load parsed files using new ContentAPIManager
-      // Note: listParsedFiles may need to be added to new ContentAPIManager
-      // For MVP, we'll use the existing endpoint pattern
-      const { getApiEndpointUrl } = require('@/shared/config/api-config');
-      const url = getApiEndpointUrl('/api/v1/content-pillar/list-parsed-files');
-      
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: { 'Content-Type': 'application/json' },
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to load parsed files: ${response.statusText}`);
+        setParsedFiles([]);
+        setError('Session required to load files');
+        return;
       }
-      
-      const data = await response.json();
-      const parsedFiles = data.parsed_files || [];
+
+      // Submit list_files intent to get all files
+      const executionId = await submitIntent(
+        'list_files',
+        {
+          // Optional: Add file_type filter if we want to filter parsed files
+          // For now, get all files and filter client-side for parsed status
+        }
+      );
+
+      // Wait for execution to complete
+      const maxAttempts = 10;
+      let attempts = 0;
+      let files: any[] = [];
+
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const status = await getExecutionStatus(executionId);
+        
+        if (status?.status === "completed") {
+          // Extract files from execution artifacts
+          const fileListArtifact = status.artifacts?.file_list;
+          if (fileListArtifact?.semantic_payload?.files) {
+            files = fileListArtifact.semantic_payload.files;
+          }
+          break;
+        } else if (status?.status === "failed") {
+          throw new Error(status.error || "Failed to load files");
+        }
+        
+        attempts++;
+      }
+
+      // Filter for parsed files (files that have been parsed)
+      // Note: This is a client-side filter - in the future, we could add a status filter to the intent
+      const parsedFiles = files.filter((file: any) => {
+        // Files are considered "parsed" if they have parsing metadata or status
+        // This logic may need adjustment based on actual file structure
+        return file.file_type === 'parsed' || file.status === 'parsed' || file.parsed_file_id;
+      });
+
       setParsedFiles(parsedFiles);
       
       // Auto-select first parsed file if available and none selected
       if (parsedFiles.length > 0 && !selectedParsedFileId) {
-        const firstFileId = parsedFiles[0].parsed_file_id || parsedFiles[0].id;
+        const firstFileId = parsedFiles[0].parsed_file_id || parsedFiles[0].file_id || parsedFiles[0].id;
         setSelectedParsedFileId(firstFileId);
       }
     } catch (error) {
       console.error('[ParsePreview] Error loading parsed files:', error);
       setParsedFiles([]);
-      setError('Failed to load parsed files');
+      setError(error instanceof Error ? error.message : 'Failed to load parsed files');
     } finally {
       setLoadingParsedFiles(false);
     }
-  }, [state.session.sessionId]);
+  }, [sessionState.sessionId, sessionState.tenantId, selectedParsedFileId, submitIntent, getExecutionStatus]);
 
   // Load parsed files on mount and when session changes
   useEffect(() => {
     loadParsedFiles();
-  }, [state.session.sessionId, loadParsedFiles]);
+  }, [sessionState.sessionId, loadParsedFiles]);
 
   // Listen for parse completion events from FileParser
   useEffect(() => {

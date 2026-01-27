@@ -25,7 +25,7 @@ export const SOPWorkflowTab: React.FC<SOPWorkflowTabProps> = ({
         </p>
         <div className="mt-3">
           <Button 
-            onClick={() => router.push('/pillars/operation')}
+            onClick={() => router.push('/pillars/journey')}
             className="bg-blue-600 hover:bg-blue-700"
           >
             Go to Operations Pillar

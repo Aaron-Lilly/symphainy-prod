@@ -3,19 +3,22 @@ import React, { useState, useEffect } from "react";
 
 // Force dynamic rendering to avoid SSR issues
 export const dynamic = 'force-dynamic';
-import { useAuth } from "@/shared/auth/AuthProvider";
+// ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+import { useSessionBoundary, SessionStatus } from "@/shared/state/SessionBoundaryProvider";
+import { useAuth } from "@/shared/auth/AuthProvider"; // Keep for user data
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { useJourneyAPIManager } from "@/shared/hooks/useJourneyAPIManager";
-import { chatbotAgentInfoAtom, mainChatbotOpenAtom } from "@/shared/atoms/chatbot-atoms";
-import { useSetAtom } from "jotai";
+import { SecondaryChatbotAgent } from "@/shared/types/secondaryChatbot";
+// ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms (already imported above)
 import { usePathname } from "next/navigation";
 import { StateHandler, LoadingIndicator, ErrorDisplay, SuccessDisplay } from "@/components/ui/loading-error-states";
 import { toast } from "sonner";
 import { FileType, FileMetadata } from "@/shared/types/file";
 import { LoadingState, OperationsError } from "@/shared/types/operations";
+import { Badge } from "@/components/ui/badge";
 
 // Import micro-modular components
-import JourneyChoice from "@/components/operations/JourneyChoice"; // TODO: Update path if component is moved
+import JourneyChoice from "@/components/operations/JourneyChoice";
 import FileSelector from "./components/FileSelector";
 import WizardActive from "./components/WizardActive";
 import ProcessBlueprint from "./components/ProcessBlueprint";
@@ -33,10 +36,13 @@ import { PillarCompletionMessage } from "../shared/components/PillarCompletionMe
 const JOURNEY_FILE_TYPES = [FileType.Document, FileType.Pdf, FileType.Text, FileType.SopWorkflow];
 
 export default function JourneyPillar() {
-  const setAgentInfo = useSetAtom(chatbotAgentInfoAtom);
-  const setMainChatbotOpen = useSetAtom(mainChatbotOpenAtom);
-  const { isAuthenticated, user } = useAuth();
-  const { state } = usePlatformState();
+  // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+  const { state: sessionState } = useSessionBoundary();
+  const { user } = useAuth(); // Keep for user data
+  // ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
+  const { state, setChatbotAgentInfo, setMainChatbotOpen } = usePlatformState();
+  const setAgentInfo = setChatbotAgentInfo; // Alias for compatibility
+  const isAuthenticated = sessionState.status === SessionStatus.Active;
   const journeyAPIManager = useJourneyAPIManager();
 
   const pathname = usePathname();
@@ -108,7 +114,7 @@ export default function JourneyPillar() {
   // Get files from Content Realm state
   useEffect(() => {
     const getAllFiles = async () => {
-      if (!isAuthenticated || !state.session.sessionId) return;
+      if (!isAuthenticated || !sessionState.sessionId) return;
       
       setIsLoadingFiles(true);
       try {
@@ -131,11 +137,11 @@ export default function JourneyPillar() {
       }
     };
 
-    if (!initialized && isAuthenticated && state.session.sessionId) {
+    if (!initialized && isAuthenticated && sessionState.sessionId) {
       getAllFiles();
       setInitialized(true);
     }
-  }, [isAuthenticated, initialized, state.session.sessionId, state.realm.content.files]);
+  }, [isAuthenticated, initialized, sessionState.sessionId, state.realm.content.files]);
 
 
   // Set up journey liaison agent
@@ -177,6 +183,11 @@ export default function JourneyPillar() {
           ...prev,
           blueprint,
           sopText: optimizedSop?.description || prev.sopText,
+        }));
+        
+        // ✅ PHASE 4.2: Set IDs for process optimization
+        if (selected.SOP?.uuid) setSelectedSopId(selected.SOP.uuid);
+        if (selected.workflow?.uuid) setSelectedWorkflowId(selected.workflow.uuid);
           workflowData: optimizedWorkflow?.description || prev.workflowData,
           isEnabled: true
         }));
@@ -332,6 +343,12 @@ export default function JourneyPillar() {
                 Choose SOP and workflow files for journey
               </p>
             </div>
+            {/* ✅ PHASE 1.2: Show which Liaison Agent is available */}
+            <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+              <span className="text-xs font-semibold text-blue-900">Available:</span>
+              <span className="text-xs text-blue-700">Journey Liaison Agent</span>
+              <span className="flex h-2 w-2 rounded-full bg-blue-500" title="Liaison agent available" />
+            </div>
             <button
               onClick={resetJourney}
               className="text-gray-500 hover:text-gray-700"
@@ -386,11 +403,19 @@ export default function JourneyPillar() {
     // Default journey choice view
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-800">Journey</h1>
-          <p className="text-gray-600 mt-2">
-            Manage workflows, SOPs, and process optimization
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-800">Journey</h1>
+            <p className="text-gray-600 mt-2">
+              Manage workflows, SOPs, and process optimization
+            </p>
+          </div>
+          {/* ✅ PHASE 1.2: Show which Liaison Agent is available */}
+          <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+            <span className="text-xs font-semibold text-blue-900">Available:</span>
+            <span className="text-xs text-blue-700">Journey Liaison Agent</span>
+            <span className="flex h-2 w-2 rounded-full bg-blue-500" title="Liaison agent available" />
+          </div>
         </div>
 
         <JourneyChoice
@@ -435,8 +460,68 @@ export default function JourneyPillar() {
         />
       </div>
 
-      {/* CoexistenceBlueprint Panel - Always Visible */}
+      {/* ✅ PHASE 3.2: Enhanced Coexistence Analysis - More Prominent */}
       <div className="mt-8">
+        {/* Coexistence Explanation Section */}
+        {(!selected.SOP || !selected.workflow) && (
+          <Card className="mb-6 border-2 border-blue-200 bg-blue-50/30">
+            <CardHeader>
+              <CardTitle className="text-xl">Coexistence Analysis</CardTitle>
+              <CardDescription>
+                Understand how your SOPs and workflows coexist and identify opportunities for alignment
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-white border border-gray-200 rounded-lg p-4">
+                    <h4 className="font-semibold text-gray-800 mb-2">SOP (Standard Operating Procedure)</h4>
+                    <p className="text-sm text-gray-600">
+                      Defines how work <em>should</em> be done according to policies and procedures.
+                    </p>
+                  </div>
+                  <div className="bg-white border border-gray-200 rounded-lg p-4">
+                    <h4 className="font-semibold text-gray-800 mb-2">Workflow</h4>
+                    <p className="text-sm text-gray-600">
+                      Defines how work <em>is</em> done in practice, including actual processes and tools.
+                    </p>
+                  </div>
+                </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <h4 className="font-semibold text-blue-900 mb-2">How They Coexist</h4>
+                  <p className="text-sm text-blue-800">
+                    The platform analyzes the relationship between SOPs and workflows, identifying gaps, overlaps,
+                    and opportunities for alignment. This helps bridge the gap between policy (SOP) and practice (workflow).
+                  </p>
+                </div>
+                <div className="text-center text-sm text-gray-600">
+                  <p>Select both an SOP file and a workflow file to begin coexistence analysis</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Coexistence Analysis Results - Enhanced Display */}
+        {(selected.SOP && selected.workflow) && (
+          <Card className="mb-6 border-2 border-green-200 bg-green-50/30">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle className="text-xl">Coexistence Analysis Ready</CardTitle>
+                  <CardDescription>
+                    SOP and workflow selected. Click "Analyze Coexistence" to generate the coexistence blueprint.
+                  </CardDescription>
+                </div>
+                <div className="flex gap-2">
+                  <Badge variant="outline" className="bg-white">SOP: {selected.SOP.name}</Badge>
+                  <Badge variant="outline" className="bg-white">Workflow: {selected.workflow.name}</Badge>
+                </div>
+              </div>
+            </CardHeader>
+          </Card>
+        )}
+
         <CoexistenceBlueprint
           sopText={coexistenceState.sopText}
           workflowData={coexistenceState.workflowData}
@@ -444,7 +529,7 @@ export default function JourneyPillar() {
           generatedWorkflowUuid={coexistenceState.generatedWorkflowUuid}
           selectedSopFileUuid={selected.SOP?.uuid || null}
           selectedWorkflowFileUuid={selected.workflow?.uuid || null}
-          sessionToken={state.session.sessionId || ""}
+          sessionToken={sessionState.sessionId || ""}
           sessionState={coexistenceState}
           isEnabled={coexistenceState.isEnabled || !!(selected.SOP && selected.workflow)}
         />

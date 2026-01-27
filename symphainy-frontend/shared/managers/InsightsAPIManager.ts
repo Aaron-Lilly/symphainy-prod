@@ -13,6 +13,7 @@
 
 import { ExperiencePlaneClient, getGlobalExperiencePlaneClient } from "@/shared/services/ExperiencePlaneClient";
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
+import { validateSession } from "@/shared/utils/sessionValidation";
 
 // ============================================
 // Insights API Manager Types
@@ -122,6 +123,28 @@ export interface LineageVisualizationResponse {
   error?: string;
 }
 
+export interface RelationshipMapping {
+  entities?: Array<{
+    name: string;
+    type: string;
+    attributes?: Record<string, any>;
+  }>;
+  relationships?: Array<{
+    source: string;
+    target: string;
+    type: string;
+    confidence?: number;
+    attributes?: Record<string, any>;
+  }>;
+}
+
+export interface RelationshipMappingResponse {
+  success: boolean;
+  relationships?: RelationshipMapping;
+  file_id?: string;
+  error?: string;
+}
+
 // ============================================
 // Insights API Manager Class
 // ============================================
@@ -156,6 +179,17 @@ export class InsightsAPIManager {
       
       if (!platformState.state.session.sessionId || !platformState.state.session.tenantId) {
         throw new Error("Session required to assess data quality");
+      }
+
+      // ✅ FIX ISSUE 3: Parameter validation before submitIntent
+      if (!parsedFileId) {
+        throw new Error("parsed_file_id is required for assess_data_quality");
+      }
+      if (!sourceFileId) {
+        throw new Error("source_file_id is required for assess_data_quality");
+      }
+      if (!parserType) {
+        throw new Error("parser_type is required for assess_data_quality");
       }
 
       // Submit intent via Experience Plane Client
@@ -208,8 +242,12 @@ export class InsightsAPIManager {
     try {
       const platformState = this.getPlatformState();
       
-      if (!platformState.state.session.sessionId || !platformState.state.session.tenantId) {
-        throw new Error("Session required to interpret data");
+      // ✅ FIX ISSUE 4: Use standardized session validation
+      validateSession(platformState, "interpret data (self-discovery)");
+
+      // ✅ FIX ISSUE 3: Parameter validation before submitIntent
+      if (!parsedFileId) {
+        throw new Error("parsed_file_id is required for interpret_data_self_discovery");
       }
 
       // Submit intent via Experience Plane Client
@@ -319,6 +357,11 @@ export class InsightsAPIManager {
         throw new Error("Session required to analyze data");
       }
 
+      // ✅ FIX ISSUE 3: Parameter validation before submitIntent
+      if (!parsedFileId) {
+        throw new Error("parsed_file_id is required for analyze_structured_data");
+      }
+
       // Submit intent via Experience Plane Client
       const execution = await platformState.submitIntent(
         "analyze_structured_data",
@@ -367,8 +410,12 @@ export class InsightsAPIManager {
     try {
       const platformState = this.getPlatformState();
       
-      if (!platformState.state.session.sessionId || !platformState.state.session.tenantId) {
-        throw new Error("Session required to analyze data");
+      // ✅ FIX ISSUE 4: Use standardized session validation
+      validateSession(platformState, "analyze unstructured data");
+
+      // ✅ FIX ISSUE 3: Parameter validation before submitIntent
+      if (!parsedFileId) {
+        throw new Error("parsed_file_id is required for analyze_unstructured_data");
       }
 
       // Submit intent via Experience Plane Client
@@ -418,8 +465,12 @@ export class InsightsAPIManager {
     try {
       const platformState = this.getPlatformState();
       
-      if (!platformState.state.session.sessionId || !platformState.state.session.tenantId) {
-        throw new Error("Session required to visualize lineage");
+      // ✅ FIX ISSUE 4: Use standardized session validation
+      validateSession(platformState, "visualize lineage");
+
+      // ✅ FIX ISSUE 3: Parameter validation before submitIntent
+      if (!fileId) {
+        throw new Error("file_id is required for visualize_lineage");
       }
 
       // Submit intent via Experience Plane Client
@@ -460,6 +511,62 @@ export class InsightsAPIManager {
   /**
    * Get data mash visualization (retrieve from state or GCS)
    */
+  /**
+   * Map relationships (map_relationships intent)
+   * 
+   * Discovers and visualizes entity relationships in parsed data.
+   */
+  async mapRelationships(
+    fileId: string
+  ): Promise<RelationshipMappingResponse> {
+    try {
+      const platformState = this.getPlatformState();
+      
+      // ✅ FIX ISSUE 4: Use standardized session validation
+      validateSession(platformState, "map relationships");
+
+      // ✅ FIX ISSUE 3: Parameter validation before submitIntent
+      if (!fileId) {
+        throw new Error("file_id is required for map_relationships");
+      }
+
+      // Submit intent via Experience Plane Client
+      const execution = await platformState.submitIntent(
+        "map_relationships",
+        {
+          file_id: fileId,
+        }
+      );
+
+      // Wait for execution completion
+      const result = await this._waitForExecution(execution, platformState);
+
+      if (result.status === "completed" && result.artifacts?.relationships) {
+        // Update realm state
+        platformState.setRealmState("insights", "relationshipMappings", {
+          [fileId]: result.artifacts.relationships,
+        });
+
+        return {
+          success: true,
+          relationships: result.artifacts.relationships,
+          file_id: fileId,
+        };
+      } else {
+        return {
+          success: false,
+          error: result.error || "Failed to map relationships",
+        };
+      }
+    } catch (error: any) {
+      console.error("[InsightsAPIManager] Error mapping relationships:", error);
+      return {
+        success: false,
+        error: error.message || "An unexpected error occurred",
+      };
+    }
+  }
+
   async getDataMashVisualization(fileId: string): Promise<LineageVisualizationResponse> {
     try {
       const platformState = this.getPlatformState();

@@ -157,15 +157,18 @@ class FileParserService:
         parsed_file_id = f"parsed_{file_id}_{generate_event_id()}"
         parsed_file_path = f"parsed/{tenant_id}/{parsed_file_id}.json"
         
-        # Convert parsed result to JSON
+        # Convert parsed result to JSON (ensure parsing_type is included)
         import json
+        # Ensure parsing_type is set in result (may come from FileParsingResult.parsing_type or metadata)
+        result_parsing_type = parsing_result.parsing_type or parsing_result.metadata.get("parsing_type") or parsing_type
+        
         parsed_data_json = json.dumps({
             "parsed_file_id": parsed_file_id,
             "file_id": file_id,
-            "parsing_type": parsing_type,
+            "parsing_type": result_parsing_type,  # Use explicit parsing_type from result
             "text_content": parsing_result.text_content,
             "structured_data": parsing_result.structured_data,
-            "metadata": parsing_result.metadata,
+            "metadata": parsing_result.metadata,  # Already includes parsing_type and structure
             "validation_rules": parsing_result.validation_rules,
             "timestamp": parsing_result.timestamp
         }).encode('utf-8')
@@ -223,19 +226,25 @@ class FileParserService:
             # For dict, count might be in a 'records' or 'data' key, or count keys
             record_count = len(parsed_data)
         
+        # Ensure parsing_type is set (may come from FileParsingResult.parsing_type or metadata)
+        result_parsing_type = parsing_result.parsing_type or parsing_result.metadata.get("parsing_type") or parsing_type
+        
         return {
             "parsed_file_id": parsed_file_id,
             "parsed_file_reference": parsed_file_reference,
             "file_id": file_id,
             "parsing_status": "completed",
-            "parsing_type": parsing_type,
-            "format": parsing_type,
+            "parsing_type": result_parsing_type,  # Use explicit parsing_type from result
+            "format": result_parsing_type,
             "parsed_data": parsed_data,  # Include parsed data in result
             "record_count": record_count,
             "metadata": {
+                "parsing_type": result_parsing_type,  # Ensure metadata includes parsing_type
+                "structure": parsing_result.metadata.get("structure", {}),  # Include structure for chunking
                 "text_content_length": len(parsing_result.text_content) if parsing_result.text_content else 0,
                 "has_structured_data": parsing_result.structured_data is not None,
-                "has_validation_rules": parsing_result.validation_rules is not None
+                "has_validation_rules": parsing_result.validation_rules is not None,
+                **{k: v for k, v in (parsing_result.metadata or {}).items() if k not in ["parsing_type", "structure"]}  # Include other metadata
             }
         }
     
@@ -265,27 +274,35 @@ class FileParserService:
             return "workflow"
         if parse_options.get("is_sop"):
             return "sop"
+        if parse_options.get("is_data_model") or parse_options.get("data_model"):
+            return "data_model"
         
         # Get file extension from filename
         file_ext = filename.split('.')[-1].lower() if '.' in filename else ""
         
         # Rule-based determination
-        structured_types = ["xlsx", "xls", "csv", "json", "bin", "binary"]
+        structured_types = ["xlsx", "xls", "csv", "bin", "binary"]
         unstructured_types = ["pdf", "docx", "doc", "txt", "text", "html", "htm"]
         hybrid_types = ["excel_with_text"]
         workflow_types = ["bpmn", "drawio"]
         sop_types = ["md", "markdown"]
+        data_model_types = []  # JSON/YAML handled by file_type check below
         
-        if file_ext in structured_types or file_type in structured_types:
+        # Check for data_model first (JSON/YAML schemas for Insights pillar)
+        if file_type == "data_model" or parse_options.get("is_data_model"):
+            return "data_model"
+        elif file_ext in ["json", "yaml", "yml"] and parse_options.get("is_data_model"):
+            return "data_model"
+        elif file_ext in workflow_types:
+            return "workflow"
+        elif file_ext in sop_types:
+            return "sop"
+        elif file_ext in structured_types or file_type in structured_types:
             return "structured"
         elif file_ext in unstructured_types or file_type in unstructured_types:
             return "unstructured"
         elif file_ext in hybrid_types or file_type in hybrid_types:
             return "hybrid"
-        elif file_ext in workflow_types:
-            return "workflow"
-        elif file_ext in sop_types:
-            return "sop"
         elif file_ext == "json" and parse_options.get("is_workflow"):
             return "workflow"
         else:
@@ -377,8 +394,19 @@ class FileParserService:
                 abstraction = self.public_works.get_text_processing_abstraction()
         
         elif parsing_type == "sop":
-            # SOP files (Markdown, etc.) - use text processing
+            # SOP files (Markdown, etc.) - use text processing (will be enhanced with SOP-specific structure)
             abstraction = self.public_works.get_text_processing_abstraction()
+        
+        elif parsing_type == "data_model":
+            # Data model files (JSON Schema, YAML schemas) - use data model processing
+            abstraction = self.public_works.get_data_model_processing_abstraction()
+            if not abstraction:
+                # Fallback to JSON/YAML processing if data model abstraction not available
+                if file_type in ["json"]:
+                    abstraction = self.public_works.get_json_processing_abstraction()
+                elif file_type in ["yaml", "yml"]:
+                    # YAML processing may not exist, fallback to text
+                    abstraction = self.public_works.get_text_processing_abstraction()
         
         if abstraction:
             self._parsing_abstractions[cache_key] = abstraction
@@ -418,40 +446,74 @@ class FileParserService:
         if not self.public_works:
             raise ValueError("Public Works required for file retrieval")
         
-        # Get FileManagementAbstraction from Public Works
-        file_management = self.public_works.get_file_management_abstraction()
-        if not file_management:
-            raise ValueError("FileManagementAbstraction not available")
+        if not self.file_storage_abstraction:
+            raise ValueError("FileStorageAbstraction not available")
         
         try:
-            # Retrieve parsed file via FileManagementAbstraction (governed access)
-            # This goes through proper governance boundaries
-            parsed_file_data = await file_management.get_parsed_file(
-                parsed_file_id=parsed_file_id,
-                tenant_id=tenant_id
-            )
+            # CORRECT 2-STEP RETRIEVAL PATTERN:
+            # Step 1: Get storage_location from State Surface (has reference) or Supabase (has lineage metadata)
+            # Step 2: Download actual content from GCS using storage_location
             
-            # Parse content if needed
-            parsed_content = parsed_file_data.get("parsed_content") or parsed_file_data.get("data")
+            storage_location = None
             
-            # Handle different content formats
-            if isinstance(parsed_content, bytes):
+            # Step 1a: Try State Surface first (has reference with storage_location)
+            if context.state_surface:
                 try:
-                    import json
-                    parsed_content = json.loads(parsed_content.decode('utf-8'))
-                except (json.JSONDecodeError, UnicodeDecodeError):
-                    parsed_content = parsed_content.decode('utf-8', errors='ignore')
-            elif isinstance(parsed_content, str):
-                try:
-                    import json
-                    parsed_content = json.loads(parsed_content)
-                except json.JSONDecodeError:
-                    pass  # Keep as string
+                    parsed_file_reference = f"parsed:{tenant_id}:{context.session_id}:{parsed_file_id}"
+                    state_metadata = await context.state_surface.get_file_metadata(parsed_file_reference)
+                    if state_metadata:
+                        storage_location = state_metadata.get("storage_location")
+                        self.logger.debug(f"Found storage_location in State Surface: {storage_location}")
+                except Exception as state_error:
+                    self.logger.debug(f"State Surface lookup failed: {state_error}")
             
+            # Step 1b: Fallback to Supabase lineage metadata (has gcs_path, not content)
+            if not storage_location:
+                try:
+                    # Query Supabase for lineage metadata (metadata only, not content)
+                    registry = getattr(self.public_works, 'registry_abstraction', None)
+                    if registry:
+                        # Query parsed_results table for gcs_path
+                        lineage_query = await registry.query_records(
+                            table="parsed_results",
+                            filters={"parsed_result_id": parsed_file_id, "tenant_id": tenant_id},
+                            columns=["gcs_path"]
+                        )
+                        if lineage_query and len(lineage_query) > 0:
+                            gcs_path = lineage_query[0].get("gcs_path")
+                            # Convert gcs_path to storage_location format if needed
+                            if gcs_path:
+                                # gcs_path might be "tenant/{tenant_id}/parsed/{parsed_file_id}.jsonl"
+                                # storage_location should be "parsed/{tenant_id}/{parsed_file_id}.json"
+                                # Try to extract or use as-is
+                                storage_location = gcs_path.replace("tenant/", "").replace(".jsonl", ".json")
+                                self.logger.debug(f"Found gcs_path in Supabase lineage: {storage_location}")
+                except Exception as lineage_error:
+                    self.logger.debug(f"Supabase lineage lookup failed: {lineage_error}")
+            
+            if not storage_location:
+                raise ValueError(
+                    f"Storage location not found for parsed_file_id: {parsed_file_id}. "
+                    f"Checked State Surface and Supabase lineage."
+                )
+            
+            # Step 2: Download actual content from GCS
+            parsed_content_json_bytes = await self.file_storage_abstraction.download_file(storage_location)
+            if not parsed_content_json_bytes:
+                raise ValueError(f"Parsed file content not found at storage_location: {storage_location}")
+            
+            # Parse JSON content
+            import json
+            parsed_content_json = json.loads(parsed_content_json_bytes.decode('utf-8'))
+            
+            # Extract parsed content (structured_data or text_content)
+            parsed_content = parsed_content_json.get("structured_data") or parsed_content_json.get("text_content")
+            
+            # Return parsed content with metadata
             return {
                 "parsed_file_id": parsed_file_id,
                 "parsed_content": parsed_content,
-                "metadata": parsed_file_data.get("metadata", {})
+                "metadata": parsed_content_json.get("metadata", {})
             }
             
         except Exception as e:

@@ -127,7 +127,7 @@ export default function GeneratedArtifactsDisplay({
         <DialogHeader>
           <DialogTitle>Generated Artifacts</DialogTitle>
           <DialogDescription>
-            Review and export your generated artifacts
+            Review and export your generated artifacts. Artifacts show lifecycle status and synthesis inputs from all pillars.
           </DialogDescription>
         </DialogHeader>
 
@@ -155,6 +155,34 @@ export default function GeneratedArtifactsDisplay({
             <TabsContent value="blueprint" className="space-y-4">
               {artifacts.blueprint ? (
                 <>
+                  {/* ✅ PHASE 2.3: Artifact Lifecycle and Metadata */}
+                  {/* ✅ PHASE 5.3: Enhanced Lifecycle Display with Purpose, Scope, Owner */}
+                  <div className="space-y-2 mb-4">
+                    <div className="flex items-center gap-2">
+                      <Badge className={artifacts.blueprint.status === 'active' ? 'bg-green-100 text-green-800' : artifacts.blueprint.status === 'draft' ? 'bg-gray-100 text-gray-800' : 'bg-gray-100 text-gray-600'}>
+                        {artifacts.blueprint.status || 'active'}
+                      </Badge>
+                      {artifacts.blueprint.createdAt && (
+                        <span className="text-xs text-gray-500">
+                          Created: {new Date(artifacts.blueprint.createdAt).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+                    {/* ✅ PHASE 5.3: Display purpose, scope, owner (testable guarantee: Visibility) */}
+                    {(artifacts.blueprint.purpose || artifacts.blueprint.scope || artifacts.blueprint.owner) && (
+                      <div className="text-xs text-gray-600 space-y-1">
+                        {artifacts.blueprint.purpose && (
+                          <div><span className="font-medium">Purpose:</span> {artifacts.blueprint.purpose}</div>
+                        )}
+                        {artifacts.blueprint.scope && (
+                          <div><span className="font-medium">Scope:</span> {artifacts.blueprint.scope}</div>
+                        )}
+                        {artifacts.blueprint.owner && (
+                          <div><span className="font-medium">Owner:</span> {artifacts.blueprint.owner}</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <div className="flex justify-between items-center">
                     <h3 className="text-lg font-semibold">Coexistence Blueprint</h3>
                     <DropdownMenu>
@@ -206,6 +234,34 @@ export default function GeneratedArtifactsDisplay({
             <TabsContent value="poc" className="space-y-4">
               {loadedArtifacts.poc ? (
                 <>
+                  {/* ✅ PHASE 2.3: Artifact Lifecycle and Metadata */}
+                  {/* ✅ PHASE 5.3: Enhanced Lifecycle Display with Purpose, Scope, Owner */}
+                  <div className="space-y-2 mb-4">
+                    <div className="flex items-center gap-2">
+                      <Badge className={loadedArtifacts.poc.status === 'active' ? 'bg-green-100 text-green-800' : loadedArtifacts.poc.status === 'draft' ? 'bg-gray-100 text-gray-800' : 'bg-gray-100 text-gray-600'}>
+                        {loadedArtifacts.poc.status || 'draft'}
+                      </Badge>
+                      {loadedArtifacts.poc.createdAt && (
+                        <span className="text-xs text-gray-500">
+                          Created: {new Date(loadedArtifacts.poc.createdAt).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+                    {/* ✅ PHASE 5.3: Display purpose, scope, owner (testable guarantee: Visibility) */}
+                    {(loadedArtifacts.poc.purpose || loadedArtifacts.poc.scope || loadedArtifacts.poc.owner) && (
+                      <div className="text-xs text-gray-600 space-y-1">
+                        {loadedArtifacts.poc.purpose && (
+                          <div><span className="font-medium">Purpose:</span> {loadedArtifacts.poc.purpose}</div>
+                        )}
+                        {loadedArtifacts.poc.scope && (
+                          <div><span className="font-medium">Scope:</span> {loadedArtifacts.poc.scope}</div>
+                        )}
+                        {loadedArtifacts.poc.owner && (
+                          <div><span className="font-medium">Owner:</span> {loadedArtifacts.poc.owner}</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <div className="flex justify-between items-center">
                     <h3 className="text-lg font-semibold">POC Proposal</h3>
                     <DropdownMenu>
@@ -269,6 +325,34 @@ export default function GeneratedArtifactsDisplay({
             <TabsContent value="roadmap" className="space-y-4">
               {loadedArtifacts.roadmap ? (
                 <>
+                  {/* ✅ PHASE 2.3: Artifact Lifecycle and Metadata */}
+                  {/* ✅ PHASE 5.3: Enhanced Lifecycle Display with Purpose, Scope, Owner */}
+                  <div className="space-y-2 mb-4">
+                    <div className="flex items-center gap-2">
+                      <Badge className={loadedArtifacts.roadmap.status === 'active' ? 'bg-green-100 text-green-800' : loadedArtifacts.roadmap.status === 'draft' ? 'bg-gray-100 text-gray-800' : 'bg-gray-100 text-gray-600'}>
+                        {loadedArtifacts.roadmap.status || 'active'}
+                      </Badge>
+                      {loadedArtifacts.roadmap.createdAt && (
+                        <span className="text-xs text-gray-500">
+                          Created: {new Date(loadedArtifacts.roadmap.createdAt).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+                    {/* ✅ PHASE 5.3: Display purpose, scope, owner (testable guarantee: Visibility) */}
+                    {(loadedArtifacts.roadmap.purpose || loadedArtifacts.roadmap.scope || loadedArtifacts.roadmap.owner) && (
+                      <div className="text-xs text-gray-600 space-y-1">
+                        {loadedArtifacts.roadmap.purpose && (
+                          <div><span className="font-medium">Purpose:</span> {loadedArtifacts.roadmap.purpose}</div>
+                        )}
+                        {loadedArtifacts.roadmap.scope && (
+                          <div><span className="font-medium">Scope:</span> {loadedArtifacts.roadmap.scope}</div>
+                        )}
+                        {loadedArtifacts.roadmap.owner && (
+                          <div><span className="font-medium">Owner:</span> {loadedArtifacts.roadmap.owner}</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <div className="flex justify-between items-center">
                     <h3 className="text-lg font-semibold">Strategic Roadmap</h3>
                     <DropdownMenu>

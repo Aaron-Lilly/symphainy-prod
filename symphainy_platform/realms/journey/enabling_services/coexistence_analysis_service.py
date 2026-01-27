@@ -49,17 +49,23 @@ class CoexistenceAnalysisService:
         self,
         workflow_id: str,
         tenant_id: str,
-        context: ExecutionContext
+        context: ExecutionContext,
+        chunks: Optional[List[Any]] = None,  # List[DeterministicChunk]
+        semantic_signals: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
         Analyze coexistence opportunities (human+AI optimization).
         
         ARCHITECTURAL PRINCIPLE: Analyzes workflow structure to identify coexistence opportunities.
         
+        PHASE 3: Uses semantic signals for semantic understanding (not just heuristics).
+        
         Args:
             workflow_id: Workflow identifier
             tenant_id: Tenant identifier
             context: Execution context
+            chunks: Optional deterministic chunks (for semantic understanding)
+            semantic_signals: Optional semantic signals (for semantic understanding)
         
         Returns:
             Dict with coexistence analysis results
@@ -71,6 +77,18 @@ class CoexistenceAnalysisService:
             workflow_data = context.metadata.get(f"workflow_{workflow_id}", {})
             workflow_content = workflow_data.get("workflow_content", {})
             tasks = workflow_data.get("tasks", []) or workflow_content.get("tasks", [])
+            
+            # PHASE 3: Use semantic signals for understanding if available
+            semantic_understanding = {}
+            if semantic_signals and semantic_signals.get("artifact"):
+                signals_artifact = semantic_signals.get("artifact", {})
+                semantic_understanding = {
+                    "key_concepts": signals_artifact.get("key_concepts", []),
+                    "inferred_intents": signals_artifact.get("inferred_intents", []),
+                    "domain_hints": signals_artifact.get("domain_hints", []),
+                    "entities": signals_artifact.get("entities", {}),
+                    "ambiguities": signals_artifact.get("ambiguities", [])
+                }
             
             coexistence_opportunities = []
             integration_points = []
@@ -84,8 +102,24 @@ class CoexistenceAnalysisService:
                 task_type = task.get("type", "unknown")
                 task_actor = task.get("actor", "human")
                 
-                # Identify friction removal opportunities (AI assistance to remove repetitive tasks)
-                if any(keyword in task_name.lower() for keyword in ["data", "extract", "parse", "validate", "transform", "analyze", "process"]):
+                # PHASE 3: Use semantic signals for understanding (if available)
+                # Otherwise fall back to heuristics
+                task_semantic_hint = None
+                if semantic_understanding.get("key_concepts"):
+                    # Check if task name matches any key concepts
+                    for concept in semantic_understanding["key_concepts"]:
+                        if concept.lower() in task_name.lower() or task_name.lower() in concept.lower():
+                            task_semantic_hint = concept
+                            break
+                
+                # Identify friction removal opportunities
+                # Use semantic understanding if available, otherwise use heuristics
+                is_data_task = (
+                    any(keyword in task_name.lower() for keyword in ["data", "extract", "parse", "validate", "transform", "analyze", "process"]) or
+                    (task_semantic_hint and any(hint in task_semantic_hint.lower() for hint in ["data", "extract", "process", "transform"]))
+                )
+                
+                if is_data_task:
                     coexistence_opportunities.append({
                         "task_id": task.get("id"),
                         "task_name": task_name,
@@ -95,7 +129,8 @@ class CoexistenceAnalysisService:
                         "recommended_actor": "symphainy",
                         "friction_type": "repetitive_data_processing",
                         "human_value_freed": "decision_making_strategic_analysis",
-                        "effort": "medium"
+                        "effort": "medium",
+                        "semantic_hint": task_semantic_hint  # PHASE 3: Include semantic understanding
                     })
                     
                     # Add integration point

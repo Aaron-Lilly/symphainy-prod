@@ -10,10 +10,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+// ✅ PHASE 2: Use service layer hook instead of direct API calls
 import { FileType, ApiUploadRequest, FileStatus } from "@/shared/types/file";
-import { uploadFile } from "@/lib/api/fms";
-import { uploadAndProcessFile } from "@/lib/api/file-processing";
-import { useGlobalSession } from "@/shared/agui/GlobalSessionProvider";
+import { useFileAPI } from "@/shared/hooks/useFileAPI";
+import { useSessionBoundary } from "@/shared/state/SessionBoundaryProvider";
+import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { v4 as uuidv4 } from "uuid";
 import { UploadCloud } from "lucide-react";
 import { toast } from "sonner";
@@ -75,8 +76,15 @@ function getAcceptObject(type: FileType | null) {
 }
 
 export default function FileUploader() {
-  const { getPillarState, setPillarState, guideSessionToken } =
-    useGlobalSession();
+  // ✅ PHASE 1: Migrated to SessionBoundaryProvider
+  // ✅ PHASE 2: Use service layer hook
+  const { state: sessionState } = useSessionBoundary();
+  const { uploadAndProcessFile } = useFileAPI();
+  const sessionId = sessionState.sessionId;
+  // ✅ PHASE 4: Use PlatformStateProvider for realm state
+  // Frontend-only continuity, state persisted via intents/artifacts
+  // TODO: Phase 5 - Runtime persistence of frontend state
+  const { getRealmState, setRealmState } = usePlatformState();
   const [selectedType, setSelectedType] = useState<FileType | null>(null);
   const [selectedExtensions, setSelectedExtensions] = useState<string | null>(
     null,
@@ -132,76 +140,69 @@ export default function FileUploader() {
     }
     setUploading(true);
     try {
-      // Use session token if available, otherwise use mock for development
-      const token = guideSessionToken || "debug-token";
+      // ✅ PHASE 2: Use service layer hook - no need to pass token manually
+      if (!sessionId) {
+        throw new Error("Session not available. Please ensure you're logged in.");
+      }
       
-      // Use our new architectural file processing API
+      // Service layer hook automatically gets token from SessionBoundaryProvider
       const result = await uploadAndProcessFile(
         selectedFile,
-        token, // We'll use the token as session ID for now
+        sessionId,
         selectedType,
-        token,
       );
 
-      if (!result.success) {
-        throw new Error(result.message || "Upload failed");
+      // ✅ PHASE 6: Use { data, error } pattern
+      if (result.error) {
+        throw new Error(result.error.message || "Upload failed");
+      }
+
+      if (!result.data || !result.data.success) {
+        throw new Error(result.data?.message || "Upload failed");
       }
 
       // Store workflow ID for status tracking
-      setWorkflowId(result.data.workflow_id);
+      setWorkflowId(result.data.data.workflow_id);
       setProcessingStatus("File uploaded successfully! Processing started...");
 
       // Create a file metadata object for backward compatibility
       const uploadedFile = {
-        uuid: result.data.file_id,
-        user_id: "mock-user",
+        uuid: result.data.data.file_id,
+        user_id: sessionState.userId || null, // ✅ Use actual user ID from session
         ui_name: selectedFile.name,
         file_type: selectedType,
         mime_type: selectedFile.type,
-        original_path: `/uploads/${result.data.file_id}_${selectedFile.name}`,
+        original_path: `/uploads/${result.data.data.file_id}_${selectedFile.name}`,
         parsed_path: "",
         status: FileStatus.Uploaded,
         metadata: { 
           size: selectedFile.size,
-          workflow_id: result.data.workflow_id,
-          session_id: result.data.session_id
+          workflow_id: result.data.data.workflow_id,
+          session_id: result.data.data.session_id
         },
         insights: {},
         rejection_reason: "",
-        created_at: result.data.timestamp,
-        updated_at: result.data.timestamp,
+        created_at: result.data.data.timestamp,
+        updated_at: result.data.data.timestamp,
         deleted: false,
       };
 
-      // Update dashboard files state immediately
-      const currentDashboardState = getPillarState("data") || { files: [] };
-      const updatedFiles = [...currentDashboardState.files, uploadedFile];
-      await setPillarState("data", {
-        ...currentDashboardState,
-        files: updatedFiles,
-      });
+      // ✅ PHASE 1: Update realm state via PlatformStateProvider
+      // Update Content realm files state
+      const currentFiles = getRealmState("content", "files") || [];
+      const updatedFiles = Array.isArray(currentFiles) ? [...currentFiles, uploadedFile] : [uploadedFile];
+      await setRealmState("content", "files", updatedFiles);
 
-      // Add to parsing queue (files available for parsing)
-      const currentParsingState = getPillarState("parsing") || { files: [] };
-      const updatedParsingFiles = [...currentParsingState.files, uploadedFile];
-      await setPillarState("parsing", {
-        ...currentParsingState,
-        files: updatedParsingFiles,
-      });
+      // Store in parsing queue (files available for parsing)
+      const currentParsingFiles = getRealmState("content", "parsing_files") || [];
+      const updatedParsingFiles = Array.isArray(currentParsingFiles) ? [...currentParsingFiles, uploadedFile] : [uploadedFile];
+      await setRealmState("content", "parsing_files", updatedParsingFiles);
 
-      // If it's a SOP/Workflow or PDF file, also add to operations pillar state
+      // If it's a SOP/Workflow or PDF file, also add to Journey realm state
       if (selectedType === FileType.SopWorkflow || selectedType === FileType.Pdf) {
-        const currentOperationsState = getPillarState("operations") || {
-          files: [],
-        };
-        const updatedOperationFiles = [
-          ...(currentOperationsState.files || []),
-          uploadedFile,
-        ];
-        await setPillarState("operations", {
-          ...currentOperationsState,
-          files: updatedOperationFiles,
-        });
+        const currentJourneyFiles = getRealmState("journey", "files") || [];
+        const updatedJourneyFiles = Array.isArray(currentJourneyFiles) ? [...currentJourneyFiles, uploadedFile] : [uploadedFile];
+        await setRealmState("journey", "files", updatedJourneyFiles);
       }
 
       toast.success("File uploaded successfully");
@@ -216,64 +217,12 @@ export default function FileUploader() {
       }, 3000);
     } catch (err: any) {
       console.error("Upload error:", err);
-
-      // Fallback: Create mock file entry for development
-      if (guideSessionToken === null) {
-        const mockFile = {
-          uuid: uuidv4(),
-          user_id: "mock-user",
-          ui_name: selectedFile.name,
-          file_type: selectedType,
-          mime_type: selectedFile.type,
-          original_path: `/uploads/mock_${selectedFile.name}`,
-          parsed_path: "",
-          status: FileStatus.Uploaded,
-          metadata: { size: selectedFile.size },
-          insights: {},
-          rejection_reason: "",
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          deleted: false,
-        };
-
-        // Update states with mock file
-        const currentDashboardState = getPillarState("data") || { files: [] };
-        const updatedFiles = [...currentDashboardState.files, mockFile];
-        await setPillarState("data", {
-          ...currentDashboardState,
-          files: updatedFiles,
-        });
-
-        const currentParsingState = getPillarState("parsing") || { files: [] };
-        const updatedParsingFiles = [...currentParsingState.files, mockFile];
-        await setPillarState("parsing", {
-          ...currentParsingState,
-          files: updatedParsingFiles,
-        });
-
-        // If it's a SOP/Workflow or PDF file, also add to operations pillar state
-        if (
-          selectedType === FileType.SopWorkflow ||
-          selectedType === FileType.Pdf
-        ) {
-          const currentOperationsState = getPillarState("operations") || {
-            files: [],
-          };
-          const updatedOperationFiles = [
-            ...(currentOperationsState.files || []),
-            mockFile,
-          ];
-          await setPillarState("operations", {
-            ...currentOperationsState,
-            files: updatedOperationFiles,
-          });
-        }
-
-        toast.success("File uploaded successfully");
-        setSelectedFile(null);
-        setCopybookFile(null);
-        setSelectedType(null);
-        setError(null); // Clear error since we handled it with mock
+      
+      // ✅ PHASE 1: Fail gracefully - no mock fallback
+      // ✅ WORKING CODE ONLY: No placeholders, mocks, or cheats
+      if (!sessionId) {
+        setError("Session not available. Please ensure you're logged in.");
+        toast.error("Session not available");
       } else {
         setError(err.message || "Upload failed.");
         toast.error("Error uploading file");

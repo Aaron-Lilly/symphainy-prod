@@ -22,6 +22,7 @@ from typing import Dict, Any, Optional, List
 from utilities import get_logger, generate_event_id
 from symphainy_platform.runtime.execution_context import ExecutionContext
 from symphainy_platform.civic_systems.agentic.agent_base import AgentBase
+from symphainy_platform.civic_systems.agentic.models.agent_runtime_context import AgentRuntimeContext
 
 
 class JourneyLiaisonAgent(AgentBase):
@@ -35,15 +36,31 @@ class JourneyLiaisonAgent(AgentBase):
     - SOP refinement through chat
     """
     
-    def __init__(self, public_works: Optional[Any] = None):
+    def __init__(
+        self,
+        agent_definition_id: str = "journey_liaison_agent",
+        public_works: Optional[Any] = None,
+        sop_generation_agent: Optional[Any] = None,
+        **kwargs
+    ):
         """
         Initialize Journey Liaison Agent.
         
         Args:
+            agent_definition_id: Agent definition ID
             public_works: Public Works Foundation Service (for accessing abstractions)
+            sop_generation_agent: Optional SOP generation agent for delegation
+            **kwargs: Additional parameters for 4-layer model support
         """
+        super().__init__(
+            agent_id=agent_definition_id,
+            agent_type="conversational",
+            capabilities=["sop_generation", "requirement_gathering", "conversational_guidance"],
+            public_works=public_works,
+            **kwargs
+        )
         self.logger = get_logger(self.__class__.__name__)
-        self.public_works = public_works
+        self.sop_generation_agent = sop_generation_agent
     
     async def initiate_sop_chat(
         self,
@@ -415,3 +432,101 @@ Analyze and provide:
                 "guidance_response": "I'm here to help you create an SOP. What process would you like to document?",
                 "requirements_complete": False
             }
+    
+    async def _process_with_assembled_prompt(
+        self,
+        system_message: str,
+        user_message: str,
+        runtime_context: AgentRuntimeContext,
+        context: ExecutionContext
+    ) -> Dict[str, Any]:
+        """
+        Process request with assembled prompt (4-layer model).
+        
+        This method is called by AgentBase.process_request() after assembling
+        the system and user messages from the 4-layer model.
+        
+        Args:
+            system_message: Assembled system message (from layers 1-3)
+            user_message: Assembled user message
+            runtime_context: Runtime context with business_context
+            context: Execution context
+        
+        Returns:
+            Dict with conversational response and SOP structure
+        """
+        # Extract message from user_message
+        message = user_message.strip()
+        
+        # Try to extract from runtime_context.business_context if available
+        if hasattr(runtime_context, 'business_context') and runtime_context.business_context:
+            message = runtime_context.business_context.get("message", message)
+        
+        # If message looks like JSON, try to parse it
+        if message.startswith("{") or message.startswith("["):
+            try:
+                import json
+                parsed = json.loads(message)
+                if isinstance(parsed, dict):
+                    message = parsed.get("message", parsed.get("text", message))
+            except (json.JSONDecodeError, ValueError):
+                pass  # Use message as-is
+        
+        # Get session_id from context
+        session_id = context.session_id
+        
+        # Process chat message using existing logic
+        result = await self.process_chat_message(
+            session_id=session_id,
+            message=message,
+            tenant_id=context.tenant_id,
+            context=context
+        )
+        
+        # Return as non-executing artifact
+        return {
+            "artifact_type": "proposal",
+            "artifact": {
+                "response": result.get("response"),
+                "sop_structure": result.get("sop_structure"),
+                "status": result.get("status"),
+                "session_id": session_id
+            },
+            "confidence": 0.8
+        }
+    
+    async def process_request(
+        self,
+        request: Dict[str, Any],
+        context: ExecutionContext,
+        runtime_context: Optional[AgentRuntimeContext] = None
+    ) -> Dict[str, Any]:
+        """
+        Process a request using Journey Liaison Agent capabilities.
+        
+        ARCHITECTURAL PRINCIPLE: This method delegates to AgentBase.process_request()
+        which implements the 4-layer model. For backward compatibility, it can also
+        be called directly, but the 4-layer flow is preferred.
+        
+        Args:
+            request: Request dictionary
+            context: Runtime execution context
+            runtime_context: Optional pre-assembled runtime context (from orchestrator)
+        
+        Returns:
+            Dict with conversational response and SOP structure
+        """
+        # If runtime_context is provided, use it; otherwise let AgentBase assemble it
+        if runtime_context:
+            system_message = self._assemble_system_message(runtime_context)
+            user_message = self._assemble_user_message(request, runtime_context)
+            return await self._process_with_assembled_prompt(
+                system_message, user_message, runtime_context, context
+            )
+        else:
+            # Delegate to parent's process_request which implements 4-layer model
+            return await super().process_request(request, context, runtime_context=None)
+    
+    async def get_agent_description(self) -> str:
+        """Get agent description (required by AgentBase)."""
+        return "Journey Liaison Agent - Provides interactive SOP generation from chat"

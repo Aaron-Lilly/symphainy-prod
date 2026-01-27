@@ -21,6 +21,8 @@ from typing import Dict, Any, Optional, List
 
 from utilities import get_logger
 from symphainy_platform.runtime.execution_context import ExecutionContext
+from symphainy_platform.realms.content.enabling_services.deterministic_chunking_service import DeterministicChunkingService
+from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
 
 
 class DataQualityService:
@@ -220,6 +222,8 @@ class DataQualityService:
         """
         Get embeddings via SemanticDataAbstraction (governed access).
         
+        PHASE 3: Uses chunk-based pattern (not direct parsed_file_id queries).
+        
         ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
         """
         if not self.public_works:
@@ -232,9 +236,27 @@ class DataQualityService:
             return None
         
         try:
-            # Query embeddings via abstraction
+            # PHASE 3: Use chunk-based pattern
+            # 1. Get parsed file
+            parsed_file = await self.file_parser_service.get_parsed_file(
+                parsed_file_id=parsed_file_id,
+                tenant_id=tenant_id,
+                context=context
+            )
+            
+            # 2. Create deterministic chunks
+            parsed_content = parsed_file.get("parsed_content") or parsed_file
+            chunks = await self.deterministic_chunking_service.create_chunks(
+                parsed_content=parsed_content,
+                file_id=parsed_file.get("file_id"),
+                tenant_id=tenant_id,
+                parsed_file_id=parsed_file_id
+            )
+            
+            # 3. Query embeddings by chunk_id (not parsed_file_id)
+            chunk_ids = [chunk.chunk_id for chunk in chunks]
             embeddings = await semantic_data.get_semantic_embeddings(
-                filter_conditions={"parsed_file_id": parsed_file_id},
+                filter_conditions={"chunk_id": {"$in": chunk_ids}},
                 limit=None
             )
             return embeddings if embeddings else None
@@ -538,7 +560,7 @@ class DataQualityService:
         
         # Use DeterministicComputeAbstraction (governed access)
         # ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
-        deterministic_compute = self.public_works.get_deterministic_compute_abstraction()
+        deterministic_compute = self.public_works.deterministic_compute_abstraction
         if not deterministic_compute:
             self.logger.warning("DeterministicComputeAbstraction not available")
             return None

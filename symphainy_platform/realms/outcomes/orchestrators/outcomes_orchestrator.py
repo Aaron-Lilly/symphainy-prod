@@ -20,6 +20,7 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from typing import Dict, Any, Optional
+import uuid
 
 from utilities import get_logger
 from symphainy_platform.runtime.intent_model import Intent
@@ -352,6 +353,25 @@ class OutcomesOrchestrator:
         
         # Use RoadmapGenerationAgent (agentic forward pattern)
         # Agent reasons about goals, designs phases, uses RoadmapGenerationService as tool via MCP
+        if not self.roadmap_generation_agent:
+            # Fallback: Use service directly if agent not available
+            # Service requires content_summary, insights_summary, journey_summary, additional_context
+            roadmap_result = await self.roadmap_generation_service.generate_roadmap(
+                content_summary={"goals": goals},
+                insights_summary={},
+                journey_summary={},
+                additional_context={"roadmap_options": roadmap_options},
+                roadmap_options=roadmap_options,
+                tenant_id=context.tenant_id,
+                context=context
+            )
+            return {
+                "artifacts": {
+                    "roadmap": roadmap_result
+                },
+                "events": []
+            }
+        
         agent_result = await self.roadmap_generation_agent.process_request(
             {
                 "type": "generate_roadmap",
@@ -365,7 +385,7 @@ class OutcomesOrchestrator:
         roadmap_result = agent_result.get("artifact", {})
         
         # Ensure roadmap_id exists
-        roadmap_id = roadmap_result.get("roadmap_id") or f"roadmap_{generate_event_id()}"
+        roadmap_id = roadmap_result.get("roadmap_id") or f"roadmap_{str(uuid.uuid4())}"
         if not roadmap_result.get("roadmap_id"):
             roadmap_result["roadmap_id"] = roadmap_id
         
@@ -488,20 +508,62 @@ class OutcomesOrchestrator:
         
         # Use POCGenerationAgent (agentic forward pattern)
         # Agent reasons about POC requirements, designs scope, uses POCGenerationService as tool via MCP
-        agent_result = await self.poc_generation_agent.process_request(
-            {
-                "type": "create_poc",
-                "description": description,
-                "poc_options": poc_options
-            },
-            context
-        )
+        if not self.poc_generation_agent:
+            # Fallback: Use service directly if agent not available
+            poc_result = await self.poc_generation_service.generate_poc_proposal(
+                content_summary={"description": description},
+                insights_summary={},
+                journey_summary={},
+                additional_context={"poc_options": poc_options},
+                poc_options=poc_options,
+                tenant_id=context.tenant_id,
+                context=context
+            )
+            return {
+                "artifacts": {
+                    "poc": poc_result
+                },
+                "events": []
+            }
         
-        # Extract POC proposal from agent result
-        poc_result = agent_result.get("artifact", {})
+        try:
+            agent_result = await self.poc_generation_agent.process_request(
+                {
+                    "type": "create_poc",
+                    "description": description,
+                    "poc_options": poc_options
+                },
+                context
+            )
+            
+            # Extract POC proposal from agent result
+            if not agent_result:
+                raise ValueError("POC generation agent returned no result")
+            
+            poc_result = agent_result.get("artifact", {}) if agent_result else {}
+        except (AttributeError, TypeError, ValueError) as e:
+            # Fallback to service if agent fails
+            # Fallbacks must obey the same semantic contract as primary agent execution.
+            self.logger.warning(f"POC agent failed: {e}, falling back to service")
+            poc_result = await self.poc_generation_service.generate_poc_proposal(
+                content_summary={"description": description},
+                insights_summary={},
+                journey_summary={},
+                additional_context={"poc_options": poc_options},
+                poc_options=poc_options,
+                tenant_id=context.tenant_id,
+                context=context
+            )
+            # Ensure fallback produces structured artifact with same semantic contract
+            poc_result = {
+                "generation_mode": "agent_fallback",
+                "confidence": "degraded",
+                "semantic_payload": poc_result.get("semantic_payload", poc_result),
+                "renderings": poc_result.get("renderings", {})
+            }
         
         # Ensure poc_id/proposal_id exists
-        proposal_id = poc_result.get("poc_id") or poc_result.get("proposal_id") or f"poc_{generate_event_id()}"
+        proposal_id = poc_result.get("poc_id") or poc_result.get("proposal_id") or f"poc_{str(uuid.uuid4())}"
         if not poc_result.get("poc_id") and not poc_result.get("proposal_id"):
             poc_result["poc_id"] = proposal_id
             poc_result["proposal_id"] = proposal_id
@@ -1014,7 +1076,7 @@ class OutcomesOrchestrator:
         blueprint_result = agent_result.get("artifact", {})
         
         # Ensure blueprint_id exists
-        blueprint_id = blueprint_result.get("blueprint_id") or f"blueprint_{workflow_id}_{generate_event_id()}"
+        blueprint_id = blueprint_result.get("blueprint_id") or f"blueprint_{workflow_id}_{str(uuid.uuid4())}"
         if not blueprint_result.get("blueprint_id"):
             blueprint_result["blueprint_id"] = blueprint_id
         

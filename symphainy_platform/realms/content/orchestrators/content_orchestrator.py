@@ -26,9 +26,18 @@ import uuid
 from utilities import get_logger, generate_event_id, get_clock
 from symphainy_platform.runtime.intent_model import Intent, IntentFactory
 from symphainy_platform.runtime.execution_context import ExecutionContext
+from symphainy_platform.runtime.artifact_registry import (
+    SemanticDescriptor,
+    ProducedBy,
+    Materialization,
+    LifecycleState
+)
 from ..enabling_services.file_parser_service import FileParserService
 from ..enabling_services.deterministic_embedding_service import DeterministicEmbeddingService
 from ..enabling_services.embedding_service import EmbeddingService
+from ..enabling_services.deterministic_chunking_service import DeterministicChunkingService
+from ..enabling_services.semantic_signal_extractor import SemanticSignalExtractor
+from symphainy_platform.civic_systems.agentic.agents.content_liaison_agent import ContentLiaisonAgent
 from symphainy_platform.foundations.public_works.protocols.ingestion_protocol import (
     IngestionRequest,
     IngestionResult,
@@ -63,10 +72,20 @@ class ContentOrchestrator:
         self.file_parser_service = FileParserService(public_works=public_works)
         self.deterministic_embedding_service = DeterministicEmbeddingService(public_works=public_works)
         self.embedding_service = EmbeddingService(public_works=public_works)
+        self.deterministic_chunking_service = DeterministicChunkingService(public_works=public_works)
+        self.semantic_signal_extractor = SemanticSignalExtractor(public_works=public_works)
+        
+        # Initialize semantic profile registry and trigger boundary
+        from ..enabling_services.semantic_profile_registry import SemanticProfileRegistry
+        from ..enabling_services.semantic_trigger_boundary import SemanticTriggerBoundary
+        self.semantic_profile_registry = SemanticProfileRegistry(public_works=public_works)
+        self.semantic_trigger_boundary = SemanticTriggerBoundary(public_works=public_works)
         
         # Initialize agents (agentic forward pattern)
         self.content_liaison_agent = ContentLiaisonAgent(
-            agent_definition_id="content_liaison_agent",
+            agent_id="content_liaison_agent",
+            capabilities=["content_operations", "conversational"],
+            orchestrator=self,
             public_works=public_works
         )
         
@@ -150,29 +169,33 @@ class ContentOrchestrator:
                 result = await self._handle_restore_file(intent, context)
             elif intent_type == "validate_file":
                 result = await self._handle_validate_file(intent, context)
-        elif intent_type == "preprocess_file":
-            result = await self._handle_preprocess_file(intent, context)
-        elif intent_type == "search_files":
-            result = await self._handle_search_files(intent, context)
-        elif intent_type == "query_files":
-            result = await self._handle_query_files(intent, context)
-        elif intent_type == "update_file_metadata":
-            result = await self._handle_update_file_metadata(intent, context)
-        elif intent_type == "parse_content":
-            result = await self._handle_parse_content(intent, context)
-        elif intent_type == "create_deterministic_embeddings":
-            result = await self._handle_create_deterministic_embeddings(intent, context)
-        elif intent_type == "extract_embeddings":
-            result = await self._handle_extract_embeddings(intent, context)
-        elif intent_type == "get_parsed_file":
-            result = await self._handle_get_parsed_file(intent, context)
-        elif intent_type == "get_semantic_interpretation":
-            result = await self._handle_get_semantic_interpretation(intent, context)
-        else:
-            raise ValueError(f"Unknown intent type: {intent_type}")
-        
-        return result
+            elif intent_type == "preprocess_file":
+                result = await self._handle_preprocess_file(intent, context)
+            elif intent_type == "search_files":
+                result = await self._handle_search_files(intent, context)
+            elif intent_type == "query_files":
+                result = await self._handle_query_files(intent, context)
+            elif intent_type == "update_file_metadata":
+                result = await self._handle_update_file_metadata(intent, context)
+            elif intent_type == "parse_content":
+                result = await self._handle_parse_content(intent, context)
+            elif intent_type == "create_deterministic_embeddings":
+                result = await self._handle_create_deterministic_embeddings(intent, context)
+            elif intent_type == "extract_embeddings":
+                result = await self._handle_extract_embeddings(intent, context)
+            elif intent_type == "extract_deterministic_structure":
+                result = await self._handle_extract_deterministic_structure(intent, context)
+            elif intent_type == "hydrate_semantic_profile":
+                result = await self._handle_hydrate_semantic_profile(intent, context)
+            elif intent_type == "get_parsed_file":
+                result = await self._handle_get_parsed_file(intent, context)
+            elif intent_type == "get_semantic_interpretation":
+                result = await self._handle_get_semantic_interpretation(intent, context)
+            else:
+                raise ValueError(f"Unknown intent type: {intent_type}")
             
+            return result
+                
         except Exception as e:
             success = False
             error_message = str(e)
@@ -424,6 +447,77 @@ class ContentOrchestrator:
             semantic_payload=semantic_payload,
             renderings={}  # No renderings for ingestion (file already stored)
         )
+        
+        # Register artifact in State Surface (artifact-centric pattern)
+        try:
+            # Create semantic descriptor (what it means)
+            semantic_descriptor = SemanticDescriptor(
+                schema="file_v1",
+                record_count=None,  # Files don't have record counts
+                parser_type=None,
+                embedding_model=None
+            )
+            
+            # Create produced_by (provenance)
+            produced_by = ProducedBy(
+                intent="ingest_file",
+                execution_id=context.execution_id
+            )
+            
+            # Register artifact (lifecycle_state = PENDING initially)
+            artifact_registered = await context.state_surface.register_artifact(
+                artifact_id=ingestion_result.file_id,
+                artifact_type="file",
+                tenant_id=context.tenant_id,
+                produced_by=produced_by,
+                semantic_descriptor=semantic_descriptor,
+                parent_artifacts=[],  # Files have no parents
+                lifecycle_state=LifecycleState.PENDING.value
+            )
+            
+            if artifact_registered:
+                # Add GCS materialization
+                materialization = Materialization(
+                    materialization_id=f"mat_{ingestion_result.file_id}",
+                    storage_type="gcs",
+                    uri=ingestion_result.storage_location,
+                    format="binary",  # Files are binary
+                    compression=None
+                )
+                
+                await context.state_surface.add_materialization(
+                    artifact_id=ingestion_result.file_id,
+                    tenant_id=context.tenant_id,
+                    materialization=materialization
+                )
+                
+                # Update lifecycle state to READY (file is ingested and stored)
+                await context.state_surface.update_artifact_lifecycle(
+                    artifact_id=ingestion_result.file_id,
+                    tenant_id=context.tenant_id,
+                    new_state=LifecycleState.READY.value,
+                    reason="File ingested and stored in GCS"
+                )
+                
+                # Also write to artifact_index (discovery layer)
+                await self._index_artifact(
+                    artifact_id=ingestion_result.file_id,
+                    artifact_type="file",
+                    tenant_id=context.tenant_id,
+                    lifecycle_state=LifecycleState.READY.value,
+                    semantic_descriptor=semantic_descriptor,
+                    produced_by=produced_by,
+                    parent_artifacts=[],
+                    context=context
+                )
+                
+                self.logger.info(f"✅ Artifact registered: {ingestion_result.file_id} (file)")
+            else:
+                self.logger.warning(f"⚠️ Failed to register artifact: {ingestion_result.file_id}")
+        except Exception as e:
+            # Don't fail intent execution if artifact registration fails
+            # This is additive functionality, not blocking
+            self.logger.error(f"Failed to register artifact for {ingestion_result.file_id}: {e}", exc_info=True)
         
         return {
             "artifacts": {
@@ -966,9 +1060,20 @@ class ContentOrchestrator:
                 """Extract embedding for a single parsed result."""
                 async with semaphore:
                     try:
-                        # Create extract_embeddings intent
+                        # PHASE 3: Use new pattern - extract_deterministic_structure → hydrate_semantic_profile
+                        # Step 1: Create deterministic chunks
+                        chunk_intent = IntentFactory.create_intent(
+                            intent_type="extract_deterministic_structure",
+                            parameters={
+                                "parsed_file_id": parsed_file_id,
+                                "file_id": file_id
+                            }
+                        )
+                        chunk_result = await self._handle_extract_deterministic_structure(chunk_intent, context)
+                        
+                        # Step 2: Create embeddings from chunks
                         embedding_intent = IntentFactory.create_intent(
-                            intent_type="extract_embeddings",
+                            intent_type="hydrate_semantic_profile",
                             tenant_id=context.tenant_id,
                             session_id=context.session_id,
                             solution_id=intent.solution_id,
@@ -979,7 +1084,7 @@ class ContentOrchestrator:
                         )
                         
                         # Execute embedding extraction
-                        embedding_result = await self._handle_extract_embeddings(embedding_intent, context)
+                        embedding_result = await self._handle_hydrate_semantic_profile(embedding_intent, context)
                         
                         return {
                             "success": True,
@@ -1188,97 +1293,124 @@ class ContentOrchestrator:
             "events": []
         }
     
-    async def _handle_register_file(
+    async def _handle_register_artifact(
         self,
         intent: Intent,
         context: ExecutionContext
     ) -> Dict[str, Any]:
         """
-        Handle register_file intent - register existing file in State Surface.
+        Handle register_artifact intent - register existing artifact in Artifact Registry.
         
-        Use case: File already exists in GCS/Supabase, needs to be registered
-        for governed access in this execution context.
+        Use case: Artifact already exists in storage (GCS/Supabase), needs to be registered
+        in Artifact Registry for governed access and lifecycle management.
         
         Intent parameters:
-        - file_id: str (REQUIRED) - File identifier
+        - artifact_id: str (REQUIRED) - Artifact identifier (preferred)
+        - file_id: str (optional) - Legacy file identifier (alias for artifact_id)
+        - artifact_type: str (optional) - Artifact type (default: "file")
         - storage_location: str (optional) - GCS blob path (if not provided, will try to get from Supabase)
         - ui_name: str (REQUIRED) - User-friendly filename for display
         - file_type: str (optional) - File type
         - mime_type: str (optional) - MIME type
         """
-        file_id = intent.parameters.get("file_id")
-        if not file_id:
-            raise ValueError("file_id is required for register_file intent")
+        # Support both artifact_id (preferred) and file_id (legacy)
+        artifact_id = intent.parameters.get("artifact_id") or intent.parameters.get("file_id")
+        if not artifact_id:
+            raise ValueError("artifact_id (or file_id) is required for register_artifact intent")
         
         ui_name = intent.parameters.get("ui_name")
         if not ui_name:
-            raise ValueError("ui_name is required for register_file intent")
+            raise ValueError("ui_name is required for register_artifact intent")
         
+        artifact_type = intent.parameters.get("artifact_type", "file")
         file_type = intent.parameters.get("file_type", "unstructured")
         mime_type = intent.parameters.get("mime_type", "application/octet-stream")
         storage_location = intent.parameters.get("storage_location")
         
-        # Try to get file metadata from Supabase (optional - file might not be there yet)
-        file_metadata = await self._get_file_metadata_from_supabase(file_id, context.tenant_id)
+        # Try to get artifact metadata from Supabase (optional - artifact might not be there yet)
+        file_metadata = await self._get_file_metadata_from_supabase(artifact_id, context.tenant_id)
         
         # Get storage location from metadata if not provided
         if not storage_location and file_metadata:
             storage_location = file_metadata.get("gcs_blob_path") or file_metadata.get("file_path") or file_metadata.get("storage_path")
         
-        # If still no storage location, derive from file_id (assume standard pattern)
+        # If still no storage location, derive from artifact_id (assume standard pattern)
         if not storage_location:
-            storage_location = f"files/{file_id}"
-            self.logger.warning(f"Storage location not found for file {file_id}, using default pattern: {storage_location}")
+            storage_location = f"files/{artifact_id}"
+            self.logger.warning(f"Storage location not found for artifact {artifact_id}, using default pattern: {storage_location}")
         
-        # Register in State Surface
-        file_reference = f"file:{context.tenant_id}:{context.session_id}:{file_id}"
+        # Register artifact in Artifact Registry (State Surface)
+        from symphainy_platform.runtime.artifact_registry import ProducedBy, SemanticDescriptor, Materialization, LifecycleState
         
-        await context.state_surface.store_file_reference(
-            session_id=context.session_id,
-            tenant_id=context.tenant_id,
-            file_reference=file_reference,
-            storage_location=storage_location,
-            filename=file_metadata.get("file_name", ui_name) if file_metadata else ui_name,
-            metadata={
-                "ui_name": ui_name,
-                "file_type": file_type or (file_metadata.get("file_type") if file_metadata else None),
-                "mime_type": mime_type or (file_metadata.get("mime_type") if file_metadata else None),
-                "size": file_metadata.get("file_size") if file_metadata else None,
-                "file_hash": file_metadata.get("file_hash") if file_metadata else None,
-                "file_id": file_id
-            }
+        produced_by = ProducedBy(
+            intent="register_artifact",
+            execution_id=context.execution_id
         )
         
-        self.logger.info(f"File registered in State Surface: {file_id} ({ui_name}) -> {file_reference}")
+        semantic_descriptor = SemanticDescriptor(
+            schema="artifact_registry_v1",
+            parser_type=file_type,
+            embedding_model=None
+        )
         
-        # Create structured artifact
+        # Register artifact with lifecycle_state: READY (artifact already exists)
+        success = await context.state_surface.register_artifact(
+            artifact_id=artifact_id,
+            artifact_type=artifact_type,
+            tenant_id=context.tenant_id,
+            produced_by=produced_by,
+            semantic_descriptor=semantic_descriptor,
+            lifecycle_state=LifecycleState.READY.value
+        )
+        
+        if not success:
+            raise RuntimeError(f"Failed to register artifact in Artifact Registry: {artifact_id}")
+        
+        # Add materialization (GCS storage)
+        materialization = Materialization(
+            materialization_id=str(uuid.uuid4()),
+            storage_type="gcs",
+            uri=storage_location,
+            format=mime_type or "application/octet-stream"
+        )
+        
+        await context.state_surface.add_materialization(
+            artifact_id=artifact_id,
+            tenant_id=context.tenant_id,
+            materialization=materialization
+        )
+        
+        self.logger.info(f"Artifact registered in Artifact Registry: {artifact_id} ({artifact_type}) -> {storage_location}")
+        
+        # Create structured artifact for response
         semantic_payload = {
-            "file_id": file_id,
-            "file_reference": file_reference,
+            "artifact_id": artifact_id,
+            "artifact_type": artifact_type,
             "storage_location": storage_location,
             "ui_name": ui_name,
             "file_type": file_type,
             "mime_type": mime_type,
             "file_size": file_metadata.get("file_size") if file_metadata else None,
             "file_hash": file_metadata.get("file_hash") if file_metadata else None,
+            "lifecycle_state": LifecycleState.READY.value,
             "status": "registered"
         }
         
         structured_artifact = create_structured_artifact(
-            result_type="file",
+            result_type="artifact",
             semantic_payload=semantic_payload,
             renderings={}  # Registration doesn't include contents
         )
         
         return {
             "artifacts": {
-                "file": structured_artifact
+                "artifact": structured_artifact
             },
             "events": [
                 {
-                    "type": "file_registered",
-                    "file_id": file_id,
-                    "file_reference": file_reference
+                    "type": "artifact_registered",
+                    "artifact_id": artifact_id,
+                    "artifact_type": artifact_type
                 }
             ]
         }
@@ -1387,20 +1519,28 @@ class ContentOrchestrator:
             ]
         }
     
-    async def _handle_retrieve_file_metadata(
+    async def _handle_retrieve_artifact_metadata(
         self,
         intent: Intent,
         context: ExecutionContext
     ) -> Dict[str, Any]:
         """
-        Handle retrieve_file_metadata intent - get Supabase record (metadata only).
+        Handle retrieve_artifact_metadata intent - get artifact metadata from Artifact Index (discovery).
+        
+        This is a discovery operation (Artifact Index), not resolution (State Surface).
+        Returns artifact metadata only, not full content.
         
         Intent parameters:
-        - file_id: str (REQUIRED) - File identifier
+        - artifact_id: str (REQUIRED) - Artifact identifier (preferred)
+        - file_id: str (optional) - Legacy file identifier (alias for artifact_id)
+        - artifact_type: str (optional) - Artifact type filter (default: "file")
         """
-        file_id = intent.parameters.get("file_id")
-        if not file_id:
-            raise ValueError("file_id is required for retrieve_file_metadata intent")
+        # Support both artifact_id (preferred) and file_id (legacy)
+        artifact_id = intent.parameters.get("artifact_id") or intent.parameters.get("file_id")
+        if not artifact_id:
+            raise ValueError("artifact_id (or file_id) is required for retrieve_artifact_metadata intent")
+        
+        artifact_type = intent.parameters.get("artifact_type", "file")
         
         # Try to get file metadata from Supabase first
         file_metadata = await self._get_file_metadata_from_supabase(file_id, context.tenant_id)
@@ -1565,7 +1705,7 @@ class ContentOrchestrator:
             if not file_contents and file_reference:
                 try:
                     if self.public_works:
-                        file_management = self.public_works.get_file_management_abstraction()
+                        file_management = getattr(self.public_works, 'file_management_abstraction', None)
                         if file_management:
                             # Get file via FileManagementAbstraction (governed access)
                             file_contents = await file_management.get_file_by_reference(file_reference)
@@ -1940,7 +2080,7 @@ class ContentOrchestrator:
             
             # Fallback: Use RegistryAbstraction (governed access)
             # ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
-            registry = self.public_works.get_registry_abstraction()
+            registry = getattr(self.public_works, 'registry_abstraction', None)
             if registry:
                 query_result_data = await registry.query_records(
                     table="project_files",
@@ -2605,9 +2745,43 @@ class ContentOrchestrator:
                 # Fallback: construct with context session_id if file not found in Supabase
                 file_reference = f"file:{context.tenant_id}:{context.session_id}:{file_id}"
         
-        parsing_type = intent.parameters.get("parsing_type")
-        parse_options = intent.parameters.get("parse_options", {})
-        copybook_reference = intent.parameters.get("copybook_reference")
+        # Check for pending intent first (CTO guidance: ingestion_profile lives with intent)
+        pending_intent = None
+        registry = None
+        if self.public_works:
+            registry = getattr(self.public_works, 'registry_abstraction', None)
+            if registry:
+                pending_intents = await registry.get_pending_intents(
+                    tenant_id=context.tenant_id,
+                    target_artifact_id=file_id,
+                    intent_type="parse_content"
+                )
+                if pending_intents:
+                    pending_intent = pending_intents[0]  # Use first pending intent
+                    self.logger.info(f"Found pending intent for file {file_id}: {pending_intent['intent_id']}")
+        
+        # Use pending intent context if available, otherwise use intent parameters
+        if pending_intent and registry:
+            # Update intent status to in_progress
+            await registry.update_intent_status(
+                intent_id=pending_intent["intent_id"],
+                status="in_progress",
+                tenant_id=context.tenant_id,
+                execution_id=context.execution_id
+            )
+            
+            # Extract context from pending intent (ingestion_profile lives here)
+            intent_context = pending_intent.get("context", {})
+            parsing_type = intent_context.get("ingestion_profile") or intent_context.get("parsing_type") or intent.parameters.get("parsing_type")
+            parse_options = intent_context.get("parse_options", intent.parameters.get("parse_options", {}))
+            copybook_reference = intent_context.get("copybook_reference") or intent.parameters.get("copybook_reference")
+            
+            self.logger.info(f"Using pending intent context: ingestion_profile={parsing_type}")
+        else:
+            # No pending intent, use intent parameters directly
+            parsing_type = intent.parameters.get("parsing_type")
+            parse_options = intent.parameters.get("parse_options", {})
+            copybook_reference = intent.parameters.get("copybook_reference")
         
         # Parse file via FileParserService
         parsed_result = await self.file_parser_service.parse_file(
@@ -2672,6 +2846,91 @@ class ContentOrchestrator:
             renderings=renderings
         )
         
+        # Register artifact in State Surface (artifact-centric pattern)
+        try:
+            # Get storage location from parsed result (stored in GCS)
+            # parsed_file_path is stored in file_parser_service.parse_file()
+            # Format: parsed/{tenant_id}/{parsed_file_id}.json
+            parsed_file_path = f"parsed/{context.tenant_id}/{parsed_file_id}.json"
+            
+            # Create semantic descriptor (what it means)
+            semantic_descriptor = SemanticDescriptor(
+                schema="parsed_content_v1",
+                record_count=parsed_result.get("record_count"),
+                parser_type=parsing_type_result,
+                embedding_model=None
+            )
+            
+            # Create produced_by (provenance)
+            produced_by = ProducedBy(
+                intent="parse_content",
+                execution_id=context.execution_id
+            )
+            
+            # Register artifact (lifecycle_state = PENDING initially)
+            artifact_registered = await context.state_surface.register_artifact(
+                artifact_id=parsed_file_id,
+                artifact_type="parsed_content",
+                tenant_id=context.tenant_id,
+                produced_by=produced_by,
+                semantic_descriptor=semantic_descriptor,
+                parent_artifacts=[file_id],  # Lineage: parsed from file
+                lifecycle_state=LifecycleState.PENDING.value
+            )
+            
+            if artifact_registered:
+                # Add GCS materialization
+                materialization = Materialization(
+                    materialization_id=f"mat_{parsed_file_id}",
+                    storage_type="gcs",
+                    uri=parsed_file_path,
+                    format="json",
+                    compression=None
+                )
+                
+                await context.state_surface.add_materialization(
+                    artifact_id=parsed_file_id,
+                    tenant_id=context.tenant_id,
+                    materialization=materialization
+                )
+                
+                # Update lifecycle state to READY (parsed content is stored)
+                await context.state_surface.update_artifact_lifecycle(
+                    artifact_id=parsed_file_id,
+                    tenant_id=context.tenant_id,
+                    new_state=LifecycleState.READY.value,
+                    reason="Parsed content stored in GCS"
+                )
+                
+                # Also write to artifact_index (discovery layer) with structured lineage
+                await self._index_artifact(
+                    artifact_id=parsed_file_id,
+                    artifact_type="parsed_content",
+                    tenant_id=context.tenant_id,
+                    lifecycle_state=LifecycleState.READY.value,
+                    semantic_descriptor=semantic_descriptor,
+                    produced_by=produced_by,
+                    parent_artifacts=[file_id],
+                    context=context
+                )
+                
+                # Update pending intent status to completed (if it exists)
+                if pending_intent and registry:
+                    await registry.update_intent_status(
+                        intent_id=pending_intent["intent_id"],
+                        status="completed",
+                        tenant_id=context.tenant_id,
+                        execution_id=context.execution_id
+                    )
+                    self.logger.info(f"Pending intent completed: {pending_intent['intent_id']}")
+                
+                self.logger.info(f"✅ Artifact registered: {parsed_file_id} (parsed_content)")
+            else:
+                self.logger.warning(f"⚠️ Failed to register artifact: {parsed_file_id}")
+        except Exception as e:
+            # Don't fail intent execution if artifact registration fails
+            self.logger.error(f"Failed to register artifact for {parsed_file_id}: {e}", exc_info=True)
+        
         return {
             "artifacts": {
                 "parsed_content": parsed_content_artifact,
@@ -2684,6 +2943,263 @@ class ContentOrchestrator:
                     "file_id": file_id,
                     "parsed_file_id": parsed_file_id,
                     "parsing_type": parsing_type_result
+                }
+            ]
+        }
+    
+    async def _handle_extract_deterministic_structure(
+        self,
+        intent: Intent,
+        context: ExecutionContext
+    ) -> Dict[str, Any]:
+        """
+        Handle extract_deterministic_structure intent - create deterministic chunks.
+        
+        Phase 2 Pattern: Deterministic chunking (no LLM, no embeddings).
+        This is the foundation for all semantic work.
+        
+        Intent parameters:
+        - parsed_file_id: str (required) - Parsed file identifier
+        """
+        parsed_file_id = intent.parameters.get("parsed_file_id")
+        
+        if not parsed_file_id:
+            raise ValueError("parsed_file_id is required for extract_deterministic_structure intent")
+        
+        # Get parsed file content
+        # Try FileParserService first, fallback to FileStorageAbstraction
+        parsed_result = None
+        try:
+            parsed_file = await self.file_parser_service.get_parsed_file(
+                parsed_file_id=parsed_file_id,
+                tenant_id=context.tenant_id,
+                context=context
+            )
+            parsed_result = parsed_file.get("parsed_content")
+        except (ValueError, AttributeError) as e:
+            # Fallback: Get parsed file from GCS via FileStorageAbstraction
+            self.logger.warning(f"Could not get parsed file via FileParserService: {e}, trying FileStorageAbstraction")
+            if self.public_works:
+                file_storage = getattr(self.public_works, 'file_storage_abstraction', None)
+                if file_storage:
+                    # Construct GCS path for parsed file
+                    parsed_file_path = f"parsed/{context.tenant_id}/{parsed_file_id}.json"
+                    try:
+                        parsed_file_data = await file_storage.download_file(parsed_file_path)
+                        if parsed_file_data:
+                            import json
+                            parsed_result = json.loads(parsed_file_data.decode('utf-8'))
+                    except Exception as gcs_error:
+                        self.logger.warning(f"Could not get parsed file from GCS: {gcs_error}")
+        
+        if not parsed_result:
+            raise ValueError(f"Parsed file content not found: {parsed_file_id}")
+        
+        # Get file_id from parsed result
+        file_id = parsed_result.get("file_id")
+        if not file_id:
+            # Try to extract from parsed_file_reference or other metadata
+            file_id = parsed_result.get("file_id") or parsed_file.get("file_id")
+        
+        # Create deterministic chunks
+        chunks = await self.deterministic_chunking_service.create_chunks(
+            parsed_content=parsed_result,
+            file_id=file_id or "unknown",
+            tenant_id=context.tenant_id,
+            parsed_file_id=parsed_file_id
+        )
+        
+        if not chunks:
+            self.logger.warning(f"No chunks created for parsed_file_id: {parsed_file_id}")
+            chunks = []
+        
+        # Create structured artifact
+        from symphainy_platform.realms.utils.structured_artifacts import create_structured_artifact
+        
+        semantic_payload = {
+            "parsed_file_id": parsed_file_id,
+            "file_id": file_id,
+            "chunk_count": len(chunks),
+            "chunk_ids": [chunk.chunk_id for chunk in chunks]
+        }
+        
+        # Include chunk structure in renderings
+        renderings = {
+            "chunks": [
+                {
+                    "chunk_id": chunk.chunk_id,
+                    "chunk_index": chunk.chunk_index,
+                    "source_path": chunk.source_path,
+                    "structural_type": chunk.structural_type,
+                    "text_preview": chunk.text[:100] if chunk.text else ""  # Preview only
+                }
+                for chunk in chunks
+            ]
+        }
+        
+        chunks_artifact = create_structured_artifact(
+            result_type="deterministic_structure",
+            semantic_payload=semantic_payload,
+            renderings=renderings
+        )
+        
+        return {
+            "artifacts": {
+                "chunks": chunks_artifact,
+                "chunk_count": len(chunks),
+                "chunk_ids": [chunk.chunk_id for chunk in chunks]
+            },
+            "events": [
+                {
+                    "type": "deterministic_structure_extracted",
+                    "parsed_file_id": parsed_file_id,
+                    "chunk_count": len(chunks)
+                }
+            ]
+        }
+    
+    async def _handle_hydrate_semantic_profile(
+        self,
+        intent: Intent,
+        context: ExecutionContext
+    ) -> Dict[str, Any]:
+        """
+        Handle hydrate_semantic_profile intent - create embeddings from chunks.
+        
+        Phase 2 Pattern: Semantic hydration (embeddings + signals) from deterministic chunks.
+        Only fires on explicit trigger (user intent, agent request, missing signal).
+        
+        Intent parameters:
+        - parsed_file_id: str (required) - Parsed file identifier
+        - trigger_type: str (required) - Trigger type (explicit_user_intent, downstream_agent_request, missing_semantic_signal)
+        - semantic_profile: str (optional) - Semantic profile version (default: "default")
+        - model_name: str (optional) - Embedding model name (default: "text-embedding-ada-002")
+        """
+        parsed_file_id = intent.parameters.get("parsed_file_id")
+        trigger_type = intent.parameters.get("trigger_type")
+        semantic_profile = intent.parameters.get("semantic_profile", "default")
+        model_name = intent.parameters.get("model_name", "text-embedding-ada-002")
+        
+        if not parsed_file_id:
+            raise ValueError("parsed_file_id is required for hydrate_semantic_profile intent")
+        
+        if not trigger_type:
+            raise ValueError("trigger_type is required for hydrate_semantic_profile intent")
+        
+        # Validate trigger type
+        from ..enabling_services.semantic_trigger_boundary import SemanticTriggerBoundary
+        if trigger_type not in SemanticTriggerBoundary.TRIGGER_TYPES:
+            raise ValueError(f"Invalid trigger_type: {trigger_type}. Must be one of {SemanticTriggerBoundary.TRIGGER_TYPES}")
+        
+        # Get deterministic chunks (must exist first)
+        # We need to get chunks that were created for this parsed_file_id
+        # For now, we'll create chunks if they don't exist (idempotent)
+        chunks = []
+        parsed_result = None
+        
+        # Try to get parsed file content (same fallback as extract_deterministic_structure)
+        try:
+            parsed_file = await self.file_parser_service.get_parsed_file(
+                parsed_file_id=parsed_file_id,
+                tenant_id=context.tenant_id,
+                context=context
+            )
+            parsed_result = parsed_file.get("parsed_content")
+        except (ValueError, AttributeError) as e:
+            # Fallback: Get parsed file from GCS via FileStorageAbstraction
+            self.logger.warning(f"Could not get parsed file via FileParserService: {e}, trying FileStorageAbstraction")
+            if self.public_works:
+                file_storage = getattr(self.public_works, 'file_storage_abstraction', None)
+                if file_storage:
+                    # Construct GCS path for parsed file
+                    parsed_file_path = f"parsed/{context.tenant_id}/{parsed_file_id}.json"
+                    try:
+                        parsed_file_data = await file_storage.download_file(parsed_file_path)
+                        if parsed_file_data:
+                            import json
+                            parsed_result = json.loads(parsed_file_data.decode('utf-8'))
+                    except Exception as gcs_error:
+                        self.logger.warning(f"Could not get parsed file from GCS: {gcs_error}")
+        
+        if parsed_result:
+            # Create chunks (idempotent - will return existing if already created)
+            file_id = parsed_result.get("file_id")
+            chunks = await self.deterministic_chunking_service.create_chunks(
+                parsed_content=parsed_result,
+                file_id=file_id or "unknown",
+                tenant_id=context.tenant_id,
+                parsed_file_id=parsed_file_id
+            )
+        
+        if not chunks:
+            raise ValueError(
+                f"Deterministic chunks not found for parsed_file_id: {parsed_file_id}. "
+                "Run extract_deterministic_structure first or ensure parsed file is accessible."
+            )
+        
+        # Create embeddings from chunks via EmbeddingService
+        embedding_result = await self.embedding_service.create_chunk_embeddings(
+            chunks=chunks,
+            semantic_profile=semantic_profile,
+            model_name=model_name,
+            tenant_id=context.tenant_id,
+            context=context
+        )
+        
+        # Extract semantic signals (trigger-based)
+        semantic_signals = None
+        if self.semantic_signal_extractor:
+            try:
+                semantic_signals = await self.semantic_signal_extractor.process_request(
+                    request={"chunks": chunks, "trigger_type": trigger_type},
+                    context=context
+                )
+            except Exception as e:
+                self.logger.warning(f"Could not extract semantic signals: {e}")
+        
+        # Create structured artifact
+        from symphainy_platform.realms.utils.structured_artifacts import create_structured_artifact
+        
+        semantic_payload = {
+            "parsed_file_id": parsed_file_id,
+            "semantic_profile": semantic_profile,
+            "model_name": model_name,
+            "trigger_type": trigger_type,
+            "chunk_count": len(chunks),
+            "chunk_ids": [chunk.chunk_id for chunk in chunks],
+            "embedding_count": embedding_result.get("embedding_count", 0)
+        }
+        
+        renderings = {
+            "embeddings_created": True,
+            "chunk_count": len(chunks),
+            "embedding_count": embedding_result.get("embedding_count", 0)
+        }
+        
+        if semantic_signals:
+            renderings["semantic_signals"] = semantic_signals
+        
+        semantic_profile_artifact = create_structured_artifact(
+            result_type="semantic_profile",
+            semantic_payload=semantic_payload,
+            renderings=renderings
+        )
+        
+        return {
+            "artifacts": {
+                "semantic_profile": semantic_profile_artifact,
+                "embeddings": semantic_profile_artifact,  # Alias for backward compatibility
+                "chunk_count": len(chunks),
+                "embedding_count": embedding_result.get("embedding_count", 0),
+                "semantic_signals": semantic_signals
+            },
+            "events": [
+                {
+                    "type": "semantic_profile_hydrated",
+                    "parsed_file_id": parsed_file_id,
+                    "semantic_profile": semantic_profile,
+                    "chunk_count": len(chunks),
+                    "trigger_type": trigger_type
                 }
             ]
         }
@@ -2738,6 +3254,13 @@ class ContentOrchestrator:
         """
         Handle extract_embeddings intent (semantic embeddings).
         
+        ⚠️ DEPRECATED: This intent uses the old pattern (deterministic_embedding_id → semantic embeddings).
+        Use hydrate_semantic_profile instead, which uses the new chunk-based pattern.
+        
+        Migration path:
+        1. Use extract_deterministic_structure to create chunks
+        2. Use hydrate_semantic_profile to create embeddings from chunks
+        
         Requires deterministic_embedding_id as input (users must create deterministic embeddings first).
         """
         parsed_file_id = intent.parameters.get("parsed_file_id")
@@ -2786,6 +3309,76 @@ class ContentOrchestrator:
             tenant_id=context.tenant_id,
             context=context
         )
+        
+        # Register artifact in State Surface (artifact-centric pattern)
+        try:
+            # Create semantic descriptor (what it means)
+            semantic_descriptor = SemanticDescriptor(
+                schema="embeddings_v1",
+                record_count=embeddings_count,
+                parser_type=None,
+                embedding_model="sentence-transformers/all-mpnet-base-v2"  # From embedding service
+            )
+            
+            # Create produced_by (provenance)
+            produced_by = ProducedBy(
+                intent="extract_embeddings",
+                execution_id=context.execution_id
+            )
+            
+            # Register artifact (lifecycle_state = PENDING initially)
+            artifact_registered = await context.state_surface.register_artifact(
+                artifact_id=embedding_id,
+                artifact_type="embeddings",
+                tenant_id=context.tenant_id,
+                produced_by=produced_by,
+                semantic_descriptor=semantic_descriptor,
+                parent_artifacts=[parsed_file_id, deterministic_embedding_id],  # Lineage
+                lifecycle_state=LifecycleState.PENDING.value
+            )
+            
+            if artifact_registered:
+                # Add ArangoDB materialization (embeddings stored in ArangoDB)
+                materialization = Materialization(
+                    materialization_id=f"mat_{embedding_id}",
+                    storage_type="arango",
+                    uri=f"structured_embeddings/{embedding_id}",  # ArangoDB collection/key
+                    format="json",  # ArangoDB stores as JSON
+                    compression=None
+                )
+                
+                await context.state_surface.add_materialization(
+                    artifact_id=embedding_id,
+                    tenant_id=context.tenant_id,
+                    materialization=materialization
+                )
+                
+                # Update lifecycle state to READY (embeddings are created)
+                await context.state_surface.update_artifact_lifecycle(
+                    artifact_id=embedding_id,
+                    tenant_id=context.tenant_id,
+                    new_state=LifecycleState.READY.value,
+                    reason="Semantic embeddings created and stored in ArangoDB"
+                )
+                
+                # Also write to artifact_index (discovery layer)
+                await self._index_artifact(
+                    artifact_id=embedding_id,
+                    artifact_type="embeddings",
+                    tenant_id=context.tenant_id,
+                    lifecycle_state=LifecycleState.READY.value,
+                    semantic_descriptor=semantic_descriptor,
+                    produced_by=produced_by,
+                    parent_artifacts=[parsed_file_id, deterministic_embedding_id],
+                    context=context
+                )
+                
+                self.logger.info(f"✅ Artifact registered: {embedding_id} (embeddings)")
+            else:
+                self.logger.warning(f"⚠️ Failed to register artifact: {embedding_id}")
+        except Exception as e:
+            # Don't fail intent execution if artifact registration fails
+            self.logger.error(f"Failed to register artifact for {embedding_id}: {e}", exc_info=True)
         
         return {
             "artifacts": {
@@ -2893,40 +3486,75 @@ class ContentOrchestrator:
                 if "schema" in structured_data:
                     layer1_metadata["schema"] = structured_data["schema"]
         
-        # Layer 2: Meaning (from semantic embeddings if available)
+        # Layer 2: Meaning (from semantic signals and embeddings)
         layer2_meaning = {
             "semantic_embeddings_available": False,
+            "semantic_signals_available": False,
             "semantic_interpretation": None,
             "relationships": []
         }
         
-        # Try to get semantic embeddings from SemanticDataAbstraction
-        semantic_data_abstraction = None
-        if self.public_works:
-            try:
-                semantic_data_abstraction = self.public_works.get_semantic_data_abstraction()
-                
-                if semantic_data_abstraction:
-                    # Query for embeddings related to this parsed file
-                    embeddings = await semantic_data_abstraction.get_semantic_embeddings(
-                        filter_conditions={"parsed_file_id": parsed_file_id},
-                        limit=100
+        # PHASE 3: Use chunk-based pattern (not direct parsed_file_id queries)
+        try:
+            # 1. Create deterministic chunks
+            chunks = await self.deterministic_chunking_service.create_chunks(
+                parsed_content=parsed_result,
+                file_id=layer1_metadata.get("file_id"),
+                tenant_id=context.tenant_id,
+                parsed_file_id=parsed_file_id
+            )
+            
+            if chunks:
+                # 2. Extract semantic signals (trigger-based)
+                try:
+                    semantic_signals = await self.semantic_signal_extractor.process_request(
+                        request={"chunks": chunks},
+                        context=context
                     )
                     
-                    if embeddings:
-                        layer2_meaning["semantic_embeddings_available"] = True
-                        layer2_meaning["embeddings_count"] = len(embeddings)
+                    if semantic_signals and semantic_signals.get("artifact"):
+                        layer2_meaning["semantic_signals_available"] = True
+                        signals_artifact = semantic_signals.get("artifact", {})
                         
-                        # Extract semantic meanings from embeddings
-                        semantic_meanings = []
-                        for emb in embeddings:
-                            if emb.get("semantic_meaning"):
-                                semantic_meanings.append(emb.get("semantic_meaning"))
+                        # Build semantic interpretation from structured signals
+                        layer2_meaning["semantic_interpretation"] = {
+                            "key_concepts": signals_artifact.get("key_concepts", []),
+                            "inferred_intents": signals_artifact.get("inferred_intents", []),
+                            "domain_hints": signals_artifact.get("domain_hints", []),
+                            "entities": signals_artifact.get("entities", {}),
+                            "ambiguities": signals_artifact.get("ambiguities", []),
+                            "interpretation": signals_artifact.get("interpretation", "")
+                        }
+                        layer2_meaning["confidence"] = semantic_signals.get("confidence", 0.0)
+                except Exception as e:
+                    self.logger.warning(f"Could not extract semantic signals: {e}")
+                    # Degrade gracefully - continue without signals
+                
+                # 3. Get embeddings by chunk_id (not parsed_file_id)
+                semantic_data_abstraction = None
+                if self.public_works:
+                    try:
+                        semantic_data_abstraction = self.public_works.get_semantic_data_abstraction()
                         
-                        if semantic_meanings:
-                            layer2_meaning["semantic_interpretation"] = semantic_meanings
-            except Exception as e:
-                self.logger.warning(f"Could not retrieve semantic embeddings: {e}")
+                        if semantic_data_abstraction and chunks:
+                            try:
+                                chunk_ids = [chunk.chunk_id for chunk in chunks]
+                                embeddings = await semantic_data_abstraction.get_semantic_embeddings(
+                                    filter_conditions={"chunk_id": {"$in": chunk_ids}},
+                                    limit=100
+                                )
+                                
+                                if embeddings:
+                                    layer2_meaning["semantic_embeddings_available"] = True
+                                    layer2_meaning["embeddings_count"] = len(embeddings)
+                                    layer2_meaning["chunk_count"] = len(chunks)
+                            except Exception as e:
+                                self.logger.warning(f"Could not retrieve semantic embeddings: {e}")
+                    except Exception as e:
+                        self.logger.warning(f"SemanticDataAbstraction not available: {e}")
+        except Exception as e:
+            self.logger.warning(f"Could not create chunks or extract semantic signals: {e}")
+            # Degrade gracefully - return what we have
         
         # Layer 3: Context (from semantic graph if available)
         layer3_context = {
@@ -3001,6 +3629,166 @@ class ContentOrchestrator:
             ]
         }
     
+    async def _index_artifact(
+        self,
+        artifact_id: str,
+        artifact_type: str,
+        tenant_id: str,
+        lifecycle_state: str,
+        semantic_descriptor: SemanticDescriptor,
+        produced_by: ProducedBy,
+        parent_artifacts: List[str],
+        context: ExecutionContext
+    ) -> bool:
+        """
+        Index artifact in artifact_index (Supabase discovery layer).
+        
+        This is called after State Surface registration to also write to artifact_index
+        for discovery/exploration queries (UI dropdowns).
+        
+        Includes structured lineage metadata (CTO-recommended).
+        
+        Args:
+            artifact_id: Artifact identifier
+            artifact_type: Artifact type
+            tenant_id: Tenant identifier
+            lifecycle_state: Lifecycle state
+            semantic_descriptor: Semantic descriptor
+            produced_by: Provenance
+            parent_artifacts: Parent artifact IDs
+            context: Execution context
+        
+        Returns:
+            True if indexed successfully
+        """
+        if not self.public_works:
+            return False
+        
+        registry = getattr(self.public_works, 'registry_abstraction', None)
+        if not registry:
+            self.logger.debug("Registry abstraction not available, skipping artifact indexing")
+            return False
+        
+        try:
+            # Build structured lineage (CTO-recommended)
+            lineage = {
+                "derived_from": parent_artifacts,
+                "derivation_intent": produced_by.intent,
+                "derivation_run_id": produced_by.execution_id,
+                "generation": len(parent_artifacts),  # Simple generation count
+                "root_artifact_id": parent_artifacts[0] if parent_artifacts else artifact_id
+            }
+            
+            # Prepare artifact index record
+            artifact_record = {
+                "artifact_id": artifact_id,
+                "artifact_type": artifact_type,
+                "tenant_id": tenant_id,
+                "lifecycle_state": lifecycle_state,
+                "semantic_descriptor": {
+                    "schema": semantic_descriptor.schema,
+                    "record_count": semantic_descriptor.record_count,
+                    "parser_type": semantic_descriptor.parser_type,
+                    "embedding_model": semantic_descriptor.embedding_model
+                },
+                "produced_by": {
+                    "intent": produced_by.intent,
+                    "execution_id": produced_by.execution_id
+                },
+                "parent_artifacts": parent_artifacts,  # Keep for backward compatibility
+                "lineage": lineage  # NEW: Structured lineage metadata
+            }
+            
+            # Insert into artifact_index via RegistryAbstraction
+            result = await registry.insert_record(
+                table="artifact_index",
+                data=artifact_record,
+                user_context={"tenant_id": tenant_id}
+            )
+            
+            if result.get("success"):
+                self.logger.debug(f"Artifact indexed: {artifact_id} ({artifact_type}) with lineage")
+                return True
+            else:
+                self.logger.warning(f"Failed to index artifact {artifact_id}: {result.get('error')}")
+                return False
+                
+        except Exception as e:
+            # Don't fail if indexing fails (State Surface is authoritative)
+            self.logger.warning(f"Failed to index artifact {artifact_id}: {e}")
+            return False
+    
+    async def create_pending_parse_intent(
+        self,
+        file_id: str,
+        ingestion_profile: str,
+        context: ExecutionContext,
+        parse_options: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Create pending parse_content intent (CTO guidance: ingestion_profile lives with intent).
+        
+        This enables resumable workflows - user can upload file, select ingestion_profile,
+        and resume parsing later (even in a different session).
+        
+        Args:
+            file_id: File identifier (target artifact)
+            ingestion_profile: Ingestion profile (structured, unstructured, hybrid, workflow, data_model)
+            parse_options: Optional parsing options
+            context: Execution context
+        
+        Returns:
+            Dict with intent_id and success status
+        """
+        if not self.public_works:
+            raise RuntimeError("Public Works not initialized")
+        
+        registry = getattr(self.public_works, 'registry_abstraction', None)
+        if not registry:
+            raise RuntimeError("Registry abstraction not available")
+        
+        try:
+            # Generate intent ID
+            intent_id = f"parse_{file_id}_{generate_event_id()}"
+            
+            # Create pending intent with ingestion_profile in context
+            result = await registry.create_pending_intent(
+                intent_id=intent_id,
+                intent_type="parse_content",
+                target_artifact_id=file_id,
+                context={
+                    "ingestion_profile": ingestion_profile,
+                    "parse_options": parse_options or {}
+                },
+                tenant_id=context.tenant_id,
+                user_id=getattr(context, 'user_id', None),
+                session_id=context.session_id
+            )
+            
+            if result.get("success"):
+                self.logger.info(
+                    f"Pending parse intent created: {intent_id} for file {file_id} "
+                    f"with ingestion_profile={ingestion_profile}"
+                )
+                return {
+                    "success": True,
+                    "intent_id": intent_id,
+                    "status": "pending"
+                }
+            else:
+                self.logger.error(f"Failed to create pending intent: {result.get('error')}")
+                return {
+                    "success": False,
+                    "error": result.get("error")
+                }
+                
+        except Exception as e:
+            self.logger.error(f"Failed to create pending parse intent: {e}", exc_info=True)
+            return {
+                "success": False,
+                "error": str(e)
+            }
+    
     async def _track_parsed_result(
         self,
         parsed_file_id: str,
@@ -3033,7 +3821,7 @@ class ContentOrchestrator:
         
         # Use RegistryAbstraction (governed access)
         # ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
-        registry = self.public_works.get_registry_abstraction()
+        registry = getattr(self.public_works, 'registry_abstraction', None)
         if not registry:
             self.logger.debug("Registry abstraction not available, skipping lineage tracking")
             return
@@ -3104,7 +3892,7 @@ class ContentOrchestrator:
         
         # Use RegistryAbstraction (governed access)
         # ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
-        registry = self.public_works.get_registry_abstraction()
+        registry = getattr(self.public_works, 'registry_abstraction', None)
         if not registry:
             self.logger.debug("Registry abstraction not available, skipping lineage tracking")
             return
@@ -3178,7 +3966,7 @@ class ContentOrchestrator:
         
         # Use RegistryAbstraction (governed access)
         # ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
-        registry = self.public_works.get_registry_abstraction()
+        registry = getattr(self.public_works, 'registry_abstraction', None)
         if not registry:
             return None
         

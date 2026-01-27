@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AuthCard } from "@/components/ui/auth-card";
 import { Loader2, Eye, EyeOff, Mail, Lock } from "lucide-react";
-import { validateEmail, validatePassword } from "@/lib/api/auth";
+// ✅ PHASE 2: Use service layer hook instead of direct API calls
+import { useServiceLayerAPI } from "@/shared/hooks/useServiceLayerAPI";
 import { useAuth } from "@/shared/auth/AuthProvider";
 
 interface LoginFormProps {
@@ -19,7 +20,9 @@ export default function LoginForm({
   onLoginError,
   onSwitchToRegister,
 }: LoginFormProps) {
-  const { login, isLoading, error, user, sessionToken } = useAuth();
+  // ✅ PHASE 2: Use service layer hook for validation
+  const { validateEmail, validatePassword } = useServiceLayerAPI();
+  const { login, isLoading, error: authError, user, sessionToken } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -147,9 +150,9 @@ export default function LoginForm({
           </div>
 
           {/* General Error */}
-          {errors.general && (
+          {(errors.general || authError) && (
             <div className="rounded-md bg-red-50 p-4">
-              <p className="text-sm text-red-600">{errors.general}</p>
+              <p className="text-sm text-red-600">{errors.general || authError}</p>
             </div>
           )}
 

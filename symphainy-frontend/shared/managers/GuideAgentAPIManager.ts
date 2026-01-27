@@ -1,8 +1,12 @@
 /**
  * Guide Agent API Manager
  * 
- * Centralizes all Guide Agent API calls using semantic endpoints.
- * Provides a clean interface for Guide Agent interactions.
+ * ✅ PHASE 5.6.3: Migrated to intent-based API
+ * 
+ * Centralizes all Guide Agent API calls using intent-based architecture.
+ * 
+ * Note: This manager now delegates to JourneyAPIManager for intent-based operations.
+ * Guide agent operations are part of the Journey realm.
  */
 
 // ============================================
@@ -53,156 +57,77 @@ export interface ConversationHistoryResponse {
 // Guide Agent API Manager Class
 // ============================================
 
+import { useJourneyAPIManager } from '@/shared/hooks/useJourneyAPIManager';
+
+/**
+ * ✅ PHASE 5.6.3: Guide Agent API Manager (Migrated to Intent-Based API)
+ * 
+ * This manager now uses JourneyAPIManager for all operations.
+ * Guide agent operations are part of the Journey realm and use intent-based API.
+ */
 export class GuideAgentAPIManager {
-  private baseURL: string;
-  private sessionToken: string;
+  private journeyAPIManager: ReturnType<typeof useJourneyAPIManager>;
 
-  constructor(sessionToken: string, baseURL?: string) {
-    this.sessionToken = sessionToken;
-    // Use centralized API config (NO hardcoded values)
-    if (baseURL) {
-      this.baseURL = baseURL.replace(':8000', '').replace(/\/$/, '');
-    } else {
-      // Import here to avoid circular dependency issues
-      const { getApiUrl } = require('@/shared/config/api-config');
-      this.baseURL = getApiUrl();
-    }
+  constructor(journeyAPIManager: ReturnType<typeof useJourneyAPIManager>) {
+    this.journeyAPIManager = journeyAPIManager;
   }
 
-  // ============================================
-  // User Intent Analysis
-  // ============================================
-
+  /**
+   * Analyze user intent
+   * 
+   * ✅ PHASE 5.6.3: Uses JourneyAPIManager (intent-based API)
+   */
   async analyzeUserIntent(request: AnalyzeIntentRequest): Promise<AnalyzeIntentResponse> {
-    try {
-      const response = await fetch(`${this.baseURL}/api/v1/journey/guide-agent/analyze-user-intent`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.sessionToken}`,
-          'Content-Type': 'application/json',
-          'X-Session-Token': this.sessionToken || request.session_token || ''
-        },
-        body: JSON.stringify({
-          message: request.message,
-          user_id: request.user_id,
-          context: request.context
-        })
-      });
+    const result = await this.journeyAPIManager.analyzeUserIntent(
+      request.message,
+      request.context
+    );
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        return {
-          success: false,
-          error: errorData.message || errorData.error || 'Intent analysis failed'
-        };
-      }
-
-      const data = await response.json();
-      return {
-        success: data.success,
-        intent_analysis: data.intent_analysis,
-        session_id: data.session_id,
-        timestamp: data.timestamp,
-        message: data.message,
-        error: data.error
-      };
-    } catch (error) {
-      console.error('Error analyzing user intent:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Intent analysis failed'
-      };
-    }
+    return {
+      success: result.success,
+      intent_analysis: result.intent_analysis,
+      error: result.error
+    };
   }
 
-  // ============================================
-  // Journey Guidance
-  // ============================================
-
+  /**
+   * Get journey guidance
+   * 
+   * ✅ PHASE 5.6.3: Uses JourneyAPIManager (intent-based API)
+   */
   async getJourneyGuidance(request: JourneyGuidanceRequest): Promise<JourneyGuidanceResponse> {
-    try {
-      const response = await fetch(`${this.baseURL}/api/v1/journey/guide-agent/get-journey-guidance`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.sessionToken}`,
-          'Content-Type': 'application/json',
-          'X-Session-Token': this.sessionToken || request.session_token || ''
-        },
-        body: JSON.stringify({
-          user_goal: request.user_goal,
-          current_step: request.current_step,
-          context: request.context
-        })
-      });
+    const result = await this.journeyAPIManager.getJourneyGuidance(
+      request.user_goal,
+      request.current_step,
+      request.context
+    );
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        return {
-          success: false,
-          error: errorData.message || errorData.error || 'Journey guidance failed'
-        };
-      }
-
-      const data = await response.json();
-      return {
-        success: data.success,
-        guidance: data.guidance,
-        next_steps: data.next_steps,
-        session_id: data.session_id,
-        message: data.message,
-        error: data.error
-      };
-    } catch (error) {
-      console.error('Error getting journey guidance:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Journey guidance failed'
-      };
-    }
+    return {
+      success: result.success,
+      guidance: result.guidance,
+      next_steps: result.next_steps,
+      error: result.error
+    };
   }
 
-  // ============================================
-  // Conversation History
-  // ============================================
-
+  /**
+   * Get conversation history
+   * 
+   * ✅ PHASE 5.6.3: Uses JourneyAPIManager (intent-based API)
+   */
   async getConversationHistory(sessionId: string): Promise<ConversationHistoryResponse> {
-    try {
-      const response = await fetch(`${this.baseURL}/api/v1/journey/guide-agent/get-conversation-history/${sessionId}`, {
-        headers: {
-          'Authorization': `Bearer ${this.sessionToken}`,
-          'Content-Type': 'application/json',
-          'X-Session-Token': this.sessionToken
-        }
-      });
+    const result = await this.journeyAPIManager.getConversationHistory(sessionId);
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        return {
-          success: false,
-          error: errorData.message || errorData.error || 'Failed to get conversation history'
-        };
-      }
-
-      const data = await response.json();
-      return {
-        success: data.success,
-        conversation_history: data.conversation_history,
-        session_id: data.session_id,
-        message: data.message,
-        error: data.error
-      };
-    } catch (error) {
-      console.error('Error getting conversation history:', error);
-      return {
-        success: false,
-        error: error instanceof Error ? error.message : 'Failed to get conversation history'
-      };
-    }
+    return {
+      success: result.success,
+      conversation_history: result.conversation_history,
+      error: result.error
+    };
   }
 }
 
-
-
-
-
-
+// Factory function for use in components
+export function useGuideAgentAPIManager(): GuideAgentAPIManager {
+  const journeyAPIManager = useJourneyAPIManager();
+  return new GuideAgentAPIManager(journeyAPIManager);
+}

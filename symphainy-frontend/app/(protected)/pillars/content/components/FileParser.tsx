@@ -17,7 +17,8 @@ import {
   CheckCircle,
   Clock
 } from 'lucide-react';
-import { useAuth } from '@/shared/auth/AuthProvider';
+// ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+import { useSessionBoundary, SessionStatus } from '@/shared/state/SessionBoundaryProvider';
 import { usePlatformState } from '@/shared/state/PlatformStateProvider';
 import { useContentAPIManager } from '@/shared/managers/ContentAPIManager';
 import { FileMetadata, FileStatus, FileType } from '@/shared/types/file';
@@ -68,8 +69,10 @@ export function FileParser({
   onParseError,
   className
 }: FileParserProps) {
-  const { isAuthenticated } = useAuth();
+  // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+  const { state: sessionState } = useSessionBoundary();
   const { state } = usePlatformState();
+  const isAuthenticated = sessionState.status === SessionStatus.Active;
   const contentAPIManager = useContentAPIManager();
   
   const [selectedFileUuid, setSelectedFileUuid] = useState<string | null>(null);

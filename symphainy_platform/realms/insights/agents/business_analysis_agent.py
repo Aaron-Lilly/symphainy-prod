@@ -45,7 +45,8 @@ class BusinessAnalysisAgent(AgentBase):
         public_works: Optional[Any] = None,
         agent_definition_registry: Optional[Any] = None,
         mcp_client_manager: Optional[Any] = None,
-        telemetry_service: Optional[Any] = None
+        telemetry_service: Optional[Any] = None,
+        **kwargs
     ):
         """
         Initialize Business Analysis Agent.
@@ -70,6 +71,66 @@ class BusinessAnalysisAgent(AgentBase):
         )
         self.logger = get_logger(self.__class__.__name__)
     
+    async def _process_with_assembled_prompt(
+        self,
+        system_message: str,
+        user_message: str,
+        runtime_context: AgentRuntimeContext,
+        context: ExecutionContext
+    ) -> Dict[str, Any]:
+        """
+        Process request with assembled prompt (4-layer model).
+        
+        This method is called by AgentBase.process_request() after assembling
+        the system and user messages from the 4-layer model.
+        
+        Args:
+            system_message: Assembled system message (from layers 1-3)
+            user_message: Assembled user message
+            runtime_context: Runtime context with business_context
+            context: Execution context
+        
+        Returns:
+            Dict with business analysis outcome artifacts
+        """
+        # Extract request from user_message or runtime_context
+        request_data = {}
+        try:
+            import json
+            if user_message.strip().startswith("{"):
+                request_data = json.loads(user_message)
+            else:
+                # Try to extract from runtime_context.business_context
+                if hasattr(runtime_context, 'business_context') and runtime_context.business_context:
+                    request_data = runtime_context.business_context.get("request", {})
+                # If still empty, try to infer from user_message
+                if not request_data:
+                    # Check if user_message contains parsed_file_id
+                    if "parsed_file_id" in user_message.lower():
+                        # Try to extract
+                        import re
+                        file_id_match = re.search(r'parsed_file_id["\']?\s*[:=]\s*["\']?([^"\'\s]+)', user_message)
+                        if file_id_match:
+                            request_data = {"type": "interpret_data", "parsed_file_id": file_id_match.group(1)}
+                    else:
+                        # Default: treat as interpret_data request
+                        request_data = {"type": "interpret_data"}
+        except (json.JSONDecodeError, ValueError):
+            # Fallback: treat as interpret_data request
+            request_data = {"type": "interpret_data"}
+        
+        # Use business context from runtime_context if available
+        if runtime_context.business_context:
+            request_data.setdefault("business_context", runtime_context.business_context)
+        
+        # Route to appropriate handler
+        request_type = request_data.get("type", "interpret_data")
+        
+        if request_type == "interpret_data":
+            return await self._handle_interpret_data(request_data, context)
+        else:
+            raise ValueError(f"Unknown request type: {request_type}")
+    
     async def process_request(
         self,
         request: Dict[str, Any],
@@ -79,19 +140,28 @@ class BusinessAnalysisAgent(AgentBase):
         """
         Process request using agentic forward pattern.
         
+        ARCHITECTURAL PRINCIPLE: This method delegates to AgentBase.process_request()
+        which implements the 4-layer model. For backward compatibility, it can also
+        be called directly, but the 4-layer flow is preferred.
+        
         Args:
             request: Request dictionary with type and parameters
             context: Execution context
+            runtime_context: Optional pre-assembled runtime context (from orchestrator)
             
         Returns:
             Dict with business analysis outcome artifacts
         """
-        request_type = request.get("type")
-        
-        if request_type == "interpret_data":
-            return await self._handle_interpret_data(request, context)
+        # If runtime_context is provided, use it; otherwise let AgentBase assemble it
+        if runtime_context:
+            system_message = self._assemble_system_message(runtime_context)
+            user_message = self._assemble_user_message(request, runtime_context)
+            return await self._process_with_assembled_prompt(
+                system_message, user_message, runtime_context, context
+            )
         else:
-            raise ValueError(f"Unknown request type: {request_type}")
+            # Delegate to parent's process_request which implements 4-layer model
+            return await super().process_request(request, context, runtime_context=None)
     
     async def _handle_interpret_data(
         self,
@@ -438,3 +508,7 @@ Generate:
                 "confidence": 0.5,
                 "reasoning": f"Interpretation generated with limited context: {str(e)}"
             }
+    
+    async def get_agent_description(self) -> str:
+        """Get agent description (required by AgentBase)."""
+        return "Business Analysis Agent - Provides data interpretation and business reasoning"

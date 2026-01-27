@@ -5,11 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { AuthCard } from "@/components/ui/auth-card";
 import { Loader2, Eye, EyeOff, Mail, Lock, User } from "lucide-react";
-import {
-  validateEmail,
-  validatePassword,
-  validateName,
-} from "@/lib/api/auth";
+// ✅ PHASE 2: Use service layer hook instead of direct API calls
+import { useServiceLayerAPI } from "@/shared/hooks/useServiceLayerAPI";
 import { useAuth } from "@/shared/auth/AuthProvider";
 
 interface RegisterFormProps {
@@ -23,6 +20,8 @@ export default function RegisterForm({
   onRegisterError,
   onSwitchToLogin,
 }: RegisterFormProps) {
+  // ✅ PHASE 2: Use service layer hook for validation
+  const { validateEmail, validatePassword, validateName } = useServiceLayerAPI();
   const { register, isLoading, error, user, sessionToken } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");

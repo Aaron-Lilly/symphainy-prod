@@ -51,9 +51,9 @@ class ExportService:
         self.deterministic_compute = None
         
         if public_works:
-            self.registry = public_works.get_registry_abstraction()
+            self.registry = public_works.registry_abstraction
             self.semantic_data = public_works.get_semantic_data_abstraction()
-            self.deterministic_compute = public_works.get_deterministic_compute_abstraction()
+            self.deterministic_compute = public_works.deterministic_compute_abstraction
     
     async def export_to_migration_engine(
         self,

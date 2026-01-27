@@ -25,8 +25,8 @@ import {
 } from 'lucide-react';
 import { InsightsService } from '@/shared/services/insights/core';
 import { PermitSemanticObject, Obligation } from '@/shared/services/insights/types';
-import { useAuth } from '@/shared/auth/AuthProvider';
-import { usePlatformState } from '@/shared/state/PlatformStateProvider';
+// ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+import { useSessionBoundary } from '@/shared/state/SessionBoundaryProvider';
 import { toast } from 'sonner';
 
 interface PSOViewerProps {
@@ -35,9 +35,9 @@ interface PSOViewerProps {
 }
 
 export function PSOViewer({ psoId, onClose }: PSOViewerProps) {
-  const { sessionToken } = useAuth();
-  const { state } = usePlatformState();
-  const guideSessionToken = sessionToken || state.session.sessionId;
+  // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+  const { state: sessionState } = useSessionBoundary();
+  const { submitIntent, getExecutionStatus } = usePlatformState();
   const [pso, setPso] = useState<PermitSemanticObject | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -46,17 +46,66 @@ export function PSOViewer({ psoId, onClose }: PSOViewerProps) {
     loadPSO();
   }, [psoId]);
 
+  // ✅ PHASE 4: Migrate to artifact retrieval (PSO stored as artifact)
+  // Note: PSO retrieval may need to use artifact retrieval API or a specific intent
+  // For now, using artifact retrieval pattern - may need to be updated when PSO intent is available
   const loadPSO = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      const insightsService = new InsightsService(guideSessionToken);
-      const psoData = await insightsService.getPSO(psoId, guideSessionToken);
+      if (!sessionState.sessionId || !sessionState.tenantId) {
+        throw new Error("Session required to load PSO");
+      }
+
+      // TODO: PSO retrieval - need to determine if this should be:
+      // 1. Artifact retrieval (if PSOs are stored as artifacts)
+      // 2. Specific intent (if PSO retrieval intent exists)
+      // 3. Direct API call (if PSOs are not yet in intent-based flow)
+      
+      // Submit intent (will work when backend implements `get_pso` intent)
+      // TODO: Backend needs to implement `get_pso` intent or use artifact retrieval
+      const executionId = await submitIntent(
+        'get_pso', // New intent needed - see PHASE_4_MIGRATION_GAPS.md
+        {
+          pso_id: psoId
+        }
+      );
+
+      // Wait for execution to complete
+      const maxAttempts = 10;
+      let attempts = 0;
+      let psoData: any = null;
+
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const status = await getExecutionStatus(executionId);
+        
+        if (status?.status === "completed") {
+          // Extract PSO from execution artifacts
+          const psoArtifact = status.artifacts?.pso;
+          if (psoArtifact?.semantic_payload) {
+            psoData = psoArtifact.semantic_payload;
+          }
+          break;
+        } else if (status?.status === "failed") {
+          throw new Error(status.error || "Failed to load PSO");
+        }
+        
+        attempts++;
+      }
+
+      if (!psoData) {
+        throw new Error("PSO not found in execution result");
+      }
+
       setPso(psoData);
     } catch (err: any) {
       setError(err.message || 'Failed to load PSO');
-      toast.error('Failed to load PSO');
+      toast.error('Failed to load PSO', {
+        description: err.message || 'PSO retrieval needs migration to intent-based API'
+      });
     } finally {
       setLoading(false);
     }

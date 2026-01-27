@@ -9,6 +9,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/shared/auth/AuthProvider';
+// ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+import { useSessionBoundary, SessionStatus } from '@/shared/state/SessionBoundaryProvider';
 import { useGuideAgent } from '@/shared/agui/GuideAgentProvider';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -20,7 +22,10 @@ export const ExperienceLayerExample: React.FC = () => {
   // HOOKS - Clean, unified API access
   // ============================================================================
   
-  const { user, isAuthenticated, login, logout } = useAuth();
+  // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+  const { state: sessionState } = useSessionBoundary();
+  const { user, login, logout } = useAuth(); // Keep login/logout for demo
+  const isAuthenticated = sessionState.status === SessionStatus.Active;
   const guideAgent = useGuideAgent();
 
   // ============================================================================

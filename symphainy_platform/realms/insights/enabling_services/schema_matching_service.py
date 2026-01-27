@@ -39,7 +39,7 @@ class SchemaMatchingService:
         # ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
         self.deterministic_compute = None
         if public_works:
-            self.deterministic_compute = public_works.get_deterministic_compute_abstraction()
+            self.deterministic_compute = public_works.deterministic_compute_abstraction
             if not self.deterministic_compute:
                 self.logger.warning("DeterministicComputeAbstraction not available")
     

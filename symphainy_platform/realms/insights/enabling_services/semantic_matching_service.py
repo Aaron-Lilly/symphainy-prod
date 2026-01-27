@@ -15,6 +15,8 @@ ARCHITECTURAL PRINCIPLE: This is Phase 2 of three-phase matching.
 from typing import Dict, Any, Optional, List
 from utilities import get_logger
 from symphainy_platform.runtime.execution_context import ExecutionContext
+from symphainy_platform.realms.content.enabling_services.deterministic_chunking_service import DeterministicChunkingService
+from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
 
 
 class SemanticMatchingService:
@@ -42,6 +44,13 @@ class SemanticMatchingService:
             self.semantic_data = public_works.get_semantic_data_abstraction()
             if not self.semantic_data:
                 self.logger.warning("SemanticDataAbstraction not available")
+        
+        # PHASE 3: Initialize chunking and parsing services for chunk-based pattern
+        self.deterministic_chunking_service = None
+        self.file_parser_service = None
+        if public_works:
+            self.deterministic_chunking_service = DeterministicChunkingService(public_works=public_works)
+            self.file_parser_service = FileParserService(public_works=public_works)
     
     async def match_semantically(
         self,
@@ -81,15 +90,48 @@ class SemanticMatchingService:
             }
         
         try:
-            # Get source semantic embeddings
+            # PHASE 3: Use chunk-based pattern (not direct parsed_file_id queries)
+            # 1. Get parsed files
+            source_parsed_file = await self.file_parser_service.get_parsed_file(
+                parsed_file_id=source_parsed_file_id,
+                tenant_id=context.tenant_id,
+                context=context
+            )
+            target_parsed_file = await self.file_parser_service.get_parsed_file(
+                parsed_file_id=target_parsed_file_id,
+                tenant_id=context.tenant_id,
+                context=context
+            )
+            
+            # 2. Create deterministic chunks
+            source_parsed_content = source_parsed_file.get("parsed_content") or source_parsed_file
+            target_parsed_content = target_parsed_file.get("parsed_content") or target_parsed_file
+            
+            source_chunks = await self.deterministic_chunking_service.create_chunks(
+                parsed_content=source_parsed_content,
+                file_id=source_parsed_file.get("file_id"),
+                tenant_id=context.tenant_id,
+                parsed_file_id=source_parsed_file_id
+            )
+            
+            target_chunks = await self.deterministic_chunking_service.create_chunks(
+                parsed_content=target_parsed_content,
+                file_id=target_parsed_file.get("file_id"),
+                tenant_id=context.tenant_id,
+                parsed_file_id=target_parsed_file_id
+            )
+            
+            # 3. Query embeddings by chunk_id (not parsed_file_id)
+            source_chunk_ids = [chunk.chunk_id for chunk in source_chunks]
+            target_chunk_ids = [chunk.chunk_id for chunk in target_chunks]
+            
             source_embeddings = await self.semantic_data.get_semantic_embeddings(
-                filter_conditions={"parsed_file_id": source_parsed_file_id},
+                filter_conditions={"chunk_id": {"$in": source_chunk_ids}},
                 limit=None
             )
             
-            # Get target semantic embeddings
             target_embeddings = await self.semantic_data.get_semantic_embeddings(
-                filter_conditions={"parsed_file_id": target_parsed_file_id},
+                filter_conditions={"chunk_id": {"$in": target_chunk_ids}},
                 limit=None
             )
             
@@ -98,7 +140,7 @@ class SemanticMatchingService:
                     "semantic_matches": [],
                     "enhanced_confidence": {},
                     "suggested_mappings": [],
-                    "error": "Semantic embeddings not found"
+                    "error": "Semantic embeddings not found. Ensure chunks are created and embeddings are generated via hydrate_semantic_profile intent."
                 }
             
             # Build column-to-embedding maps

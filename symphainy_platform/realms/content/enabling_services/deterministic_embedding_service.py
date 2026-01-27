@@ -51,7 +51,7 @@ class DeterministicEmbeddingService:
         # ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
         self.deterministic_compute_abstraction = None
         if public_works:
-            self.deterministic_compute_abstraction = public_works.get_deterministic_compute_abstraction()
+            self.deterministic_compute_abstraction = public_works.deterministic_compute_abstraction
             if not self.deterministic_compute_abstraction:
                 self.logger.warning(
                     "DeterministicComputeAbstraction not available - deterministic embeddings will not be stored. "

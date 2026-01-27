@@ -22,6 +22,7 @@ from typing import Dict, Any, Optional, List
 from utilities import get_logger
 from symphainy_platform.runtime.execution_context import ExecutionContext
 from symphainy_platform.civic_systems.agentic.agent_base import AgentBase
+from symphainy_platform.civic_systems.agentic.models.agent_runtime_context import AgentRuntimeContext
 
 
 class OutcomesLiaisonAgent(AgentBase):
@@ -43,7 +44,8 @@ class OutcomesLiaisonAgent(AgentBase):
         public_works: Optional[Any] = None,
         agent_definition_registry: Optional[Any] = None,
         mcp_client_manager: Optional[Any] = None,
-        telemetry_service: Optional[Any] = None
+        telemetry_service: Optional[Any] = None,
+        **kwargs
     ):
         """
         Initialize Outcomes Liaison Agent.
@@ -64,9 +66,58 @@ class OutcomesLiaisonAgent(AgentBase):
             public_works=public_works,
             agent_definition_registry=agent_definition_registry,
             mcp_client_manager=mcp_client_manager,
-            telemetry_service=telemetry_service
+            telemetry_service=telemetry_service,
+            **kwargs
         )
         self.logger = get_logger(self.__class__.__name__)
+    
+    async def _process_with_assembled_prompt(
+        self,
+        system_message: str,
+        user_message: str,
+        runtime_context: AgentRuntimeContext,
+        context: ExecutionContext
+    ) -> Dict[str, Any]:
+        """
+        Process request with assembled prompt (4-layer model).
+        
+        This method is called by AgentBase.process_request() after assembling
+        the system and user messages from the 4-layer model.
+        
+        Args:
+            system_message: Assembled system message (from layers 1-3)
+            user_message: Assembled user message
+            runtime_context: Runtime context with business_context
+            context: Execution context
+        
+        Returns:
+            Dict with guidance response
+        """
+        # Extract message from user_message
+        message = user_message.strip()
+        
+        # Try to extract from runtime_context.business_context if available
+        if hasattr(runtime_context, 'business_context') and runtime_context.business_context:
+            message = runtime_context.business_context.get("message", message)
+        
+        # If message looks like JSON, try to parse it
+        if message.startswith("{") or message.startswith("["):
+            try:
+                import json
+                parsed = json.loads(message)
+                if isinstance(parsed, dict):
+                    message = parsed.get("message", parsed.get("text", message))
+            except (json.JSONDecodeError, ValueError):
+                pass  # Use message as-is
+        
+        # Build request from message
+        request = {
+            "type": "chat",
+            "message": message
+        }
+        
+        # Route to appropriate handler
+        return await self._handle_guidance_request(request, context)
     
     async def process_request(
         self,
@@ -289,3 +340,7 @@ Explain what synthesis does and how it helps users."""
                 "What is solution synthesis?",
                 "How do I export artifacts?"
             ]
+    
+    async def get_agent_description(self) -> str:
+        """Get agent description (required by AgentBase)."""
+        return "Outcomes Liaison Agent - Provides conversational guidance for Outcomes/Solution pillar operations"

@@ -2,8 +2,9 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { FileMetadata, FileStatus, FileType } from "@/shared/types/file";
 import { Button } from "@/components/ui/button";
-import { listFiles, deleteFile } from "@/lib/api/fms";
-import { useGlobalSession } from "@/shared/agui/GlobalSessionProvider";
+// ✅ PHASE 2: Use service layer hook instead of direct API calls
+import { useFileAPI } from "@/shared/hooks/useFileAPI";
+import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { EmptyState } from "@/components/ui/empty-state";
 import {
   Table,
@@ -78,8 +79,11 @@ const mockFiles: FileMetadata[] = [
 ];
 
 export default function FileDashboard() {
-  const { getPillarState, setPillarState, guideSessionToken } =
-    useGlobalSession();
+  // ✅ PHASE 1: Migrated to SessionBoundaryProvider
+  // ✅ PHASE 2: Use service layer hook
+  const { listFiles, deleteFile } = useFileAPI();
+  // ✅ PHASE 1: Migrated to PlatformStateProvider - use realm state
+  const { getRealmState, setRealmState } = usePlatformState();
   const [files, setFiles] = useState<FileMetadata[]>([]);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [isLoadingFiles, setIsLoadingFiles] = useState(false);
@@ -87,45 +91,42 @@ export default function FileDashboard() {
   const [showAll, setShowAll] = useState(false);
   const [initialized, setInitialized] = useState(false);
 
-  // Initialize from global state only once
+  // ✅ PHASE 1: Initialize from Content realm state
   useEffect(() => {
     if (!initialized) {
-      const currentState = getPillarState("data");
-      if (currentState?.files && Array.isArray(currentState.files) && currentState.files.length > 0) {
-        setFiles(currentState.files);
-        setShowAll(currentState.files.length <= 5);
+      const contentFiles = getRealmState("content", "files");
+      if (contentFiles && Array.isArray(contentFiles) && contentFiles.length > 0) {
+        setFiles(contentFiles);
+        setShowAll(contentFiles.length <= 5);
       }
-      if (currentState?.deleting) {
-        setDeleting(currentState.deleting);
+      const contentDeleting = getRealmState("content", "deleting");
+      if (contentDeleting) {
+        setDeleting(contentDeleting);
       }
       setInitialized(true);
     }
-  }, [initialized, getPillarState]);
+  }, [initialized, getRealmState]);
 
-  // Only sync back to global state when files actually change, not on every render
+  // ✅ PHASE 1: Sync back to Content realm state when files change
   useEffect(() => {
     if (initialized) {
-      setPillarState("data", { files, deleting });
+      setRealmState("content", "files", files);
+      if (deleting) {
+        setRealmState("content", "deleting", deleting);
+      }
     }
-  }, [files, deleting, initialized, setPillarState]);
+  }, [files, deleting, initialized, setRealmState]);
 
+  // ✅ PHASE 2: Use service layer hook - no need to pass token manually
   const fetchFiles = useCallback(async () => {
     setIsLoadingFiles(true);
     setError(null);
     try {
-      const token = guideSessionToken || "debug-token";
-
-      if (guideSessionToken) {
-        // Use real API when token is available
-        const fileList = await listFiles(token);
-        const safeFileList = Array.isArray(fileList) ? fileList : [];
-        setFiles(safeFileList);
-        setShowAll(safeFileList.length <= 5);
-      } else {
-        // Use mock data for development
-        setFiles(mockFiles.slice(0, 5));
-        setShowAll(mockFiles.length <= 5);
-      }
+      // Service layer hook automatically gets token from SessionBoundaryProvider
+      const fileList = await listFiles();
+      const safeFileList = Array.isArray(fileList) ? fileList : [];
+      setFiles(safeFileList);
+      setShowAll(safeFileList.length <= 5);
     } catch (error) {
       console.error("Failed to fetch files:", error);
       setError(
@@ -134,10 +135,11 @@ export default function FileDashboard() {
       toast.error("Error loading files");
       // Fallback to mock data
       setFiles(mockFiles.slice(0, 5));
+      setShowAll(mockFiles.length <= 5);
     } finally {
       setIsLoadingFiles(false);
     }
-  }, [guideSessionToken]);
+  }, [listFiles]);
 
   // Only fetch files if we haven't initialized or if files are empty after initialization
   useEffect(() => {
@@ -149,12 +151,8 @@ export default function FileDashboard() {
 
   const handleDelete = async (uuid: string) => {
     try {
-      const token = guideSessionToken || "debug-token";
-
-      if (guideSessionToken) {
-        // Use real API when token is available
-        await deleteFile(uuid, token);
-      }
+      // ✅ PHASE 2: Use service layer hook - no need to pass token manually
+      await deleteFile(uuid);
 
       // Update local state - this will automatically sync to global state via useEffect
       const currentFiles = Array.isArray(files) ? files : [];

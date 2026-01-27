@@ -43,28 +43,18 @@ export const AGUIEventProvider: React.FC<{
     setEvents((prev) => [...prev, event]);
   }, []);
 
-  // Send an AG-UI event to the backend (HTTP POST for now)
+  // ✅ PHASE 2: Use ServiceLayerAPI instead of direct fetch
   const sendEvent = useCallback(
     async (event: AGUIEvent): Promise<AGUIResponse[]> => {
-      // Use new /global/agent endpoint
-      const resp = await fetch("/global/agent", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          session_token: sessionToken,
-          agent_type: event.agent_type || "GuideAgent", // Default to GuideAgent if not specified
-          pillar: event.pillar || undefined,
-          event,
-        }),
+      const { sendAgentEvent } = await import('@/shared/services/ServiceLayerAPI');
+      const responses = await sendAgentEvent(event, {
+        sessionId: sessionToken,
       });
-      if (!resp.ok) throw new Error(await resp.text());
-      const data = await resp.json();
-      // Assume data.result is the array of responses (adjust as needed)
-      if (Array.isArray(data.result)) {
-        setEvents((prev) => [...prev, ...data.result]);
-        return data.result;
+      // Add responses to events state
+      if (Array.isArray(responses) && responses.length > 0) {
+        setEvents((prev) => [...prev, ...responses]);
       }
-      return [];
+      return responses;
     },
     [sessionToken],
   );

@@ -28,10 +28,9 @@ import RoadmapTimeline from "@/components/experience/RoadmapTimeline";
 import { Button } from "@/components/ui/button";
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { useOutcomesAPIManager } from "@/shared/hooks/useOutcomesAPIManager";
-import { Loader, AlertTriangle, FileText, Play, Download, Upload, MessageCircle, Eye } from "lucide-react";
+import { Loader, AlertTriangle, FileText, Play, Download, Upload, MessageCircle, Eye, GitBranch } from "lucide-react";
 import { FileMetadata, FileType, FileStatus } from "@/shared/types/file";
-import { useSetAtom } from "jotai";
-import { chatbotAgentInfoAtom, mainChatbotOpenAtom } from "@/shared/atoms/chatbot-atoms";
+// ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms (already imported above)
 import { SecondaryChatbotAgent, SecondaryChatbotTitle } from "@/shared/types/secondaryChatbot";
 import { StateHandler, LoadingIndicator, ErrorDisplay, SuccessDisplay } from "@/components/ui/loading-error-states";
 
@@ -59,10 +58,12 @@ const BUSINESS_OUTCOMES_FILE_TYPES = [
 ];
 
 export default function BusinessOutcomesPillarPage() {
-  const setAgentInfo = useSetAtom(chatbotAgentInfoAtom);
-  const setMainChatbotOpen = useSetAtom(mainChatbotOpenAtom);
+  // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
+  const { state: sessionState } = useSessionBoundary();
+  // ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
+  const { state, setChatbotAgentInfo, setMainChatbotOpen, submitIntent, getExecutionStatus } = usePlatformState();
+  const setAgentInfo = setChatbotAgentInfo; // Alias for compatibility
 
-  const { state } = usePlatformState();
   const outcomesAPIManager = useOutcomesAPIManager();
   const [showProposal, setShowProposal] = useState(false);
   const [selectedFile, setSelectedFile] = useState<FileMetadata | null>(null);
@@ -103,11 +104,11 @@ export default function BusinessOutcomesPillarPage() {
       }
     };
 
-    if (!initialized && state.session.sessionId) {
+    if (!initialized && sessionState.sessionId) {
       getAllFiles();
       setInitialized(true);
     }
-  }, [state.realm.content.files, state.session.sessionId, initialized]);
+  }, [state.realm.content.files, sessionState.sessionId, initialized]);
 
   // Load cross-pillar data from realm states
   useEffect(() => {
@@ -141,11 +142,11 @@ export default function BusinessOutcomesPillarPage() {
       }
     };
 
-    if (state.session.sessionId) {
+    if (sessionState.sessionId) {
       loadCrossPillarData();
-      setSessionToken(state.session.sessionId);
+      setSessionToken(sessionState.sessionId);
     }
-  }, [state.realm.insights, state.realm.journey, state.session.sessionId]);
+  }, [state.realm.insights, state.realm.journey, sessionState.sessionId]);
 
   // Check if we have data from other pillars (declare before useEffects)
   const hasInsights = !!insightsData;
@@ -155,7 +156,7 @@ export default function BusinessOutcomesPillarPage() {
   // Load summary visualization on mount
   useEffect(() => {
     const loadSummary = async () => {
-      if (!state.session.sessionId) return;
+      if (!sessionState.sessionId) return;
       
       try {
         const synthesisResult = await outcomesAPIManager.synthesizeOutcome();
@@ -171,19 +172,19 @@ export default function BusinessOutcomesPillarPage() {
       }
     };
 
-    if (state.session.sessionId && hasInsights && hasOperations) {
+    if (sessionState.sessionId && hasInsights && hasOperations) {
       loadSummary();
     }
-  }, [state.session.sessionId, hasInsights, hasOperations, outcomesAPIManager]);
+  }, [sessionState.sessionId, hasInsights, hasOperations, outcomesAPIManager]);
 
-  // Set up Business Outcomes Liaison Agent as secondary option (not default)
+  // ✅ PHASE 1.2: Set up Business Outcomes Liaison Agent
   useEffect(() => {
     // Configure the secondary agent but don't show it by default
     setAgentInfo({
       agent: SecondaryChatbotAgent.BUSINESS_OUTCOMES_LIAISON,
       title: SecondaryChatbotTitle.BUSINESS_OUTCOMES_LIAISON,
       file_url: "",
-      additional_info: "Business outcomes and strategic planning assistance"
+      additional_info: "Strategic planning and business outcomes expert. Ask me about roadmap generation, POC creation, solution synthesis, and cross-pillar integration."
     });
     // Keep main chatbot open by default - GuideAgent will be shown
     setMainChatbotOpen(true);
@@ -223,7 +224,7 @@ export default function BusinessOutcomesPillarPage() {
     setError(null);
     
     try {
-      if (!state.session.sessionId) {
+      if (!sessionState.sessionId || !sessionState.tenantId) {
         setError("Session required to generate outcomes");
         return;
       }
@@ -313,37 +314,212 @@ export default function BusinessOutcomesPillarPage() {
     setArtifacts((prev: any) => ({ ...prev, [artifactType]: artifact }));
   };
 
+  // ✅ PHASE 4: Implement Business Outcomes handlers using intent-based API
   const handleCreateBlueprint = async (workflowId: string) => {
-    // TODO: Implement blueprint creation
-    console.log("Create blueprint", workflowId);
-    return { success: false, error: "Not implemented" };
+    if (!sessionState.sessionId || !sessionState.tenantId) {
+      return { success: false, error: "Session required to create blueprint" };
+    }
+
+    try {
+      // Submit create_blueprint intent
+      const executionId = await submitIntent(
+        'create_blueprint',
+        {
+          workflow_id: workflowId,
+          description: `Blueprint for workflow ${workflowId}`
+        }
+      );
+
+      // Wait for execution to complete
+      const maxAttempts = 30;
+      let attempts = 0;
+      let blueprint: any = null;
+
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const status = await getExecutionStatus(executionId);
+        
+        if (status?.status === "completed") {
+          // Extract blueprint from execution artifacts
+          const blueprintArtifact = status.artifacts?.blueprint;
+          if (blueprintArtifact?.semantic_payload) {
+            blueprint = blueprintArtifact.semantic_payload;
+          }
+          break;
+        } else if (status?.status === "failed") {
+          throw new Error(status.error || "Failed to create blueprint");
+        }
+        
+        attempts++;
+      }
+
+      if (!blueprint) {
+        throw new Error("Blueprint not found in execution result");
+      }
+
+      return { success: true, blueprint };
+    } catch (error) {
+      console.error("[BusinessOutcomes] Error creating blueprint:", error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : "Failed to create blueprint" 
+      };
+    }
   };
 
   const handleCreatePOC = async () => {
-    // TODO: Implement POC creation
-    console.log("Create POC");
-    return { success: false, error: "Not implemented" };
+    if (!sessionState.sessionId || !sessionState.tenantId) {
+      return { success: false, error: "Session required to create POC" };
+    }
+
+    try {
+      // Get synthesis for POC description
+      const synthesisResult = await outcomesAPIManager.synthesizeOutcome();
+      const pocDescription = synthesisResult.synthesis?.overall_synthesis || 
+        "Proof of concept for platform implementation based on analysis across all pillars";
+
+      // Submit create_poc intent
+      const executionId = await submitIntent(
+        'create_poc',
+        {
+          description: pocDescription,
+          synthesis: synthesisResult.synthesis
+        }
+      );
+
+      // Wait for execution to complete
+      const maxAttempts = 30;
+      let attempts = 0;
+      let poc: any = null;
+
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const status = await getExecutionStatus(executionId);
+        
+        if (status?.status === "completed") {
+          // Extract POC from execution artifacts
+          const pocArtifact = status.artifacts?.poc;
+          if (pocArtifact?.semantic_payload) {
+            poc = pocArtifact.semantic_payload;
+          }
+          break;
+        } else if (status?.status === "failed") {
+          throw new Error(status.error || "Failed to create POC");
+        }
+        
+        attempts++;
+      }
+
+      if (!poc) {
+        throw new Error("POC not found in execution result");
+      }
+
+      return { success: true, poc };
+    } catch (error) {
+      console.error("[BusinessOutcomes] Error creating POC:", error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : "Failed to create POC" 
+      };
+    }
   };
 
   const handleGenerateRoadmap = async () => {
-    // TODO: Implement roadmap generation
-    console.log("Generate roadmap");
-    return { success: false, error: "Not implemented" };
+    if (!sessionState.sessionId || !sessionState.tenantId) {
+      return { success: false, error: "Session required to generate roadmap" };
+    }
+
+    try {
+      // Get synthesis for roadmap context
+      const synthesisResult = await outcomesAPIManager.synthesizeOutcome();
+
+      // Submit generate_roadmap intent
+      const executionId = await submitIntent(
+        'generate_roadmap',
+        {
+          description: synthesisResult.synthesis?.overall_synthesis || "Strategic roadmap",
+          synthesis: synthesisResult.synthesis
+        }
+      );
+
+      // Wait for execution to complete
+      const maxAttempts = 30;
+      let attempts = 0;
+      let roadmap: any = null;
+
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        
+        const status = await getExecutionStatus(executionId);
+        
+        if (status?.status === "completed") {
+          // Extract roadmap from execution artifacts
+          const roadmapArtifact = status.artifacts?.roadmap;
+          if (roadmapArtifact?.semantic_payload) {
+            roadmap = roadmapArtifact.semantic_payload;
+          }
+          break;
+        } else if (status?.status === "failed") {
+          throw new Error(status.error || "Failed to generate roadmap");
+        }
+        
+        attempts++;
+      }
+
+      if (!roadmap) {
+        throw new Error("Roadmap not found in execution result");
+      }
+
+      return { success: true, roadmap };
+    } catch (error) {
+      console.error("[BusinessOutcomes] Error generating roadmap:", error);
+      return { 
+        success: false, 
+        error: error instanceof Error ? error.message : "Failed to generate roadmap" 
+      };
+    }
   };
 
   const handleExportArtifact = async (artifactType: string, artifactId: string, format: string) => {
-    // TODO: Implement artifact export
-    console.log("Export artifact", artifactType, artifactId, format);
+    try {
+      const result = await outcomesAPIManager.exportArtifact(
+        artifactType as "blueprint" | "poc" | "roadmap",
+        artifactId,
+        format as "json" | "docx" | "yaml"
+      );
+      
+      if (result.success && result.download_url) {
+        // Open download URL in new tab
+        window.open(result.download_url, '_blank');
+      } else {
+        setError(result.error || 'Failed to export artifact');
+      }
+    } catch (err: any) {
+      console.error('Error exporting artifact:', err);
+      setError(err.message || 'Failed to export artifact');
+    }
   };
 
   return (
     <div className="container mx-auto px-4 py-8">
       {/* Header */}
       <div className="mb-8">
-        <h1 className="text-3xl font-bold text-gray-800">Business Outcomes</h1>
-        <p className="text-gray-600 mt-2">
-          Review and synthesize insights from all pillars to create strategic roadmaps and POC proposals
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-800">Business Outcomes</h1>
+            <p className="text-gray-600 mt-2">
+              Review and synthesize insights from all pillars to create strategic roadmaps and POC proposals
+            </p>
+          </div>
+          {/* ✅ PHASE 1.2: Show which Liaison Agent is available */}
+          <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+            <span className="text-xs font-semibold text-blue-900">Available:</span>
+            <span className="text-xs text-blue-700">Business Outcomes Liaison Agent</span>
+            <span className="flex h-2 w-2 rounded-full bg-blue-500" title="Liaison agent available" />
+          </div>
+        </div>
       </div>
 
       {/* Error Display */}
@@ -362,6 +538,82 @@ export default function BusinessOutcomesPillarPage() {
             realmVisuals={summaryVisuals}
             synthesis={businessOutcomesOutputs?.synthesis}
           />
+          {/* ✅ PHASE 2.3: Show which pillars contributed to synthesis */}
+          {businessOutcomesOutputs?.synthesis && (
+            <Card className="mt-4 border-blue-200 bg-blue-50/30">
+              <CardHeader>
+                <CardTitle className="text-sm">Synthesis Inputs</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  {businessOutcomesOutputs.synthesis.content_summary && (
+                    <Badge variant="outline" className="bg-white">Content Pillar</Badge>
+                  )}
+                  {businessOutcomesOutputs.synthesis.insights_summary && (
+                    <Badge variant="outline" className="bg-white">Insights Pillar</Badge>
+                  )}
+                  {businessOutcomesOutputs.synthesis.journey_summary && (
+                    <Badge variant="outline" className="bg-white">Journey Pillar</Badge>
+                  )}
+                  {businessOutcomesOutputs.synthesis.overall_synthesis && (
+                    <Badge variant="outline" className="bg-white">Cross-Pillar Synthesis</Badge>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* ✅ PHASE 3.3: Coexistence Context - Cross-Pillar Coordination */}
+          {businessOutcomesOutputs?.synthesis && (
+            <Card className="mt-4 border-purple-200 bg-purple-50/30">
+              <CardHeader>
+                <CardTitle className="text-sm flex items-center gap-2">
+                  <GitBranch className="h-4 w-4 text-purple-600" />
+                  Coexistence Context
+                </CardTitle>
+                <CardDescription>
+                  How synthesis coordinates work across pillar boundaries
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <p className="text-sm text-gray-700">
+                    This synthesis demonstrates <strong>boundary-crossing coordination</strong> by integrating
+                    data, insights, and processes from multiple pillars into a unified outcome.
+                  </p>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {businessOutcomesOutputs.synthesis.content_summary && (
+                      <div className="bg-white border border-gray-200 rounded-lg p-3">
+                        <div className="text-xs font-semibold text-gray-600 mb-1">Content →</div>
+                        <div className="text-sm text-gray-800">Data & Files</div>
+                      </div>
+                    )}
+                    {businessOutcomesOutputs.synthesis.insights_summary && (
+                      <div className="bg-white border border-gray-200 rounded-lg p-3">
+                        <div className="text-xs font-semibold text-gray-600 mb-1">Insights →</div>
+                        <div className="text-sm text-gray-800">Analysis & Interpretation</div>
+                      </div>
+                    )}
+                    {businessOutcomesOutputs.synthesis.journey_summary && (
+                      <div className="bg-white border border-gray-200 rounded-lg p-3">
+                        <div className="text-xs font-semibold text-gray-600 mb-1">Journey →</div>
+                        <div className="text-sm text-gray-800">Processes & Workflows</div>
+                      </div>
+                    )}
+                  </div>
+                  {businessOutcomesOutputs.synthesis.overall_synthesis && (
+                    <div className="mt-3 pt-3 border-t border-gray-200">
+                      <div className="text-xs font-semibold text-purple-700 mb-1">Platform Coordination:</div>
+                      <p className="text-sm text-gray-700">
+                        The platform orchestrates data flow, validates operations, and ensures consistency
+                        across all pillars, demonstrating the <strong>Coexistence Fabric</strong> in action.
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </div>
       )}
 

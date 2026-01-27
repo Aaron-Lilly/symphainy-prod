@@ -1,10 +1,10 @@
 // WizardActive Hooks
 "use client";
 import React, { useState, useEffect } from "react";
+// ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
-import { chatbotAgentInfoAtom, mainChatbotOpenAtom } from "@/shared/atoms/chatbot-atoms";
-import { useSetAtom } from "jotai";
-import { OperationsService } from "@/shared/services/operations";
+// ✅ PHASE 5.6.1: Use JourneyAPIManager instead of OperationsService
+import { useJourneyAPIManager } from "@/shared/hooks/useJourneyAPIManager";
 import { 
   WizardActiveProps, 
   WizardActiveState, 
@@ -17,9 +17,9 @@ import {
 } from "./types";
 
 export function useWizardActive({ onBack }: WizardActiveProps): WizardActiveState & WizardActiveActions {
-  const setAgentInfo = useSetAtom(chatbotAgentInfoAtom);
-  const setMainChatbotOpen = useSetAtom(mainChatbotOpenAtom);
-  const { setRealmState } = usePlatformState();
+  // ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
+  const { setChatbotAgentInfo, setMainChatbotOpen, setRealmState } = usePlatformState();
+  const setAgentInfo = setChatbotAgentInfo; // Alias for compatibility
 
   const [chatHistory, setChatHistory] = useState<ChatTurn[]>([]);
   const [input, setInput] = useState("");
@@ -58,14 +58,19 @@ export function useWizardActive({ onBack }: WizardActiveProps): WizardActiveStat
         userMessage: input,
       };
       
-      const response: WizardChatResponse = await OperationsService.processOperationsWizardConversation({
-        session_id: sessionToken,
-        message: input,
-        context: { agent_type: 'WorkflowBuilderWizardAgent' }
-      });
+      // ✅ PHASE 5.6.1: Use JourneyAPIManager (intent-based API) instead of OperationsService
+      const result = await journeyAPIManager.processWizardConversation(
+        input,
+        sessionToken,
+        { agent_type: 'WorkflowBuilderWizardAgent' }
+      );
       
-      setChatHistory((h) => [...h, { role: 'agent', content: response.agent_response }]);
-      if (response.draft_sop) setDraftSop(response.draft_sop);
+      if (result.success) {
+        setChatHistory((h) => [...h, { role: 'agent', content: result.agent_response || 'Response received' }]);
+        if (result.draft_sop) setDraftSop(result.draft_sop);
+      } else {
+        throw new Error(result.error || 'Failed to process wizard conversation');
+      }
       setInput("");
     } catch (e: any) {
       setError(e.message || "Failed to send message");
@@ -83,15 +88,20 @@ export function useWizardActive({ onBack }: WizardActiveProps): WizardActiveStat
         sessionToken,
       };
       
-      const response: WizardPublishResponse = await OperationsService.processOperationsQuery({
-        session_id: sessionToken,
-        query: "publish_workflow_and_sop",
-        context: { agent_type: 'WorkflowBuilderWizardAgent' }
-      });
+      // ✅ PHASE 5.6.1: Use JourneyAPIManager (intent-based API) instead of OperationsService
+      const result = await journeyAPIManager.processOperationsQuery(
+        "publish_workflow_and_sop",
+        sessionToken,
+        { agent_type: 'WorkflowBuilderWizardAgent' }
+      );
       
-      setPublishedSop(response.sop);
-      setPublishedWorkflow(response.workflow);
-      setPublished(true);
+      if (result.success) {
+        setPublishedSop(result.sop);
+        setPublishedWorkflow(result.workflow);
+        setPublished(true);
+      } else {
+        throw new Error(result.error || 'Failed to process operations query');
+      }
 
       // Save to realm state for journey realm
       setRealmState('journey', 'operations', {

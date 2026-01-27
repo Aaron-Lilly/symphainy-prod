@@ -5,13 +5,13 @@ import { Loader2, SendHorizontal, DivideCircle } from "lucide-react";
 import { listFiles } from "@/lib/api/fms"; // Import the working API function
 import StreamingMessage from "./StreamingMessage";
 import { useRouter, usePathname } from "next/navigation";
-import { useAtomValue, useSetAtom } from "jotai";
-import { chatbotAgentInfoAtom, mainChatbotOpenAtom } from "@/shared/atoms/chatbot-atoms";
+// ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
+import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { getEDAAnalysis, getVisualizationAnalysis, processNaturalLanguageQuery } from "@/lib/api/insights";
 import { processOperationsQuery } from "@/lib/api/operations";
 import { SecondaryChatbotAgent } from "@/shared/types/secondaryChatbot";
 import BusinessAnalysisDisplay from "@/components/insights/BusinessAnalysisDisplay";
-import { useGlobalSession } from "@/shared/agui/GlobalSessionProvider";
+import { useSessionBoundary } from "@/shared/state/SessionBoundaryProvider";
 import { useUnifiedAgentChat, PillarType } from "@/shared/hooks/useUnifiedAgentChat";
 
 import { FileMetadata } from '@/shared/types/file';
@@ -24,7 +24,7 @@ function getPillarFromPath(pathname: string | null): PillarType | null {
   
   if (pathname.includes('/pillars/content')) return 'content';
   if (pathname.includes('/pillars/insights')) return 'insights';
-  if (pathname.includes('/pillars/operation')) return 'operations';
+  if (pathname.includes('/pillars/journey')) return 'operations';
   if (pathname.includes('/pillars/business-outcomes')) return 'business_outcomes';
   
   return null;
@@ -46,9 +46,12 @@ function getPillarFromAgent(agent: string | null): PillarType | null {
 }
 
 export default function SecondaryChatbot() {
-  const agentInfo = useAtomValue(chatbotAgentInfoAtom);
-  const setMainChatbotOpen = useSetAtom(mainChatbotOpenAtom);
-  const { guideSessionToken } = useGlobalSession();
+  // ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
+  const { state, setMainChatbotOpen } = usePlatformState();
+  const agentInfo = state.ui.chatbot.agentInfo;
+  const mainChatbotOpen = state.ui.chatbot.mainChatbotOpen; // Extract for easier use
+  const { state: sessionState } = useSessionBoundary();
+  const guideSessionToken = sessionState.sessionId;
   const router = useRouter();
   const pathname = usePathname();
 
@@ -155,7 +158,7 @@ export default function SecondaryChatbot() {
     }, [unifiedError]);
   
     // ✅ Connect WebSocket when user first interacts (lazy connection)
-    const mainChatbotOpen = useAtomValue(mainChatbotOpenAtom);
+    // ✅ PHASE 5: mainChatbotOpen already defined from usePlatformState above (line 52)
     useEffect(() => {
       // Connect when main chatbot is opened and we're ready
       if (shouldConnect && !unifiedConnected && !unifiedLoading && guideSessionToken && mainChatbotOpen) {

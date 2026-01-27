@@ -21,6 +21,7 @@
 
 import React from "react";
 import { SessionBoundaryProvider } from "./SessionBoundaryProvider";
+import { AGUIStateProvider } from "./AGUIStateProvider";
 import { PlatformStateProvider } from "./PlatformStateProvider";
 import { AuthProvider } from "../auth/AuthProvider";
 import { AppProvider } from "../agui/AppProvider";
@@ -37,21 +38,24 @@ export default function AppProviders({
   // - Only component that calls /api/session/* endpoints
   // - Manages session lifecycle state machine
   // - All other providers subscribe to session state
+  // ✅ PHASE 2.5: AGUI State Provider - session-scoped experience state
   return (
     <SessionBoundaryProvider>
-      <AuthProvider>
-        <PlatformStateProvider>
-          <AppProvider>
-            <UserContextProviderComponent>
-              <ExperienceLayerProvider>
-                <GuideAgentProvider>
-                  {children}
-                </GuideAgentProvider>
-              </ExperienceLayerProvider>
-            </UserContextProviderComponent>
-          </AppProvider>
-        </PlatformStateProvider>
-      </AuthProvider>
+      <AGUIStateProvider>
+        <AuthProvider>
+          <PlatformStateProvider>
+            <AppProvider>
+              <UserContextProviderComponent>
+                <ExperienceLayerProvider>
+                  <GuideAgentProvider>
+                    {children}
+                  </GuideAgentProvider>
+                </ExperienceLayerProvider>
+              </UserContextProviderComponent>
+            </AppProvider>
+          </PlatformStateProvider>
+        </AuthProvider>
+      </AGUIStateProvider>
     </SessionBoundaryProvider>
   );
 }
