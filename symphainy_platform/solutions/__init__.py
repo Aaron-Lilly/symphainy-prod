@@ -11,7 +11,7 @@ Key Principle: The platform runs Solutions; Solutions run systems.
 Solutions bind domain services to external systems.
 
 Naming Convention:
-- Realm = user-facing domain (Content, Insights, Operations, Outcomes)
+- Realm = user-facing domain (Content, Insights, Operations, Outcomes, Security)
 - Solution = platform construct (composes journeys)
 - Journey = platform capability (invisible to users)
 
@@ -20,11 +20,19 @@ Available Solutions:
 - InsightsSolution: Insights Realm capabilities (quality, analysis, interpretation, lineage)
 - OperationsSolution: Operations Realm capabilities (workflows, SOPs, coexistence)
 - OutcomesSolution: Outcomes Realm capabilities (synthesis, roadmaps, POCs, blueprints)
+- SecuritySolution: Security Realm capabilities (auth, sessions, authorization) - FOUNDATIONAL
 """
 
 from .content_solution import ContentSolution
 from .insights_solution import InsightsSolution
 from .operations_solution import OperationsSolution
 from .outcomes_solution import OutcomesSolution
+from .security_solution import SecuritySolution
 
-__all__ = ["ContentSolution", "InsightsSolution", "OperationsSolution", "OutcomesSolution"]
+__all__ = [
+    "ContentSolution",
+    "InsightsSolution",
+    "OperationsSolution",
+    "OutcomesSolution",
+    "SecuritySolution"
+]

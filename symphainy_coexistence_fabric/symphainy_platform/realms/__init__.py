@@ -6,6 +6,7 @@ Realms contain domain-specific services organized by business capability:
 - Insights Realm: Analysis, extraction, and intelligence generation
 - Operations Realm: Workflow/SOP management, coexistence analysis
 - Outcomes Realm: Outcomes synthesis, roadmaps, POCs, blueprints, and strategic deliverables
+- Security Realm: Authentication, authorization, and session management (foundational)
 
 Naming Conventions:
 - "Realm" = domain area (user-facing business capability)
@@ -41,6 +42,16 @@ from .operations import (
     SOPChatMessageService
 )
 
+from .security import (
+    AuthenticateUserService,
+    CreateUserAccountService,
+    CreateSessionService,
+    ValidateAuthorizationService,
+    TerminateSessionService,
+    CheckEmailAvailabilityService,
+    ValidateTokenService
+)
+
 __all__ = [
     # Outcomes Realm
     "SynthesizeOutcomeService",
@@ -63,5 +74,13 @@ __all__ = [
     "CreateWorkflowService",
     "AnalyzeCoexistenceService",
     "GenerateSOPFromChatService",
-    "SOPChatMessageService"
+    "SOPChatMessageService",
+    # Security Realm
+    "AuthenticateUserService",
+    "CreateUserAccountService",
+    "CreateSessionService",
+    "ValidateAuthorizationService",
+    "TerminateSessionService",
+    "CheckEmailAvailabilityService",
+    "ValidateTokenService"
 ]
