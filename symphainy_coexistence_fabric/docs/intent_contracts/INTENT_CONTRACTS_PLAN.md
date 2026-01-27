@@ -40,17 +40,57 @@ Creating intent contracts for all 28 journeys, organized by journey folder. Each
   - ✅ `intent_retrieve_artifact_metadata.md` (renamed from get_artifact_metadata)
   - ✅ `intent_archive_file.md` (comprehensive)
 
-### 📊 Cross-Reference Analysis
+**📊 Content Realm Analysis**
 - ✅ `CONTENT_REALM_ANALYSIS.md` - Documents all gaps and recommendations
 
-### ⏳ In Progress
-- None currently
+---
 
-### 📋 Pending (26 journeys remaining)
+### ✅ Completed - Journey Realm (Reorganized into 5 Journeys)
 
-**Content Realm (2 remaining journeys):**
-- `journey_content_deterministic_embedding/`
-- `journey_content_file_management/`
+**Journey: Coexistence Analysis**
+- `journey_coexistence_analysis/`
+  - ✅ `intent_analyze_coexistence.md` (comprehensive - includes identify_opportunities)
+  - ✅ `intent_optimize_process.md` (comprehensive)
+
+**Journey: SOP Management**
+- `journey_sop_management/`
+  - ✅ `intent_generate_sop.md` (comprehensive - supports workflow_id or chat_mode)
+  - ✅ `intent_generate_sop_from_chat.md` (comprehensive)
+  - ✅ `intent_sop_chat_message.md` (comprehensive)
+
+**Journey: Workflow Management**
+- `journey_workflow_management/`
+  - ✅ `intent_create_workflow.md` (comprehensive - supports SOP or BPMN file)
+  - ✅ `intent_get_workflow.md` (comprehensive)
+
+**📊 Journey Realm Analysis**
+- ✅ `JOURNEY_REALM_ANALYSIS.md` - Documents all gaps and recommendations
+
+**Note:** Original journey contracts reorganized based on implementation:
+- `journey_journey_coexistence_analysis` → `journey_coexistence_analysis`
+- `journey_journey_sop_creation_chat` → `journey_sop_management`
+- `journey_journey_workflow_sop_conversion` → `journey_workflow_management`
+- `journey_journey_workflow_sop_visualization` → Intents integrated into above
+- `journey_journey_create_coexistence_blueprint` → Moved to Outcomes Realm
+
+---
+
+### ⏳ Pending - To Be Implemented
+
+**Journey Realm - Guide Agent Operations (Frontend expects, not yet in orchestrator)**
+- `journey_agent_operations/`
+  - ⏳ `intent_analyze_user_intent.md`
+  - ⏳ `intent_get_journey_guidance.md`
+  - ⏳ `intent_get_conversation_history.md`
+
+**Journey Realm - Cross-Pillar Operations (Frontend expects, not yet in orchestrator)**
+- `journey_cross_pillar_operations/`
+  - ⏳ `intent_send_message_to_pillar_agent.md`
+  - ⏳ `intent_get_pillar_conversation_history.md`
+
+---
+
+### 📋 Remaining Realms
 
 **Insights Realm (5 journeys):**
 - `journey_insights_data_quality/`
@@ -59,18 +99,11 @@ Creating intent contracts for all 28 journeys, organized by journey folder. Each
 - `journey_insights_relationship_mapping/`
 - `journey_insights_business_analysis/`
 
-**Journey Realm (5 journeys):**
-- `journey_journey_workflow_sop_visualization/`
-- `journey_journey_workflow_sop_conversion/`
-- `journey_journey_sop_creation_chat/`
-- `journey_journey_coexistence_analysis/`
-- `journey_journey_create_coexistence_blueprint/`
-
-**Solution Realm (4 journeys):**
-- `journey_solution_synthesis/`
-- `journey_solution_roadmap_generation/`
-- `journey_solution_poc_proposal/`
-- `journey_solution_cross_pillar_integration/`
+**Outcomes Realm (includes create_blueprint from Journey):**
+- `journey_outcomes_synthesis/`
+- `journey_outcomes_blueprint/` (moved from Journey Realm)
+- `journey_outcomes_roadmap/`
+- `journey_outcomes_poc/`
 
 **Security Solution (2 journeys):**
 - `journey_security_registration/`
@@ -102,15 +135,23 @@ Each intent contract includes:
 8. Error Handling (validation, runtime errors)
 9. Testing & Validation (happy path, boundary violations, failures)
 10. Contract Compliance (required artifacts, events, lifecycle)
+11. Cross-Reference Analysis (contract vs implementation vs frontend)
 
 ---
 
-## Next Steps
+## Summary
 
-1. **Continue with File Parsing Journey** (2 intents)
-2. **Create script to extract intents from journey contracts** (automation)
-3. **Create intent contracts for remaining journeys** (systematic approach)
-4. **Validate against implementations** (ensure alignment)
+| Realm | Journeys | Intents | Status |
+|-------|----------|---------|--------|
+| Content | 4 | 9 | ✅ Complete |
+| Journey | 3 (reorganized) | 7 | ✅ Complete |
+| Journey (Guide Agent) | 1 | 3 | ⏳ Pending |
+| Journey (Cross-Pillar) | 1 | 2 | ⏳ Pending |
+| Insights | 5 | TBD | 📋 Remaining |
+| Outcomes | 4 | TBD | 📋 Remaining |
+| Security | 2 | TBD | 📋 Remaining |
+| Coexistence | 3 | TBD | 📋 Remaining |
+| Control Tower | 4 | TBD | 📋 Remaining |
 
 ---
 
