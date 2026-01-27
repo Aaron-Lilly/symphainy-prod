@@ -2,9 +2,9 @@
 
 **Intent:** initiate_guide_agent  
 **Intent Type:** `initiate_guide_agent`  
-**Journey:** GuideAgent Interaction (`journey_coexistence_guide_agent`)  
-**Solution:** Coexistence Solution  
-**Status:** ENHANCED  
+**Journey:** Journey Coexistence Guide Agent (`journey_coexistence_guide_agent`)  
+**Realm:** Coexistence Solution  
+**Status:** IN PROGRESS  
 **Priority:** PRIORITY 1
 
 ---
@@ -12,23 +12,33 @@
 ## 1. Intent Overview
 
 ### Purpose
-Initiates a conversation with the GuideAgent - the platform's AI assistant that helps users navigate the platform, understand coexistence concepts, and find the right solutions for their needs. This intent creates a new agent session and returns an initial greeting.
+Initialize GuideAgent conversation with platform-wide context and access to all orchestrator MCP tools. Loads conversation history, retrieves shared context from previous agent (if toggled), and queries Curator for available MCP tools from all orchestrators.
 
 ### Intent Flow
 ```
-[User opens chat or requests guide]
+[User sends message to GuideAgent or toggles to GuideAgent]
     ↓
-[Create GuideAgent session]
+[initiate_guide_agent intent executes]
     ↓
-[Load user context and history (if available)]
+[Retrieve chat session and context]
     ↓
-[Generate contextual greeting]
+[Load conversation history from context]
     ↓
-[Return agent session with initial message]
+[Retrieve shared context from previous agent (if toggled)]
+    ↓
+[Query Curator for all available MCP tools (all orchestrators)]
+    ↓
+[Initialize GuideAgent with platform-wide knowledge]
+    ↓
+[Returns guide_agent_conversation_artifact with context and MCP tools]
 ```
 
 ### Expected Observable Artifacts
-- `agent_session` - GuideAgent session with initial greeting
+- `guide_agent_conversation_artifact` - Conversation artifact with platform-wide context
+- `available_mcp_tools` - List of all available MCP tools (from all orchestrators via Curator)
+- `shared_context` - Context shared from previous agent (if toggled from Liaison Agent)
+- `conversation_history` - Loaded conversation history from chat session
+- `platform_context` - Platform-wide context (all pillars, all solutions)
 
 ---
 
@@ -38,24 +48,23 @@ Initiates a conversation with the GuideAgent - the platform's AI assistant that 
 
 | Parameter | Type | Description | Validation |
 |-----------|------|-------------|------------|
-| `user_context` | `object` | User context with session_id | Must include session_id |
+| None | - | - | - |
 
 ### Optional Parameters
 
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
-| `trigger_source` | `string` | What triggered the agent: "chat_open", "help_button", "proactive" | "chat_open" |
-| `current_pillar` | `string` | User's current location in platform | null |
-| `initial_context` | `string` | Any initial context to seed conversation | null |
-| `conversation_mode` | `string` | Mode: "guided", "freeform", "diagnostic" | "guided" |
+| `chat_session_id` | `string` | Chat session identifier | If not provided, uses active session for user |
+| `include_mcp_tools` | `boolean` | Whether to query and include MCP tools | `true` |
 
 ### Context Metadata (from ExecutionContext)
 
 | Metadata Key | Type | Description | Source |
 |--------------|------|-------------|--------|
-| `tenant_id` | `string` | Tenant identifier | Runtime |
-| `session_id` | `string` | Session identifier | Runtime |
-| `solution_context` | `object` | Current solution context | State Surface |
+| `user_id` | `string` | User identifier | Runtime (required) |
+| `tenant_id` | `string` | Tenant identifier | Runtime (required) |
+| `session_id` | `string` | User session identifier | Runtime (from Security Solution) |
+| `chat_session` | `object` | Chat session artifact (from get_chat_session) | Previous intent result (optional) |
 
 ---
 
@@ -66,54 +75,73 @@ Initiates a conversation with the GuideAgent - the platform's AI assistant that 
 ```json
 {
   "artifacts": {
-    "agent_session": {
-      "result_type": "guide_agent_session",
+    "guide_agent_conversation": {
+      "result_type": "guide_agent_conversation",
       "semantic_payload": {
-        "agent_session_id": "agent_sess_xyz789",
-        "agent_type": "guide_agent",
-        "conversation_mode": "guided"
+        "agent_type": "guide",
+        "chat_session_id": "chat_session_abc123",
+        "conversation_history": [
+          {
+            "role": "user",
+            "content": "What is SymphAIny?",
+            "timestamp": "2026-01-27T10:05:00Z"
+          }
+        ],
+        "shared_context": {
+          "from_agent": "liaison_content",
+          "context_data": {
+            "pillar": "content",
+            "intent": "file_parsing"
+          }
+        },
+        "available_mcp_tools": [
+          {
+            "tool_name": "content_parse_file",
+            "description": "Parse a file using Content orchestrator",
+            "orchestrator": "content",
+            "parameters": {
+              "file_id": "string",
+              "file_type": "string"
+            }
+          },
+          {
+            "tool_name": "insights_assess_quality",
+            "description": "Assess data quality using Insights orchestrator",
+            "orchestrator": "insights",
+            "parameters": {
+              "parsed_file_id": "string"
+            }
+          }
+        ],
+        "platform_context": {
+          "pillars": ["content", "insights", "journey", "solution"],
+          "solutions": ["content_realm", "insights_realm", "journey_realm", "solution_realm"],
+          "capabilities": ["file_parsing", "data_quality", "workflow_creation", "solution_synthesis"]
+        }
       },
       "renderings": {
-        "session_info": {
-          "agent_session_id": "agent_sess_xyz789",
-          "created_at": "2026-01-27T10:15:00Z",
-          "expires_at": "2026-01-27T11:15:00Z"
-        },
-        "initial_message": {
-          "role": "assistant",
-          "content": "Hello! I'm your Guide through the Symphainy platform. I can help you understand coexistence concepts, navigate to the right solutions, or answer questions about your current journey. What would you like to explore today?",
-          "suggestions": [
-            "What is coexistence?",
-            "Help me find a solution for my needs",
-            "Show me what I can do here",
-            "Explain the current pillar"
-          ]
-        },
-        "agent_capabilities": [
-          "Platform navigation assistance",
-          "Coexistence concept explanation",
-          "Solution recommendations",
-          "Journey guidance",
-          "Artifact explanation"
-        ],
-        "context_awareness": {
-          "knows_current_pillar": true,
-          "knows_user_goals": true,
-          "knows_artifacts": true,
-          "current_pillar": "content",
-          "user_has_goals": true
-        }
+        "message": "GuideAgent initialized. I can help you with platform-wide questions and execute actions via MCP tools."
       }
     }
   },
   "events": [
     {
-      "type": "guide_agent_initiated",
-      "agent_session_id": "agent_sess_xyz789",
-      "trigger_source": "chat_open",
-      "conversation_mode": "guided"
+      "type": "guide_agent_initialized",
+      "chat_session_id": "chat_session_abc123",
+      "mcp_tools_count": 25
     }
   ]
+}
+```
+
+### Error Response
+
+```json
+{
+  "error": "Error message",
+  "error_code": "ERROR_CODE",
+  "execution_id": "exec_abc123",
+  "intent_type": "initiate_guide_agent"
 }
 ```
 
@@ -122,14 +150,17 @@ Initiates a conversation with the GuideAgent - the platform's AI assistant that 
 ## 4. Artifact Registration
 
 ### State Surface Registration
-- **Artifact ID:** `agent_{session_id}_{agent_session_id}`
-- **Artifact Type:** `"guide_agent_session"`
-- **Lifecycle State:** `"READY"`
+- **Artifact ID:** [How artifact_id is generated]
+- **Artifact Type:** `"artifact_type"`
+- **Lifecycle State:** `"PENDING"` or `"READY"`
 - **Produced By:** `{ intent: "initiate_guide_agent", execution_id: "<execution_id>" }`
-- **Materializations:** In-memory with TTL (1 hour)
+- **Semantic Descriptor:** [Descriptor details]
+- **Parent Artifacts:** [List of parent artifact IDs]
+- **Materializations:** [List of materializations]
 
 ### Artifact Index Registration
-- Indexed for analytics: session_id, agent_session_id, created_at
+- Indexed in Supabase `artifact_index` table
+- Includes: [List of indexed fields]
 
 ---
 
@@ -137,36 +168,33 @@ Initiates a conversation with the GuideAgent - the platform's AI assistant that 
 
 ### Idempotency Key
 ```
-idempotency_key = hash(session_id + trigger_source + "initiate_guide_agent")
+N/A - No side effects, initialization only
 ```
 
 ### Scope
-- Per session + trigger (reuse active session)
+- N/A - No side effects, initialization only
 
 ### Behavior
-- Returns existing active session if one exists
-- Creates new session if no active session
+- This intent has no side effects (no state changes, no artifacts created)
+- Can be called multiple times - always returns same initialization data (idempotent)
+- Idempotent by nature (pure initialization function)
 
 ---
 
 ## 6. Implementation Details
 
 ### Handler Location
-`symphainy_platform/solutions/coexistence/journeys/guide_agent_journey.py`
+[Path to handler implementation]
 
 ### Key Implementation Steps
-1. Check for existing active agent session
-2. If active, return existing session
-3. Create new agent session with unique ID
-4. Load user context (goals, pillar, artifacts)
-5. Generate contextual greeting based on state
-6. Return agent session artifact
+1. [Step 1]
+2. [Step 2]
+3. [Step 3]
 
 ### Dependencies
-- **Public Works:** telemetry_abstraction (agent analytics)
-- **State Surface:** session state, agent sessions
-- **Runtime:** ExecutionContext
-- **Agent Framework:** GuideAgent configuration
+- **Public Works:** [Abstractions needed]
+- **State Surface:** [Methods needed]
+- **Runtime:** [Context requirements]
 
 ---
 
@@ -174,49 +202,51 @@ idempotency_key = hash(session_id + trigger_source + "initiate_guide_agent")
 
 ### Frontend Usage
 ```typescript
-// From ExperienceLayerProvider - useGuideAgent hook
-const initResult = await platformState.submitIntent({
-  intent_type: "initiate_guide_agent",
-  parameters: {
-    user_context: { session_id },
-    trigger_source: "chat_open",
-    current_pillar: currentPillar,
-    conversation_mode: "guided"
-  }
-});
+// When user toggles to GuideAgent or sends first message
+const executionId = await platformState.submitIntent(
+  'initiate_guide_agent',
+  {}
+);
 
-const session = initResult.artifacts?.agent_session?.renderings;
-setAgentSessionId(session.session_info.agent_session_id);
-addMessage({
-  role: "assistant",
-  content: session.initial_message.content
-});
-setSuggestions(session.initial_message.suggestions);
+const status = await platformState.getExecutionStatus(executionId);
+if (status?.artifacts?.guide_agent_conversation) {
+  const conversation = status.artifacts.guide_agent_conversation.semantic_payload;
+  const mcpTools = conversation.available_mcp_tools;
+  const context = conversation.shared_context;
+  // GuideAgent ready with MCP tools and context
+}
 ```
 
 ### Expected Frontend Behavior
-1. Call when user opens chat interface
-2. Display initial message from agent
-3. Show suggested questions as quick actions
-4. Enable message input for conversation
+1. **Agent toggle** - Frontend calls this intent when user toggles to GuideAgent
+2. **MCP tools loaded** - Frontend receives list of available MCP tools
+3. **Context loaded** - Frontend receives shared context from previous agent (if toggled)
+4. **Conversation history** - Frontend loads conversation history from context
+5. **Agent ready** - GuideAgent ready to process messages and call MCP tools
 
 ---
 
 ## 8. Error Handling
 
 ### Validation Errors
-- Invalid session_id → Create temporary session
+- **User not authenticated:** User not logged in -> Returns error response with `ERROR_CODE: "UNAUTHENTICATED"`
+- **Chat session not found:** Chat session does not exist -> Returns error response with `ERROR_CODE: "SESSION_NOT_FOUND"`
 
 ### Runtime Errors
-- Agent framework unavailable → Return fallback greeting
+- **Curator unavailable:** Cannot query Curator for MCP tools -> Returns error response with `ERROR_CODE: "CURATOR_UNAVAILABLE"` (GuideAgent can still initialize without tools)
+- **Tool registry unavailable:** Cannot query tool registry -> Returns error response with `ERROR_CODE: "TOOL_REGISTRY_UNAVAILABLE"` (GuideAgent can still initialize without tools)
+- **Context load failure:** Cannot load conversation history -> Returns error response with `ERROR_CODE: "CONTEXT_LOAD_FAILED"` (GuideAgent can still initialize with empty context)
 
 ### Error Response Format
 ```json
 {
-  "error": "Guide Agent temporarily unavailable",
-  "error_code": "AGENT_UNAVAILABLE",
+  "error": "Error message",
+  "error_code": "ERROR_CODE",
   "execution_id": "exec_abc123",
-  "fallback_message": "I'm having trouble connecting. Please try again in a moment."
+  "intent_type": "initiate_guide_agent",
+  "details": {
+    "reason": "Curator unavailable"
+  }
 }
 ```
 
@@ -225,31 +255,48 @@ setSuggestions(session.initial_message.suggestions);
 ## 9. Testing & Validation
 
 ### Happy Path
-1. User opens chat
-2. Submit initiate_guide_agent
-3. Verify agent session created
-4. Verify greeting contextual to user state
-5. Verify suggestions relevant
+1. User has active chat session with context
+2. User toggles to GuideAgent
+3. `initiate_guide_agent` intent executes
+4. Chat session retrieved, conversation history loaded
+5. Shared context retrieved (if toggled from Liaison Agent)
+6. Curator queried for all MCP tools (all orchestrators)
+7. Platform context built (solutions, pillars, capabilities)
+8. Returns GuideAgent conversation artifact with MCP tools and context
+9. GuideAgent ready to process messages
 
 ### Boundary Violations
-- No session → Create ephemeral session
-- Invalid conversation_mode → Default to "guided"
+- **Session not found:** Chat session does not exist -> Returns `ERROR_CODE: "SESSION_NOT_FOUND"`
+- **No MCP tools available:** Curator returns no tools -> GuideAgent initializes with empty MCP tools list (still functional)
+
+### Failure Scenarios
+- **Curator unavailable:** Cannot query Curator -> Returns `ERROR_CODE: "CURATOR_UNAVAILABLE"`, GuideAgent initializes without MCP tools (graceful degradation)
+- **Context load failure:** Cannot load context -> Returns `ERROR_CODE: "CONTEXT_LOAD_FAILED"`, GuideAgent initializes with empty context
 
 ---
 
 ## 10. Contract Compliance
 
 ### Required Artifacts
-- `agent_session` - Required (guide_agent_session type)
+- `guide_agent_conversation` - Required (GuideAgent conversation artifact)
 
 ### Required Events
-- `guide_agent_initiated` - Required
+- `guide_agent_initialized` - Required (emitted when GuideAgent is initialized)
 
 ### Lifecycle State
-- Always READY
+- **No lifecycle state** - This is an initialization-only intent with no persistent artifacts
+- **Conversation state** - Stored in chat session context (ephemeral)
+
+### Contract Validation
+- ✅ Intent must return GuideAgent conversation artifact with MCP tools and context
+- ✅ MCP tools must be queried from Curator (all orchestrators)
+- ✅ Shared context must be loaded (if available from previous agent)
+- ✅ Conversation history must be loaded from chat session
+- ✅ Platform context must be built (solutions, pillars, capabilities)
+- ✅ No side effects (no artifacts created, no state changes)
 
 ---
 
 **Last Updated:** January 27, 2026  
 **Owner:** Coexistence Solution Team  
-**Status:** ENHANCED
+**Status:** ✅ **ENHANCED** - Ready for implementation

@@ -2,9 +2,9 @@
 
 **Intent:** route_to_liaison_agent  
 **Intent Type:** `route_to_liaison_agent`  
-**Journey:** GuideAgent Interaction (`journey_coexistence_guide_agent`)  
-**Solution:** Coexistence Solution  
-**Status:** ENHANCED  
+**Journey:** Journey Coexistence Guide Agent (`journey_coexistence_guide_agent`)  
+**Realm:** Coexistence Solution  
+**Status:** IN PROGRESS  
 **Priority:** PRIORITY 1
 
 ---
@@ -12,23 +12,30 @@
 ## 1. Intent Overview
 
 ### Purpose
-Routes the conversation from the GuideAgent to a specialized Liaison Agent when the user's needs require domain-specific expertise. Liaison Agents are specialists in specific pillars (Content, Insights, Journey, Outcomes) and can provide deeper assistance than the general GuideAgent.
+Route conversation from GuideAgent to appropriate Liaison Agent with context sharing. GuideAgent determines which Liaison Agent based on user intent and pillar context. Context is shared to enable seamless conversation continuity.
 
 ### Intent Flow
 ```
-[GuideAgent determines specialist needed]
+[GuideAgent determines user needs pillar-specific assistance]
     ↓
-[Identify appropriate Liaison Agent]
+[route_to_liaison_agent intent executes]
     ↓
-[Transfer conversation context to Liaison]
+[Extract conversation context from GuideAgent]
     ↓
-[Initialize Liaison Agent session]
+[Determine appropriate Liaison Agent (content, insights, journey, or solution)]
     ↓
-[Return handoff confirmation with Liaison greeting]
+[Share context to Liaison Agent via share_context_to_agent]
+    ↓
+[Update chat session active_agent to Liaison Agent]
+    ↓
+[Returns liaison_agent_activation_artifact]
 ```
 
 ### Expected Observable Artifacts
-- `liaison_handoff` - Handoff confirmation with Liaison Agent session
+- `liaison_agent_activation_artifact` - Activation artifact with shared context
+- `routing_decision` - GuideAgent's routing decision (which Liaison Agent)
+- `shared_context` - Context shared to Liaison Agent (via `share_context_to_agent` intent)
+- `chat_session` - Updated chat session with `active_agent` changed to Liaison Agent
 
 ---
 
@@ -38,26 +45,21 @@ Routes the conversation from the GuideAgent to a specialized Liaison Agent when 
 
 | Parameter | Type | Description | Validation |
 |-----------|------|-------------|------------|
-| `agent_session_id` | `string` | Current GuideAgent session | Must be valid active session |
-| `liaison_type` | `string` | Target liaison: "content", "insights", "journey", "outcomes", "operations" | Must be valid liaison type |
-| `user_context` | `object` | User context with session_id | Must include session_id |
+| `target_pillar` | `string` | Target pillar for Liaison Agent | Required, one of: "content", "insights", "journey", "solution" |
 
 ### Optional Parameters
 
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
-| `handoff_reason` | `string` | Why handoff is needed | "user_request" |
-| `context_summary` | `string` | Summary of conversation for Liaison | null (auto-generated) |
-| `preserve_history` | `boolean` | Pass conversation history to Liaison | true |
-| `auto_handoff` | `boolean` | Whether GuideAgent auto-detected need | false |
+| `chat_session_id` | `string` | Chat session identifier | If not provided, uses active session for user |
+| `routing_reason` | `string` | Reason for routing decision | Optional explanation |
+| `context_to_share` | `object` | Specific context to share (if not provided, shares all context) | If not provided, shares all conversation context |
 
 ### Context Metadata (from ExecutionContext)
 
 | Metadata Key | Type | Description | Source |
 |--------------|------|-------------|--------|
-| `tenant_id` | `string` | Tenant identifier | Runtime |
-| `session_id` | `string` | Session identifier | Runtime |
-| `guide_agent_session_id` | `string` | Original GuideAgent session | Agent state |
+| `metadata_key` | `type` | Description | Runtime |
 
 ---
 
@@ -68,58 +70,30 @@ Routes the conversation from the GuideAgent to a specialized Liaison Agent when 
 ```json
 {
   "artifacts": {
-    "liaison_handoff": {
-      "result_type": "liaison_agent_handoff",
+    "artifact_type": {
+      "result_type": "artifact",
       "semantic_payload": {
-        "from_agent": "guide_agent",
-        "to_agent": "operations_liaison",
-        "handoff_type": "specialist_routing"
+        // Artifact data
       },
-      "renderings": {
-        "handoff_confirmation": {
-          "success": true,
-          "from_agent_id": "agent_sess_xyz789",
-          "to_agent_id": "liaison_sess_ops123",
-          "liaison_type": "operations",
-          "handoff_reason": "User needs help with workflow coexistence analysis"
-        },
-        "liaison_session": {
-          "liaison_session_id": "liaison_sess_ops123",
-          "liaison_type": "operations",
-          "liaison_name": "Operations Liaison Agent",
-          "created_at": "2026-01-27T10:20:00Z"
-        },
-        "liaison_greeting": {
-          "role": "assistant",
-          "content": "Hi! I'm the Operations Liaison Agent, and I specialize in workflow management, SOP creation, and coexistence analysis. The Guide told me you're interested in understanding how your current workflows can coexist with new AI capabilities.\n\nI can help you:\n- Analyze existing SOPs and workflows\n- Identify coexistence opportunities\n- Create blueprints for boundary-crossing work\n\nWhat would you like to start with?",
-          "suggestions": [
-            "Upload an SOP for analysis",
-            "Explain coexistence analysis",
-            "Show me an example blueprint"
-          ]
-        },
-        "context_transferred": {
-          "user_goals": "Automate invoice processing workflow",
-          "conversation_summary": "User asked about coexistence and wants to analyze their current workflows",
-          "relevant_artifacts": []
-        },
-        "guide_farewell": {
-          "role": "assistant",
-          "content": "I'm connecting you with our Operations Liaison Agent who specializes in workflow analysis and coexistence. They'll take great care of you! I'll be here if you need general guidance again.",
-          "from_agent": "guide_agent"
-        }
-      }
+      "renderings": {}
     }
   },
   "events": [
     {
-      "type": "liaison_handoff_completed",
-      "from_agent": "guide_agent",
-      "to_agent": "operations_liaison",
-      "liaison_session_id": "liaison_sess_ops123",
-      "handoff_reason": "specialist_routing"
+      "type": "event_type",
+      // Event data
     }
   ]
+}
+```
+
+### Error Response
+
+```json
+{
+  "error": "Error message",
+  "error_code": "ERROR_CODE",
+  "execution_id": "exec_abc123"
 }
 ```
 
@@ -128,14 +102,12 @@ Routes the conversation from the GuideAgent to a specialized Liaison Agent when 
 ## 4. Artifact Registration
 
 ### State Surface Registration
-- **Artifact ID:** `handoff_{guide_session_id}_{liaison_session_id}`
-- **Artifact Type:** `"liaison_agent_handoff"`
-- **Lifecycle State:** `"READY"`
-- **Produced By:** `{ intent: "route_to_liaison_agent", execution_id: "<execution_id>" }`
-- **Materializations:** Logged for analytics
+- **No artifacts registered** - Activation is ephemeral, context shared via `share_context_to_agent`
+- Chat session artifact updated (active_agent changed to Liaison Agent)
 
 ### Artifact Index Registration
-- Indexed: guide_session_id, liaison_session_id, liaison_type, timestamp
+- **No artifacts indexed** - Activation-only intent
+- Chat session updated in Supabase (chat_sessions table, active_agent field)
 
 ---
 
@@ -143,47 +115,55 @@ Routes the conversation from the GuideAgent to a specialized Liaison Agent when 
 
 ### Idempotency Key
 ```
-idempotency_key = hash(agent_session_id + liaison_type + "route_to_liaison_agent")
+idempotency_key = hash(chat_session_id + target_pillar + context_hash)
 ```
 
 ### Scope
-- Per guide session + liaison type
+- Per chat session, per target pillar, per context state
+- Same session + same pillar + same context = same routing result (idempotent)
 
 ### Behavior
-- Returns existing liaison session if active handoff exists
-- Creates new handoff if no active liaison session
+- If routing to same pillar with same context is called multiple times, returns same activation (idempotent)
+- Context sharing is idempotent (handled by `share_context_to_agent` intent)
 
 ---
 
 ## 6. Implementation Details
 
 ### Handler Location
-`symphainy_platform/solutions/coexistence/journeys/guide_agent_journey.py`
+- **New Implementation:** `symphainy_platform/realms/coexistence/intent_services/route_to_liaison_agent_service.py` (to be created)
 
 ### Key Implementation Steps
-1. Validate guide_agent_session is active
-2. Determine appropriate Liaison Agent based on liaison_type
-3. Generate context summary from conversation history
-4. Create new Liaison Agent session
-5. Transfer context (goals, artifacts, conversation summary)
-6. Generate Liaison greeting based on transferred context
-7. Generate Guide farewell message
-8. Update session state with active liaison
+1. **Extract Parameters:** Get `target_pillar`, `chat_session_id`, `routing_reason`, `context_to_share` from intent parameters
+2. **Retrieve Chat Session:**
+   - If `chat_session_id` provided: Get session by ID
+   - If not provided: Get active session for user
+   - Verify session exists and `active_agent: "guide"`
+3. **Extract Conversation Context:**
+   - Get `context` from chat session
+   - If `context_to_share` provided: Use it
+   - If not: Extract all conversation context (conversation_history, shared_intent, etc.)
+4. **Share Context to Liaison Agent:**
+   - Call `share_context_to_agent` intent with:
+     - `source_agent: "guide"`
+     - `target_agent: "liaison_{target_pillar}"`
+     - `shared_context: context_to_share or all context`
+5. **Update Chat Session:**
+   - Update `active_agent` to `"liaison_{target_pillar}"`
+   - Update session in Supabase (chat_sessions table)
+6. **Return Liaison Agent Activation:**
+   - Return `target_pillar`, `liaison_agent_id`, `shared_context`, `routing_reason`, `active_agent_updated`
 
 ### Dependencies
-- **Public Works:** telemetry_abstraction
-- **State Surface:** agent sessions, conversation history
-- **Runtime:** ExecutionContext
-- **Agent Framework:** Liaison Agent configurations
-
-### Liaison Agent Types
-
-| Liaison Type | Specialization | Pillar |
-|-------------|----------------|--------|
-| `content` | File processing, parsing, embeddings | Content |
-| `insights` | Data analysis, quality, interpretation | Insights |
-| `journey` / `operations` | Workflows, SOPs, coexistence | Journey |
-| `outcomes` | POC generation, roadmaps | Outcomes |
+- **Public Works:**
+  - `TenantAbstraction` - For tenant-scoped operations
+- **State Surface:**
+  - `get_artifact()` - Retrieve chat session artifact
+  - `update_artifact()` - Update chat session artifact
+- **Runtime:**
+  - `ExecutionContext` - Tenant, user, session, execution context
+- **Other Intents:**
+  - `share_context_to_agent` - For context sharing
 
 ---
 
@@ -191,59 +171,37 @@ idempotency_key = hash(agent_session_id + liaison_type + "route_to_liaison_agent
 
 ### Frontend Usage
 ```typescript
-// GuideAgent triggers handoff or user requests specialist
-const handoff = await platformState.submitIntent({
-  intent_type: "route_to_liaison_agent",
-  parameters: {
-    agent_session_id: guideAgentSessionId,
-    liaison_type: "operations",
-    user_context: { session_id },
-    handoff_reason: "User needs workflow analysis help"
-  }
-});
-
-const result = handoff.artifacts?.liaison_handoff?.renderings;
-
-// Show farewell from Guide
-addMessage(result.guide_farewell);
-
-// Switch to Liaison session
-setAgentSessionId(result.liaison_session.liaison_session_id);
-setAgentType("liaison");
-
-// Show Liaison greeting
-addMessage(result.liaison_greeting);
-setSuggestions(result.liaison_greeting.suggestions);
+// [Frontend code example]
 ```
 
 ### Expected Frontend Behavior
-1. Display Guide farewell message
-2. Visual transition animation (optional)
-3. Update agent avatar/branding for Liaison
-4. Display Liaison greeting
-5. Show Liaison-specific suggestions
-6. Continue conversation with Liaison
+1. [Behavior 1]
+2. [Behavior 2]
 
 ---
 
 ## 8. Error Handling
 
 ### Validation Errors
-- Invalid liaison_type → Return INVALID_LIAISON_TYPE error
-- Inactive guide session → Return SESSION_EXPIRED error
+- **Missing target_pillar:** `ValueError("target_pillar is required")` -> Returns error response with `ERROR_CODE: "MISSING_PARAMETER"`
+- **Invalid target_pillar:** Pillar not one of valid values -> Returns error response with `ERROR_CODE: "INVALID_PILLAR"`
+- **Chat session not found:** Chat session does not exist -> Returns error response with `ERROR_CODE: "SESSION_NOT_FOUND"`
 
 ### Runtime Errors
-- Liaison unavailable → Keep conversation with Guide, offer retry
+- **Context sharing failed:** Cannot share context to Liaison Agent -> Returns error response with `ERROR_CODE: "CONTEXT_SHARING_FAILED"`
+- **Session update failed:** Cannot update chat session -> Returns error response with `ERROR_CODE: "SESSION_UPDATE_FAILED"`
+- **Liaison Agent unavailable:** Target Liaison Agent not available -> Returns error response with `ERROR_CODE: "LIAISON_AGENT_UNAVAILABLE"`
 
 ### Error Response Format
 ```json
 {
-  "error": "Operations Liaison temporarily unavailable",
-  "error_code": "LIAISON_UNAVAILABLE",
+  "error": "Error message",
+  "error_code": "ERROR_CODE",
   "execution_id": "exec_abc123",
-  "fallback": {
-    "continue_with": "guide_agent",
-    "message": "Our Operations specialist is briefly unavailable. I can help you get started with the basics, or you can try again in a moment."
+  "intent_type": "route_to_liaison_agent",
+  "details": {
+    "target_pillar": "content",
+    "reason": "Context sharing failed"
   }
 }
 ```
@@ -253,35 +211,38 @@ setSuggestions(result.liaison_greeting.suggestions);
 ## 9. Testing & Validation
 
 ### Happy Path
-1. User in Guide session requests specialist
-2. Submit route_to_liaison_agent
-3. Verify new Liaison session created
-4. Verify context transferred
-5. Verify Liaison greeting contextual
-6. Verify Guide farewell shown
+1. [Step 1]
+2. [Step 2]
 
 ### Boundary Violations
-- Unknown liaison_type → Return error with valid types
-- No conversation context → Still handoff with default greeting
+- [Violation type] -> [Expected behavior]
 
 ### Failure Scenarios
-- Liaison unavailable → Offer retry or continue with Guide
+- [Failure type] -> [Expected behavior]
 
 ---
 
 ## 10. Contract Compliance
 
 ### Required Artifacts
-- `liaison_handoff` - Required (liaison_agent_handoff type)
+- `liaison_agent_activation` - Required (Liaison Agent activation artifact)
 
 ### Required Events
-- `liaison_handoff_completed` - Required
+- `liaison_agent_activated` - Required (emitted when Liaison Agent is activated)
 
 ### Lifecycle State
-- Always READY
+- **No lifecycle state** - This is an activation-only intent with no persistent artifacts
+- **Chat session active_agent** - Updated to Liaison Agent identifier
+
+### Contract Validation
+- ✅ Intent must return Liaison Agent activation with shared context
+- ✅ Context must be shared via `share_context_to_agent` intent
+- ✅ Chat session must be updated with new active_agent
+- ✅ Routing decision must be included
+- ✅ Idempotent (same session + same pillar + same context = same activation)
 
 ---
 
 **Last Updated:** January 27, 2026  
 **Owner:** Coexistence Solution Team  
-**Status:** ENHANCED
+**Status:** ✅ **ENHANCED** - Ready for implementation
