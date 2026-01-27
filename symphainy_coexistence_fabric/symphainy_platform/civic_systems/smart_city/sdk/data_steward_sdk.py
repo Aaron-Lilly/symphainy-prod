@@ -147,11 +147,10 @@ class DataStewardSDK:
             DataAccessRequest with access_granted and contract_id
         """
         if not self.data_steward_primitives:
-            # Fallback: Allow access without contract (MVP compatibility)
-            self.logger.warning("Data Steward primitives not available, allowing access without contract")
-            return DataAccessRequest(
-                access_granted=True,
-                access_reason="MVP fallback - primitives not available"
+            # Data Steward primitives are required - no fallback
+            raise RuntimeError(
+                "Data Steward primitives not available. "
+                "All data access must go through Data Steward for boundary contract assignment."
             )
         
         return await self.data_steward_primitives.request_data_access(
@@ -185,14 +184,10 @@ class DataStewardSDK:
             MaterializationAuthorization with materialization decision
         """
         if not self.data_steward_primitives:
-            # Fallback: Allow full artifact materialization (MVP compatibility)
-            self.logger.warning("Data Steward primitives not available, allowing full artifact materialization")
-            return MaterializationAuthorization(
-                materialization_allowed=True,
-                materialization_type="full_artifact",
-                materialization_backing_store="gcs",
-                policy_basis="mvp_fallback",
-                reason="MVP fallback - primitives not available"
+            # Data Steward primitives are required - no fallback
+            raise RuntimeError(
+                "Data Steward primitives not available. "
+                "All materialization must be authorized through Data Steward."
             )
         
         # Use provided materialization_policy or fall back to instance policy

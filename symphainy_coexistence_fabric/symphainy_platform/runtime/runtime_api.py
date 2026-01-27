@@ -474,32 +474,19 @@ class RuntimeAPI:
                             retrieved_artifacts[artifact_key] = artifact
                             retrieved_artifacts[f"{artifact_key}_artifact_id"] = artifact_id
                     
-                    # Pattern 3: File artifact references (file_id) - LEGACY, should not happen after refactoring
+                    # Pattern 3: File artifact references (file_id) - no longer supported
+                    # Use structured artifacts with result_type instead
                     elif key == "file_id" and isinstance(value, str):
-                        artifact_id = value
-                        artifact = await self.get_artifact(
-                            artifact_id=artifact_id,
-                            tenant_id=tenant_id,
-                            include_visuals=include_visuals
-                        )
-                        if artifact:
-                            retrieved_artifacts["file"] = artifact
-                            retrieved_artifacts["file_id"] = artifact_id
+                        self.logger.error(f"Legacy file_id pattern detected - use structured artifacts instead")
+                        # Still store the reference for debugging
+                        retrieved_artifacts[key] = value
                     
-                    # Pattern 4: File reference (file_reference) - LEGACY
+                    # Pattern 4: File reference (file_reference) - no longer supported
+                    # Use structured artifacts with result_type instead
                     elif key == "file_reference" and isinstance(value, str):
-                        if value.startswith("file:"):
-                            parts = value.split(":")
-                            if len(parts) >= 4:
-                                file_id = parts[3]
-                                artifact = await self.get_artifact(
-                                    artifact_id=file_id,
-                                    tenant_id=tenant_id,
-                                    include_visuals=include_visuals
-                                )
-                                if artifact:
-                                    retrieved_artifacts["file"] = artifact
-                                    retrieved_artifacts["file_reference"] = value
+                        self.logger.error(f"Legacy file_reference pattern detected - use structured artifacts instead")
+                        # Still store the reference for debugging
+                        retrieved_artifacts[key] = value
                     
                     # Pattern 5: Visual path references (normalize and keep)
                     elif key.endswith("_visual_path") or key.endswith("_path"):
@@ -509,16 +496,16 @@ class RuntimeAPI:
                     elif key.endswith("_storage_path"):
                         pass
                     
-                    # Pattern 7: Keep all other artifacts as-is (legacy format - should not happen after refactoring)
+                    # Pattern 7: Other artifacts - must be structured or scalar
                     else:
-                        # Check if this is actually a flat dict that should be converted to structured
-                        # This handles the case where execution state has old format but we want to return structured
                         if isinstance(value, dict) and not any(k in value for k in ["result_type", "semantic_payload"]):
-                            # This looks like legacy flat format - log warning
-                            self.logger.warning(f"API_PATTERN7_LEGACY: key '{key}' -> legacy flat format, keys: {list(value.keys())[:10]}")
+                            # Non-structured dict format is no longer supported
+                            self.logger.error(f"Non-structured artifact '{key}' detected - must use structured format with result_type")
+                            # Store for debugging but this should be fixed
+                            retrieved_artifacts[key] = value
                         else:
-                            self.logger.info(f"API_PATTERN7_OTHER: key '{key}' -> type={type(value).__name__}, is_dict={isinstance(value, dict)}")
-                        retrieved_artifacts[key] = value
+                            # Scalar or properly structured - keep as-is
+                            retrieved_artifacts[key] = value
                 
                 artifacts = retrieved_artifacts
             

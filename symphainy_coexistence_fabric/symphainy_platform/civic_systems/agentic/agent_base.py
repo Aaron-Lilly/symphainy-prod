@@ -61,10 +61,10 @@ class AgentBase(ABC):
         agent_posture_id: Optional[str] = None,  # Load from registry
         tenant_id: Optional[str] = None,  # For posture lookup
         solution_id: Optional[str] = None,  # For posture lookup
-        # Legacy Support (for backward compatibility)
+        # Collaboration and Infrastructure
         collaboration_router: Optional[CollaborationRouter] = None,
         public_works: Optional[Any] = None,
-        # New Dependencies
+        # Dependencies
         mcp_client_manager: Optional[MCPClientManager] = None,  # MCP integration
         agent_definition_registry: Optional[Any] = None,  # For loading definitions
         agent_posture_registry: Optional[Any] = None,  # For loading postures
@@ -75,19 +75,16 @@ class AgentBase(ABC):
         
         Args:
             agent_id: Unique agent identifier
-            agent_type: Agent type (legacy, use agent_definition if available)
-            capabilities: List of agent capabilities (legacy, use agent_definition if available)
-            # 4-Layer Model
-            agent_definition: AgentDefinition instance (Layer 1: Platform DNA)
+            agent_type: Agent type (prefer using agent_definition)
+            capabilities: List of agent capabilities (prefer using agent_definition)
+            agent_definition: AgentDefinition instance (Layer 1: Platform DNA) - RECOMMENDED
             agent_definition_id: Load definition from registry
             agent_posture: AgentPosture instance (Layer 2: Tenant/Solution)
             agent_posture_id: Load posture from registry
             tenant_id: Tenant identifier (for posture lookup)
             solution_id: Solution identifier (for posture lookup)
-            # Legacy
             collaboration_router: Optional collaboration router
             public_works: Optional Public Works Foundation Service
-            # New
             mcp_client_manager: MCP Client Manager for tool access
             agent_definition_registry: Registry for loading definitions
             agent_posture_registry: Registry for loading postures
@@ -112,7 +109,7 @@ class AgentBase(ABC):
             else:
                 self.logger.warning(f"agent_posture_id provided but no registry available")
         
-        # Initialize with definition (Layer 1: Identity)
+        # Initialize with definition (Layer 1: Identity) - REQUIRED
         if agent_definition:
             self.agent_definition = agent_definition
             self.agent_id = agent_definition.agent_id
@@ -121,8 +118,17 @@ class AgentBase(ABC):
             self.capabilities = agent_definition.capabilities
             self.permissions = agent_definition.permissions
             self.collaboration_profile = agent_definition.collaboration_profile
+        elif agent_definition_id:
+            # Definition will be loaded in initialize()
+            self.agent_id = agent_id
+            self.agent_type = agent_type or "unknown"
+            self.capabilities = capabilities or []
+            self.constitution = {}
+            self.permissions = {}
+            self.collaboration_profile = {}
         else:
-            # Legacy initialization
+            # No definition provided - use direct parameters but log warning
+            self.logger.warning(f"Agent {agent_id} initialized without AgentDefinition - this is deprecated")
             self.agent_id = agent_id
             self.agent_type = agent_type or "unknown"
             self.capabilities = capabilities or []

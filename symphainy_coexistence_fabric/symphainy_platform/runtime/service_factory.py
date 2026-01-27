@@ -97,6 +97,7 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
     content_orchestrator = ContentOrchestrator(public_works=public_works)
     
     # Register content realm intents
+    # Content realm intents - artifact-centric vocabulary (no legacy aliases)
     content_intents = [
         "ingest_file",
         "bulk_ingest_files",
@@ -108,19 +109,14 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
         "save_materialization",
         "get_parsed_file",
         "get_semantic_interpretation",
-        "register_artifact",  # Artifact-centric (register_file is legacy alias)
-        "register_file",  # Legacy alias for register_artifact
-        "retrieve_artifact_metadata",  # Artifact-centric (retrieve_file_metadata is legacy alias)
-        "retrieve_file_metadata",  # Legacy alias for retrieve_artifact_metadata
-        "retrieve_artifact",  # Artifact-centric (retrieve_file is legacy alias)
-        "retrieve_file",  # Legacy alias for retrieve_artifact
-        "list_files",
+        "register_artifact",
+        "retrieve_artifact_metadata",
+        "retrieve_artifact",
+        "list_artifacts",  # Artifact-centric (was list_files)
         "bulk_interpret_data",
         "get_operation_status",
-        "archive_artifact",  # Artifact-centric (archive_file is legacy alias)
-        "archive_file",  # Legacy alias for archive_artifact
-        "delete_artifact",  # Artifact-centric (purge_file is legacy alias)
-        "purge_file"  # Legacy alias for delete_artifact
+        "archive_artifact",
+        "delete_artifact",
     ]
     
     for intent_type in content_intents:

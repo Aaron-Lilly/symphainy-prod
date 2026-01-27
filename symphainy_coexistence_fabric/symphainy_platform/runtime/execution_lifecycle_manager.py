@@ -326,66 +326,8 @@ class ExecutionLifecycleManager:
                     self.logger.error(f"Materialization authorization failed: {e}", exc_info=True)
                     raise  # Don't allow save to continue if authorization fails
             
-            # For register_file (legacy) - keep existing behavior for now
-            elif intent.intent_type == "register_file" and self.data_steward_sdk:
-                try:
-                    # For register_file, we still do both steps (backwards compatibility)
-                    # TODO: Consider making register_file also two-phase in future
-                    external_source_type = "file"
-                    external_source_identifier = f"register:{intent.parameters.get('file_id', 'unknown')}"
-                    external_source_metadata = {
-                        "ui_name": intent.parameters.get("ui_name"),
-                        "file_type": intent.parameters.get("file_type", "unstructured"),
-                        "mime_type": intent.parameters.get("mime_type")
-                    }
-                    
-                    access_request = await self.data_steward_sdk.request_data_access(
-                        intent={
-                            "intent_id": intent.intent_id,
-                            "intent_type": intent.intent_type,
-                            "tenant_id": intent.tenant_id,
-                            "parameters": intent.parameters
-                        },
-                        context={
-                            "tenant_id": intent.tenant_id,
-                            "user_id": context.metadata.get("user_id", "system"),
-                            "session_id": context.session_id
-                        },
-                        external_source_type=external_source_type,
-                        external_source_identifier=external_source_identifier,
-                        external_source_metadata=external_source_metadata
-                    )
-                    
-                    if not access_request.access_granted:
-                        raise ValueError(f"Data access denied: {access_request.access_reason}")
-                    
-                    boundary_contract_id = access_request.contract_id
-                    
-                    # Authorize materialization immediately for register_file (legacy behavior)
-                    materialization_auth = await self.data_steward_sdk.authorize_materialization(
-                        contract_id=boundary_contract_id,
-                        tenant_id=intent.tenant_id,
-                        context={
-                            "tenant_id": intent.tenant_id,
-                            "user_id": context.metadata.get("user_id", "system"),
-                            "session_id": context.session_id,
-                            "solution_id": context.metadata.get("solution_id")
-                        },
-                        materialization_policy=self.materialization_policy_store
-                    )
-                    
-                    if not materialization_auth.materialization_allowed:
-                        raise ValueError(f"Materialization not authorized: {materialization_auth.reason}")
-                    
-                    context.metadata["boundary_contract_id"] = boundary_contract_id
-                    context.metadata["materialization_type"] = materialization_auth.materialization_type
-                    context.metadata["materialization_scope"] = materialization_auth.materialization_scope
-                    context.metadata["materialization_backing_store"] = materialization_auth.materialization_backing_store
-                    context.metadata["materialization_pending"] = False
-                    
-                except Exception as e:
-                    self.logger.error(f"Boundary contract enforcement failed: {e}", exc_info=True)
-                    self.logger.warning("⚠️ MVP: Allowing execution to continue despite boundary contract failure (backwards compatibility)")
+            # NOTE: register_file has been removed - use ingest_file + save_materialization two-phase pattern
+            # All file operations must go through the two-phase boundary contract flow
             
             # Update execution state
             execution_state_updates = {
@@ -506,17 +448,14 @@ class ExecutionLifecycleManager:
                     # Extract semantic_payload and renderings from structured format
                     # Realms now return structured artifacts with result_type, semantic_payload, and renderings
                     if isinstance(artifact_data, dict) and "result_type" in artifact_data:
-                        # Structured format (native)
-                        result_type = artifact_data.get("result_type", result_type)  # Use artifact's result_type if available
+                        # Structured format (required)
+                        result_type = artifact_data.get("result_type", result_type)
                         semantic_payload = artifact_data.get("semantic_payload", {})
                         renderings = artifact_data.get("renderings", {})
                     else:
-                        # Fallback for legacy format (should not happen, but safe)
-                        self.logger.warning(f"Artifact {artifact_key} is not in structured format, using fallback extraction")
-                        semantic_payload = self._extract_semantic_payload(artifact_data)
-                        renderings = artifact_data.copy()
-                        if "semantic_payload" in renderings:
-                            del renderings["semantic_payload"]
+                        # Non-structured format is no longer supported
+                        self.logger.error(f"Artifact {artifact_key} is not in structured format - skipping")
+                        continue
                     
                     # Prepare execution contract for policy evaluation
                     execution_contract = {
@@ -597,9 +536,9 @@ class ExecutionLifecycleManager:
                     artifacts_for_state[artifact_key] = artifact_data
                     self.logger.info(f"DEBUG_STORAGE_STRUCTURED: {artifact_key} -> result_type={artifact_data.get('result_type')}")
                 else:
-                    # Legacy format - log details
-                    self.logger.warning(f"DEBUG_STORAGE_LEGACY: {artifact_key} -> type={type(artifact_data).__name__}, keys={list(artifact_data.keys())[:8] if isinstance(artifact_data, dict) else 'N/A'}")
-                    artifacts_for_state[artifact_key] = artifact_data
+                    # Non-structured format - skip with error
+                    self.logger.error(f"Artifact {artifact_key} is not in structured format - skipping storage")
+                    continue
             
             self.logger.info(f"DEBUG_STORAGE_FINAL: storing {len(artifacts_for_state)} artifacts, keys={list(artifacts_for_state.keys())[:5]}")
             # Validate file artifact structure
@@ -666,20 +605,20 @@ class ExecutionLifecycleManager:
                 # Store only artifact_id reference
                 if artifact_id:
                     artifacts_for_completion[f"{artifact_key}_artifact_id"] = artifact_id
-                else:
-                    # Backward compatibility: minimal reference
-                    if isinstance(artifact_data, dict) and "result_type" in artifact_data:
-                        minimal_reference = {
-                            "result_type": artifact_data.get("result_type"),
-                            "semantic_payload": {
-                                k: v for k, v in artifact_data.get("semantic_payload", {}).items()
-                                if k.endswith("_id") or k == "id"
-                            }
+                elif isinstance(artifact_data, dict) and "result_type" in artifact_data:
+                    # Store minimal reference for structured artifacts
+                    minimal_reference = {
+                        "result_type": artifact_data.get("result_type"),
+                        "semantic_payload": {
+                            k: v for k, v in artifact_data.get("semantic_payload", {}).items()
+                            if k.endswith("_id") or k == "id"
                         }
-                        artifacts_for_completion[artifact_key] = minimal_reference
-                    else:
-                        # Legacy format
-                        artifacts_for_completion[artifact_key] = artifact_data
+                    }
+                    artifacts_for_completion[artifact_key] = minimal_reference
+                else:
+                    # Non-structured format not supported - skip
+                    self.logger.error(f"Artifact {artifact_key} is not in structured format - skipping completion")
+                    continue
             
             await self.state_surface.set_execution_state(
                 execution_id,
