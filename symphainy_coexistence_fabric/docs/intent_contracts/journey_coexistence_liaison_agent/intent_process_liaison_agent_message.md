@@ -30,7 +30,8 @@ Process user message, generate response, optionally call pillar MCP tools
 
 | Parameter | Type | Description | Validation |
 |-----------|------|-------------|------------|
-| `parameter_name` | `type` | Description | Validation rules |
+| `message` | `string` | User message to Liaison Agent | Required, non-empty |
+| `pillar_type` | `string` | Pillar identifier | Required, one of: "content", "insights", "journey", "solution"
 
 ### Optional Parameters
 

@@ -30,7 +30,9 @@ Execute pillar-specific action via pillar orchestrator MCP tool
 
 | Parameter | Type | Description | Validation |
 |-----------|------|-------------|------------|
-| `parameter_name` | `type` | Description | Validation rules |
+| `pillar_type` | `string` | Pillar identifier | Required, one of: "content", "insights", "journey", "solution" |
+| `mcp_tool_name` | `string` | MCP tool name to call | Required, must be pillar-specific tool |
+| `mcp_tool_params` | `object` | Parameters for MCP tool | Required, must match tool schema
 
 ### Optional Parameters
 

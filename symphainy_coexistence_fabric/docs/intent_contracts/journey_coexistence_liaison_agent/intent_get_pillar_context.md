@@ -30,7 +30,7 @@ Retrieve pillar-specific context for Liaison Agent
 
 | Parameter | Type | Description | Validation |
 |-----------|------|-------------|------------|
-| `parameter_name` | `type` | Description | Validation rules |
+| `pillar_type` | `string` | Pillar identifier | Required, one of: "content", "insights", "journey", "solution"
 
 ### Optional Parameters
 
