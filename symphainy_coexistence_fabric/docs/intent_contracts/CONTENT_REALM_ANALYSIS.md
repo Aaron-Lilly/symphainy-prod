@@ -136,7 +136,7 @@ This document provides a cross-reference analysis of Content Realm intents acros
 
 | Journey Contract Says | Backend Has | Frontend Uses | **Recommendation** |
 |----------------------|-------------|---------------|-------------------|
-| `list_artifacts` | `list_files` | `list_files` | **Keep `list_files`** - more specific for Content Realm |
+| `list_artifacts` | `list_files` | `list_files` | **Use `list_artifacts`** - aligns with artifact-centric vocabulary |
 | `get_artifact_metadata` | `retrieve_artifact_metadata` | Direct API | **Use `retrieve_artifact_metadata`** for consistency |
 | `save_embeddings` | `extract_embeddings` | `extract_embeddings` | **Use `extract_embeddings`** - describes action better |
 | `save_parsed_content` | (not implemented) | (not used) | **Remove from contract** - parsing auto-saves |
@@ -153,7 +153,7 @@ This document provides a cross-reference analysis of Content Realm intents acros
 
 #### File Management Journey
 **Current:** `list_artifacts`, `get_artifact_metadata`, `archive_file`
-**Recommended:** `list_files`, `retrieve_artifact_metadata`, `archive_file` (align with implementation)
+**Recommended:** `list_artifacts`, `retrieve_artifact_metadata`, `archive_file` (artifact-centric vocabulary)
 
 ### Intents to Add to Journey Contracts
 
@@ -193,7 +193,7 @@ Based on this analysis, I will create intent contracts for:
 2. **`extract_embeddings`** - Extract embeddings (renamed from `save_embeddings` to match implementation)
 
 ### File Management Journey (3 intents)
-1. **`list_files`** - List files (renamed from `list_artifacts` to match implementation)
+1. **`list_artifacts`** - List artifacts (keeping artifact-centric vocabulary)
 2. **`retrieve_artifact_metadata`** - Get artifact metadata
 3. **`archive_file`** - Archive file
 
@@ -206,7 +206,7 @@ Based on this analysis, I will create intent contracts for:
 
 | Decision | Rationale |
 |----------|-----------|
-| Use `list_files` not `list_artifacts` | Matches implementation and frontend |
+| Use `list_artifacts` not `list_files` | Aligns with artifact-centric vocabulary (backend to be updated) |
 | Use `extract_embeddings` not `save_embeddings` | Matches implementation and frontend |
 | Remove `save_parsed_content` | Not implemented, parsing auto-saves |
 | Add `get_parsed_file` to parsing journey | Used by frontend for retrieval |

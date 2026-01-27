@@ -36,7 +36,7 @@ Creating intent contracts for all 28 journeys, organized by journey folder. Each
 
 **Journey: File Management**
 - `journey_content_file_management/`
-  - ✅ `intent_list_files.md` (renamed from list_artifacts - matches implementation)
+  - ✅ `intent_list_artifacts.md` (artifact-centric vocabulary - backend to be updated)
   - ✅ `intent_retrieve_artifact_metadata.md` (renamed from get_artifact_metadata)
   - ✅ `intent_archive_file.md` (comprehensive)
 
