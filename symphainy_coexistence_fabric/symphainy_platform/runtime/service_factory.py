@@ -120,7 +120,9 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
         "archive_artifact",  # Artifact-centric (archive_file is legacy alias)
         "archive_file",  # Legacy alias for archive_artifact
         "delete_artifact",  # Artifact-centric (purge_file is legacy alias)
-        "purge_file"  # Legacy alias for delete_artifact
+        "delete_file",  # Direct file deletion intent
+        "purge_file",  # Legacy alias for delete_artifact
+        "list_artifacts"  # List artifacts in scope
     ]
     
     for intent_type in content_intents:

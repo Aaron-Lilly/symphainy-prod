@@ -24,6 +24,11 @@ class IntentType(str, Enum):
     INGEST_FILE = "ingest_file"
     PARSE_CONTENT = "parse_content"
     EXTRACT_EMBEDDINGS = "extract_embeddings"
+    ARCHIVE_FILE = "archive_file"
+    DELETE_FILE = "delete_file"
+    LIST_ARTIFACTS = "list_artifacts"
+    GET_PARSED_FILE = "get_parsed_file"
+    RETRIEVE_ARTIFACT_METADATA = "retrieve_artifact_metadata"
     
     # Insights domain intents
     ANALYZE_CONTENT = "analyze_content"
