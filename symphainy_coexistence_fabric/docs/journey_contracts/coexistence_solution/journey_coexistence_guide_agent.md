@@ -11,15 +11,32 @@
 ## 1. Journey Overview
 
 ### Intents in Journey
-1. `initiate_guide_agent` - Step 1: [Intent description]
-2. `process_guide_agent_message` - Step 2: [Intent description]
-3. `route_to_liaison_agent` - Step 3: [Intent description]
+1. `initiate_guide_agent` - Step 1: Initialize GuideAgent conversation with platform-wide context and MCP tool access
+2. `process_guide_agent_message` - Step 2: Process user message, generate response, optionally call orchestrator MCP tools
+3. `route_to_liaison_agent` - Step 3: Route conversation to Liaison Agent with context sharing
 
 ### Journey Flow
 ```
-[User lands on platform / navigates / initiates GuideAgent]
+[User sends message to GuideAgent or toggles to GuideAgent]
     ↓
-[Intent execution flow]
+[initiate_guide_agent] → guide_agent_conversation_artifact
+    - GuideAgent initialized with platform-wide context
+    - Access to all orchestrator MCP tools (via Curator)
+    - Full conversation history loaded
+    - Context shared from previous agent (if toggled)
+    ↓
+[process_guide_agent_message] → guide_agent_response_artifact
+    - User message processed
+    - GuideAgent generates response (with platform-wide knowledge)
+    - Optionally: GuideAgent calls orchestrator MCP tool (governed)
+    - MCP tool executes journey/intent
+    - Response includes MCP tool results (if called)
+    - Conversation context updated
+    ↓
+[Optionally: route_to_liaison_agent] → liaison_agent_activated
+    - GuideAgent determines appropriate Liaison Agent
+    - Context shared to Liaison Agent
+    - User toggled to Liaison Agent
     ↓
 [Journey Complete]
 ```
@@ -33,7 +50,11 @@
 
 **Journey is considered complete when:**
 
-* User receives guidance or successfully navigates to solution
+* GuideAgent processes user message and returns response **OR**
+* GuideAgent routes to Liaison Agent with context sharing **OR**
+* GuideAgent successfully calls orchestrator MCP tool and returns results
+
+**Journey completion = user receives helpful response from GuideAgent (with optional MCP tool execution).**
 
 ---
 
