@@ -188,31 +188,10 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
         )
         logger.info(f"    ✅ Registered: {intent_type} → outcomes_orchestrator")
     
-    # Register journey realm handlers
-    logger.info("  → Registering journey realm handlers...")
-    from ..realms.journey.orchestrators.journey_orchestrator import JourneyOrchestrator
-    journey_orchestrator = JourneyOrchestrator(public_works=public_works)
-    
-    journey_intents = [
-        "optimize_process",
-        "generate_sop",
-        "create_workflow",
-        "analyze_coexistence",
-        "create_blueprint",
-        "generate_sop_from_chat",
-        "sop_chat_message"
-    ]
-    
-    for intent_type in journey_intents:
-        intent_registry.register_intent(
-            intent_type=intent_type,
-            handler_name="journey_orchestrator",
-            handler_function=journey_orchestrator.handle_intent,
-            metadata={"realm": "journey", "orchestrator": "JourneyOrchestrator"}
-        )
-        logger.info(f"    ✅ Registered: {intent_type} → journey_orchestrator")
-    
     # Register operations realm handlers
+    # NOTE: Operations Realm consolidates all SOP, workflow, and coexistence capabilities
+    # The old "journey realm" has been merged into Operations Realm.
+    # "Journey" is now reserved for platform journeys (intent sequences in solutions)
     logger.info("  → Registering operations realm handlers...")
     from ..realms.operations.orchestrators.operations_orchestrator import OperationsOrchestrator
     operations_orchestrator = OperationsOrchestrator(public_works=public_works)
@@ -222,7 +201,9 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
         "generate_sop",
         "create_workflow",
         "analyze_coexistence",
-        "create_blueprint"
+        "create_blueprint",
+        "generate_sop_from_chat",
+        "sop_chat_message"
     ]
     
     for intent_type in operations_intents:
@@ -234,7 +215,7 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
         )
         logger.info(f"    ✅ Registered: {intent_type} → operations_orchestrator")
     
-    total_handlers = len(content_intents) + len(insights_intents) + len(outcomes_intents) + len(journey_intents) + len(operations_intents)
+    total_handlers = len(content_intents) + len(insights_intents) + len(outcomes_intents) + len(operations_intents)
     logger.info(f"  ✅ IntentRegistry created with {total_handlers} intent handlers across all realms")
     
     # Step 4.5: Initialize Platform Solutions

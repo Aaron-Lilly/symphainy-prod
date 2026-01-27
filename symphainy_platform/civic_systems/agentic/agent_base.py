@@ -453,8 +453,8 @@ class AgentBase(ABC):
             return "insights_mcp"
         elif tool_name.startswith("content_"):
             return "content_mcp"
-        elif tool_name.startswith("journey_"):
-            return "journey_mcp"
+        elif tool_name.startswith("operations_"):
+            return "operations_mcp"
         elif tool_name.startswith("outcomes_"):
             return "outcomes_mcp"
         else:

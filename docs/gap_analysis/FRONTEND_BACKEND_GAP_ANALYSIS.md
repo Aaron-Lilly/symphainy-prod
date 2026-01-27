@@ -380,3 +380,68 @@ API Manager waits for completion, updates realm state
 - `insights/page.tsx` ✅ Correct patterns
 - `journey/page.tsx` ⚠️ Undefined functions (use setRealmState)
 - `business-outcomes/page.tsx` ❌ Session pattern violation
+
+---
+
+## Update: January 27, 2026 - Frontend Fixes Completed
+
+### Changes Made
+
+1. **Renamed JourneyAPIManager → OperationsAPIManager**
+   - Aligns frontend API manager name with backend Operations Realm naming
+   - Internal state key remains "journey" for backwards compatibility (documented)
+   - Updated pillar type from `'journey'` to `'operations'` in API methods
+   - Added backwards compatibility aliases for migration period
+
+2. **Fixed Business Outcomes Page (P0)**
+   - Added missing `useSessionBoundary` import
+   - Removed shadowing local `sessionState` useState
+   - Page now correctly uses SessionBoundaryProvider for session state
+
+3. **Fixed Journey Page (P0)**
+   - Replaced undefined `setSelectedSopId`/`setSelectedWorkflowId` calls
+   - Now uses `setRealmState('journey', 'selectedSopId/selectedWorkflowId', value)`
+   - Added `setRealmState` to usePlatformState destructuring
+   - Fixed malformed code block structure (bad merge artifact)
+
+4. **Fixed WizardActive Hook Bug**
+   - The hook imported `useJourneyAPIManager` but never called it
+   - Added missing `const operationsAPIManager = useOperationsAPIManager();` call
+
+5. **Updated Consumer Files**
+   - `CoexistenceBlueprint/hooks.ts` → uses `useOperationsAPIManager`
+   - `WizardActive/hooks.ts` → uses `useOperationsAPIManager`
+   - `LiaisonAgentsAPIManager.ts` → delegates to `OperationsAPIManager`
+   - `GuideAgentAPIManager.ts` → delegates to `OperationsAPIManager`
+   - `useAgentManager.ts` → dynamically imports `OperationsAPIManager`
+   - `page-updated.tsx` → uses `useOperationsAPIManager` (backup file)
+
+6. **Deleted Old Files**
+   - `shared/managers/JourneyAPIManager.ts` (replaced by OperationsAPIManager)
+   - `shared/hooks/useJourneyAPIManager.ts` (replaced by useOperationsAPIManager)
+
+### Backend Naming Duplication (Identified, Not Fixed)
+
+**Issue:** The backend has BOTH `journey/` and `operations/` directories:
+- `symphainy_platform/realms/journey/` - old naming (journey_realm.py, etc.)
+- `symphainy_platform/realms/operations/` - new naming (operations_realm.py, etc.)
+- `symphainy_platform/solutions/journey_solution/` - old naming
+- `symphainy_platform/solutions/operations_solution/` - new naming
+
+**Status:** This requires a separate cleanup effort to:
+1. Migrate functionality from `journey/` to `operations/`
+2. Update agent definitions that reference "journey realm"
+3. Update service factory and MCP client manager references
+4. Remove old `journey/` directories
+
+**Recommendation:** Track this as a separate task. The frontend is now correctly aligned to "Operations" naming; backend cleanup can proceed independently.
+
+### Remaining Tasks
+
+| Task | Status | Priority |
+|------|--------|----------|
+| Frontend manager rename | ✅ Completed | P0 |
+| Business Outcomes fix | ✅ Completed | P0 |
+| Journey page fix | ✅ Completed | P0 |
+| MVP Solution API | ⏳ Pending | P1 |
+| Backend journey→operations cleanup | ⏳ Identified | P2 |

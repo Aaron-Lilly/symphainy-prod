@@ -18,7 +18,7 @@
       "Respect tenant-specific workflow constraints"
     ],
     "authority": {
-      "can_access": ["journey_realm"],
+      "can_access": ["operations_realm"],
       "can_read": ["workflows", "coexistence_analyses"],
       "cannot_write": ["workflows", "source_data"]
     }
@@ -31,17 +31,17 @@
   ],
   "permissions": {
     "allowed_tools": [
-      "journey_get_workflow",
-      "journey_analyze_coexistence"
+      "operations_get_workflow",
+      "operations_analyze_coexistence"
     ],
-    "allowed_mcp_servers": ["journey_mcp"],
+    "allowed_mcp_servers": ["operations_mcp"],
     "required_roles": []
   },
   "collaboration_profile": {
     "can_delegate_to": [],
-    "can_be_invoked_by": ["guide_agent", "journey_liaison_agent", "blueprint_creation_agent"],
+    "can_be_invoked_by": ["guide_agent", "operations_liaison_agent", "blueprint_creation_agent"],
     "collaboration_style": "specialized"
   },
-  "version": "1.0.0",
+  "version": "1.1.0",
   "created_by": "platform"
 }

@@ -1,19 +1,17 @@
 /**
  * Liaison Agents API Manager
  * 
- * ✅ PHASE 5.6.4: Migrated to intent-based API
- * 
  * Centralizes all Liaison Agent API calls using intent-based architecture.
  * 
- * Note: This manager now delegates to JourneyAPIManager for intent-based operations.
- * Liaison agent operations use intent-based API through Journey realm.
+ * Note: This manager delegates to OperationsAPIManager for intent-based operations.
+ * Liaison agent operations use intent-based API through Operations realm.
  */
 
 // ============================================
 // Liaison Agents API Manager Types
 // ============================================
 
-export type PillarType = 'content' | 'insights' | 'journey' | 'outcomes';
+export type PillarType = 'content' | 'insights' | 'operations' | 'outcomes';
 
 export interface SendMessageRequest {
   message: string;
@@ -45,28 +43,28 @@ export interface ConversationHistoryResponse {
 // Liaison Agents API Manager Class
 // ============================================
 
-import { useJourneyAPIManager } from '@/shared/hooks/useJourneyAPIManager';
+import { useOperationsAPIManager } from '@/shared/hooks/useOperationsAPIManager';
 
 /**
- * ✅ PHASE 5.6.4: Liaison Agents API Manager (Migrated to Intent-Based API)
+ * Liaison Agents API Manager (Intent-Based API)
  * 
- * This manager now uses JourneyAPIManager for all operations.
- * Liaison agent operations use intent-based API through Journey realm.
+ * This manager uses OperationsAPIManager for all operations.
+ * Liaison agent operations use intent-based API through Operations realm.
  */
 export class LiaisonAgentsAPIManager {
-  private journeyAPIManager: ReturnType<typeof useJourneyAPIManager>;
+  private operationsAPIManager: ReturnType<typeof useOperationsAPIManager>;
 
-  constructor(journeyAPIManager: ReturnType<typeof useJourneyAPIManager>) {
-    this.journeyAPIManager = journeyAPIManager;
+  constructor(operationsAPIManager: ReturnType<typeof useOperationsAPIManager>) {
+    this.operationsAPIManager = operationsAPIManager;
   }
 
   /**
    * Send message to pillar agent
    * 
-   * ✅ PHASE 5.6.4: Uses JourneyAPIManager (intent-based API)
+   * Uses OperationsAPIManager (intent-based API)
    */
   async sendMessageToPillarAgent(request: SendMessageRequest): Promise<SendMessageResponse> {
-    const result = await this.journeyAPIManager.sendMessageToPillarAgent(
+    const result = await this.operationsAPIManager.sendMessageToPillarAgent(
       request.message,
       request.pillar,
       request.conversation_id,
@@ -83,10 +81,10 @@ export class LiaisonAgentsAPIManager {
   /**
    * Get pillar conversation history
    * 
-   * ✅ PHASE 5.6.4: Uses JourneyAPIManager (intent-based API)
+   * Uses OperationsAPIManager (intent-based API)
    */
   async getPillarConversationHistory(sessionId: string, pillar: PillarType): Promise<ConversationHistoryResponse> {
-    const result = await this.journeyAPIManager.getPillarConversationHistory(sessionId, pillar);
+    const result = await this.operationsAPIManager.getPillarConversationHistory(sessionId, pillar);
 
     return {
       success: result.success,
@@ -98,6 +96,6 @@ export class LiaisonAgentsAPIManager {
 
 // Factory function for use in components
 export function useLiaisonAgentsAPIManager(): LiaisonAgentsAPIManager {
-  const journeyAPIManager = useJourneyAPIManager();
-  return new LiaisonAgentsAPIManager(journeyAPIManager);
+  const operationsAPIManager = useOperationsAPIManager();
+  return new LiaisonAgentsAPIManager(operationsAPIManager);
 }

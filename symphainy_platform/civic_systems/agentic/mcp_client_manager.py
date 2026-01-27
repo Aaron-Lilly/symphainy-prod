@@ -78,10 +78,13 @@ class MCPClientManager:
             List of server names
         """
         # Known realm MCP servers
+        # NOTE: "operations_mcp" replaces old "journey_mcp"
+        # "Journey" is now reserved for platform journeys (intent sequences)
+        # "Operations" is the realm for SOPs, workflows, coexistence analysis
         realm_servers = [
             "insights_mcp",
             "content_mcp",
-            "journey_mcp",
+            "operations_mcp",
             "outcomes_mcp"
         ]
         
@@ -125,11 +128,11 @@ class MCPClientManager:
                 await server.initialize()
                 self._servers[server_name] = server
                 
-            elif server_name == "journey_mcp":
-                from symphainy_platform.realms.journey.mcp_server.journey_mcp_server import (
-                    JourneyRealmMCPServer
+            elif server_name == "operations_mcp":
+                from symphainy_platform.realms.operations.mcp_server.operations_mcp_server import (
+                    OperationsRealmMCPServer
                 )
-                server = JourneyRealmMCPServer(orchestrator=None)
+                server = OperationsRealmMCPServer(orchestrator=None)
                 await server.initialize()
                 self._servers[server_name] = server
                 

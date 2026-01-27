@@ -32,7 +32,7 @@ from ..enabling_services.solution_synthesis_service import SolutionSynthesisServ
 from ..enabling_services.report_generator_service import ReportGeneratorService
 from ..enabling_services.visual_generation_service import VisualGenerationService
 from ..enabling_services.export_service import ExportService
-from symphainy_platform.realms.journey.enabling_services.coexistence_analysis_service import CoexistenceAnalysisService
+from symphainy_platform.realms.operations.enabling_services.coexistence_analysis_service import CoexistenceAnalysisService
 from ..agents.outcomes_synthesis_agent import OutcomesSynthesisAgent
 from ..agents.poc_generation_agent import POCGenerationAgent
 from ..agents.outcomes_liaison_agent import OutcomesLiaisonAgent
