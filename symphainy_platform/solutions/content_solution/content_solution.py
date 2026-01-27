@@ -39,6 +39,9 @@ from symphainy_platform.realms.utils.structured_artifacts import create_structur
 
 # Import journey orchestrators
 from .journeys.file_upload_materialization_journey import FileUploadMaterializationJourney
+from .journeys.file_parsing_journey import FileParsingJourney
+from .journeys.deterministic_embedding_journey import DeterministicEmbeddingJourney
+from .journeys.file_management_journey import FileManagementJourney
 
 
 class ContentSolution:
@@ -117,10 +120,23 @@ class ContentSolution:
             state_surface=self.state_surface
         )
         
-        # Future journeys will be added here:
-        # self._journeys["file_parsing"] = FileParsingJourney(...)
-        # self._journeys["deterministic_embedding"] = DeterministicEmbeddingJourney(...)
-        # self._journeys["file_management"] = FileManagementJourney(...)
+        # File Parsing Journey
+        self._journeys["file_parsing"] = FileParsingJourney(
+            public_works=self.public_works,
+            state_surface=self.state_surface
+        )
+        
+        # Deterministic Embedding Journey
+        self._journeys["deterministic_embedding"] = DeterministicEmbeddingJourney(
+            public_works=self.public_works,
+            state_surface=self.state_surface
+        )
+        
+        # File Management Journey
+        self._journeys["file_management"] = FileManagementJourney(
+            public_works=self.public_works,
+            state_surface=self.state_surface
+        )
         
         self.logger.info(f"Initialized {len(self._journeys)} journey orchestrators")
     
@@ -242,14 +258,22 @@ class ContentSolution:
         """Find the journey that handles a given intent type."""
         # Map intent types to journeys
         intent_to_journey = {
+            # File Upload & Materialization
             "ingest_file": "file_upload_materialization",
             "save_materialization": "file_upload_materialization",
-            # Future mappings:
-            # "parse_content": "file_parsing",
-            # "create_deterministic_embeddings": "deterministic_embedding",
-            # "extract_embeddings": "deterministic_embedding",
-            # "list_artifacts": "file_management",
-            # "archive_file": "file_management",
+            # File Parsing
+            "parse_content": "file_parsing",
+            "save_parsed_content": "file_parsing",
+            "get_parsed_file": "file_parsing",
+            # Deterministic Embedding
+            "create_deterministic_embeddings": "deterministic_embedding",
+            "extract_embeddings": "deterministic_embedding",
+            "save_embeddings": "deterministic_embedding",
+            # File Management
+            "list_artifacts": "file_management",
+            "list_files": "file_management",
+            "retrieve_artifact_metadata": "file_management",
+            "archive_file": "file_management",
         }
         
         journey_id = intent_to_journey.get(intent_type)

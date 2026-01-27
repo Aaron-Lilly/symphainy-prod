@@ -12,5 +12,13 @@ Key Journeys:
 """
 
 from .file_upload_materialization_journey import FileUploadMaterializationJourney
+from .file_parsing_journey import FileParsingJourney
+from .deterministic_embedding_journey import DeterministicEmbeddingJourney
+from .file_management_journey import FileManagementJourney
 
-__all__ = ["FileUploadMaterializationJourney"]
+__all__ = [
+    "FileUploadMaterializationJourney",
+    "FileParsingJourney",
+    "DeterministicEmbeddingJourney",
+    "FileManagementJourney"
+]
