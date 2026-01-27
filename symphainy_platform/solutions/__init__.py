@@ -15,16 +15,19 @@ Available Solutions:
 - InsightsSolution: Business analysis, data quality, semantic discovery
 - JourneySolution: Workflow/SOP management, coexistence analysis
 - OutcomesSolution: POC creation, roadmap generation, solution synthesis
+- ControlTower: Platform command center (monitoring, management, composition)
 """
 
 from .content_solution import ContentSolution
 from .insights_solution import InsightsSolution
 from .journey_solution import JourneySolution
 from .outcomes_solution import OutcomesSolution
+from .control_tower import ControlTower
 
 __all__ = [
     "ContentSolution",
     "InsightsSolution",
     "JourneySolution",
-    "OutcomesSolution"
+    "OutcomesSolution",
+    "ControlTower"
 ]
