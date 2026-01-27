@@ -1,0 +1,121 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "config_id": "permit_semantic_object",
+  "name": "Permit Semantic Object",
+  "description": "Extract permit metadata, obligations, and legal citations from permit documents.",
+  "domain": "pso",
+  "version": "1.0",
+  "categories": [
+    {
+      "name": "permit_metadata",
+      "description": "Permit metadata - permit number, type, dates, issuing authority",
+      "extraction_type": "llm",
+      "prompt_template": "Extract permit metadata from the permit document. Include:\n- Permit number/identifier\n- Permit type (construction, environmental, operational, etc.)\n- Issue date and expiration date\n- Issuing authority (agency, department)\n- Permit holder information\n- Location/address of permitted activity\n\nReturn structured JSON with all permit metadata fields.",
+      "validation_rules": [
+        {
+          "type": "required_fields",
+          "fields": ["permit_number", "permit_type", "issue_date", "issuing_authority"]
+        }
+      ],
+      "required": true,
+      "custom_properties": {
+        "permit_types": ["construction", "environmental", "operational", "zoning", "health_safety"]
+      }
+    },
+    {
+      "name": "obligations",
+      "description": "Obligations and requirements specified in the permit",
+      "extraction_type": "llm",
+      "prompt_template": "Extract obligations and requirements from the permit document. Include:\n- Specific obligations the permit holder must fulfill\n- Compliance requirements\n- Reporting obligations\n- Inspection requirements\n- Conditions and restrictions\n\nReturn structured JSON with all obligations, including obligation type, description, and compliance criteria.",
+      "validation_rules": [
+        {
+          "type": "required_fields",
+          "fields": ["obligations"]
+        },
+        {
+          "type": "min_items",
+          "field": "obligations",
+          "min": 1
+        }
+      ],
+      "required": true,
+      "custom_properties": {
+        "obligation_types": ["reporting", "inspection", "compliance", "restriction", "condition"]
+      }
+    },
+    {
+      "name": "legal_citations",
+      "description": "Legal citations and regulatory references",
+      "extraction_type": "hybrid",
+      "prompt_template": "Extract legal citations and regulatory references from the permit document. Include:\n- Statutory references (laws, codes)\n- Regulatory citations (regulations, rules)\n- Case law references (if applicable)\n- Standards and guidelines referenced\n\nReturn structured JSON with all legal citations, including citation format, authority, and relevance.",
+      "validation_rules": [
+        {
+          "type": "required_fields",
+          "fields": ["citations"]
+        }
+      ],
+      "required": false,
+      "custom_properties": {
+        "citation_types": ["statute", "regulation", "case_law", "standard", "guideline"],
+        "extraction_method": "pattern_plus_llm"
+      }
+    }
+  ],
+  "extraction_order": [
+    "permit_metadata",
+    "obligations",
+    "legal_citations"
+  ],
+  "dependencies": {
+    "obligations": ["permit_metadata"],
+    "legal_citations": ["obligations"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "permit_metadata": {
+        "type": "object",
+        "properties": {
+          "permit_number": {"type": "string"},
+          "permit_type": {"type": "string"},
+          "issue_date": {"type": "string"},
+          "expiration_date": {"type": "string"},
+          "issuing_authority": {"type": "string"},
+          "permit_holder": {"type": "string"},
+          "location": {"type": "string"}
+        }
+      },
+      "obligations": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "obligation_type": {"type": "string"},
+            "description": {"type": "string"},
+            "compliance_criteria": {"type": "string"},
+            "due_date": {"type": "string"},
+            "frequency": {"type": "string"}
+          }
+        }
+      },
+      "legal_citations": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "citation": {"type": "string"},
+            "authority": {"type": "string"},
+            "relevance": {"type": "string"}
+          }
+        }
+      }
+    },
+    "required": ["permit_metadata", "obligations"]
+  },
+  "custom_properties": {
+    "document_type": "permit",
+    "use_case": "compliance_tracking",
+    "extraction_complexity": "medium",
+    "compliance_frameworks": ["federal", "state", "local"]
+  }
+}

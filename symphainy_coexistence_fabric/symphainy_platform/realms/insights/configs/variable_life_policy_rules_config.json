@@ -1,0 +1,155 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "config_id": "variable_life_policy_rules",
+  "name": "Variable Life Insurance Policy Rules",
+  "description": "Extract investment rules, cash value calculations, riders, administration rules, and compliance rules from variable life insurance policies.",
+  "domain": "variable_life_policy_rules",
+  "version": "1.0",
+  "categories": [
+    {
+      "name": "investment_rules",
+      "description": "Investment & Funding Rules - Sub-account allocations, investment return logic, funding flexibility",
+      "extraction_type": "hybrid",
+      "prompt_template": "Extract investment and funding rules from the variable life insurance policy data. Include:\n- Sub-account allocations (fund mixes, rebalancing rules, fund change rules)\n- Investment return logic (how performance translates to cash value and death benefits, assumed investment rates)\n- Funding flexibility (premium payment rules: fixed, flexible, minimums, maximums)\n\nReturn structured JSON with all investment-related rules.",
+      "validation_rules": [
+        {
+          "type": "required_fields",
+          "fields": ["sub_account_allocations", "investment_return_logic"]
+        }
+      ],
+      "required": true,
+      "custom_properties": {
+        "policy_types": ["variable_life", "variable_universal_life"],
+        "complexity": "high"
+      }
+    },
+    {
+      "name": "cash_value_rules",
+      "description": "Cash Value & Non-Forfeiture Rules - Calculation logic, guaranteed minimums",
+      "extraction_type": "hybrid",
+      "prompt_template": "Extract cash value and non-forfeiture rules from the variable life insurance policy data. Include:\n- Calculation logic (algorithms for net cash surrender value, separate from guarantees)\n- Guaranteed minimums (guaranteed interest rates, minimum death benefit levels)\n\nReturn structured JSON with all cash value calculation rules and guarantees.",
+      "validation_rules": [
+        {
+          "type": "required_fields",
+          "fields": ["calculation_logic"]
+        }
+      ],
+      "required": true,
+      "custom_properties": {
+        "calculation_complexity": "high",
+        "includes_formulas": true
+      }
+    },
+    {
+      "name": "riders_features",
+      "description": "Riders, Features & Benefits - Death benefit options, no-lapse features, persistency bonuses",
+      "extraction_type": "llm",
+      "prompt_template": "Extract riders, features, and benefits from the variable life insurance policy data. Include:\n- Death benefit options (Option A, B, C, Family Term Riders)\n- No-lapse/Guaranteed features (conditions for activation, duration, termination)\n- Persistency bonuses (rules for enhancement amounts and duration)\n\nReturn structured JSON with all riders and features.",
+      "validation_rules": [],
+      "required": false,
+      "custom_properties": {
+        "feature_types": ["death_benefit", "no_lapse", "persistency"]
+      }
+    },
+    {
+      "name": "administration_rules",
+      "description": "Policy Administration & Loans - Policy loan provisions, lapse & grace periods, premium offset/deductions",
+      "extraction_type": "llm",
+      "prompt_template": "Extract policy administration and loan rules from the variable life insurance policy data. Include:\n- Policy loan provisions (variable interest rate calculations, loan value limits)\n- Lapse & grace periods (rules defining policy status transitions)\n- Premium offset/deductions (how charges like M&E, admin fees are applied)\n\nReturn structured JSON with all administration rules.",
+      "validation_rules": [
+        {
+          "type": "required_fields",
+          "fields": ["loan_provisions", "lapse_grace_periods"]
+        }
+      ],
+      "required": true,
+      "custom_properties": {
+        "charge_types": ["mortality_expense", "admin_fees", "surrender_charges"]
+      }
+    },
+    {
+      "name": "compliance_rules",
+      "description": "Customer & Compliance Rules - Risk tolerance & suitability, regulatory compliance",
+      "extraction_type": "llm",
+      "prompt_template": "Extract customer and compliance rules from the variable life insurance policy data. Include:\n- Risk tolerance & suitability (documented customer info: age, income, risk profile for underwriting/recommendations)\n- Regulatory compliance (adherence to state laws, GDPR, CCPA, data privacy requirements)\n\nReturn structured JSON with all compliance and customer rules.",
+      "validation_rules": [
+        {
+          "type": "required_fields",
+          "fields": ["regulatory_compliance"]
+        }
+      ],
+      "required": true,
+      "custom_properties": {
+        "regulatory_frameworks": ["state_insurance_laws", "GDPR", "CCPA"],
+        "geographic_scope": ["US", "state_specific"]
+      }
+    }
+  ],
+  "extraction_order": [
+    "investment_rules",
+    "cash_value_rules",
+    "riders_features",
+    "administration_rules",
+    "compliance_rules"
+  ],
+  "dependencies": {
+    "cash_value_rules": ["investment_rules"],
+    "administration_rules": ["cash_value_rules"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "investment_rules": {
+        "type": "object",
+        "properties": {
+          "sub_account_allocations": {
+            "type": "array",
+            "items": {"type": "object"}
+          },
+          "investment_return_logic": {"type": "object"},
+          "funding_flexibility": {"type": "object"}
+        }
+      },
+      "cash_value_rules": {
+        "type": "object",
+        "properties": {
+          "calculation_logic": {"type": "object"},
+          "guaranteed_minimums": {"type": "object"}
+        }
+      },
+      "riders_features": {
+        "type": "object",
+        "properties": {
+          "death_benefit_options": {
+            "type": "array",
+            "items": {"type": "object"}
+          },
+          "no_lapse_features": {"type": "object"},
+          "persistency_bonuses": {"type": "object"}
+        }
+      },
+      "administration_rules": {
+        "type": "object",
+        "properties": {
+          "loan_provisions": {"type": "object"},
+          "lapse_grace_periods": {"type": "object"},
+          "premium_deductions": {"type": "object"}
+        }
+      },
+      "compliance_rules": {
+        "type": "object",
+        "properties": {
+          "risk_tolerance": {"type": "object"},
+          "regulatory_compliance": {"type": "object"}
+        }
+      }
+    },
+    "required": ["investment_rules", "cash_value_rules", "administration_rules", "compliance_rules"]
+  },
+  "custom_properties": {
+    "policy_type": "variable_life_insurance",
+    "migration_use_case": "350k_policy_migration",
+    "complexity": "high",
+    "estimated_extraction_time": "5-10_minutes_per_policy"
+  }
+}

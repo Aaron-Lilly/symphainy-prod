@@ -1,0 +1,151 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "config_id": "after_action_review",
+  "name": "After Action Review",
+  "description": "Extract lessons learned, risks, recommendations, and timeline from After Action Review (AAR) documents.",
+  "domain": "aar",
+  "version": "1.0",
+  "categories": [
+    {
+      "name": "lessons_learned",
+      "description": "Lessons learned from the event or incident",
+      "extraction_type": "llm",
+      "prompt_template": "Extract lessons learned from the After Action Review document. Lessons learned should be:\n- Actionable insights gained from the event\n- What worked well and what didn't\n- Key takeaways for future operations\n\nReturn a list of lessons learned as structured JSON.",
+      "validation_rules": [
+        {
+          "type": "required_fields",
+          "fields": ["lessons"]
+        },
+        {
+          "type": "min_items",
+          "field": "lessons",
+          "min": 1
+        }
+      ],
+      "required": true,
+      "custom_properties": {
+        "document_type": "after_action_review",
+        "extraction_priority": "high"
+      }
+    },
+    {
+      "name": "risks",
+      "description": "Risks identified during the event or incident",
+      "extraction_type": "llm",
+      "prompt_template": "Extract risks identified from the After Action Review document. Risks should include:\n- Risks that materialized during the event\n- Risks that were identified but not yet materialized\n- Risk severity and impact\n\nReturn a list of risks as structured JSON with severity and impact information.",
+      "validation_rules": [
+        {
+          "type": "required_fields",
+          "fields": ["risks"]
+        }
+      ],
+      "required": true,
+      "custom_properties": {
+        "risk_categories": ["operational", "technical", "human_factors", "external"]
+      }
+    },
+    {
+      "name": "recommendations",
+      "description": "Recommendations for improvement based on the AAR",
+      "extraction_type": "llm",
+      "prompt_template": "Extract recommendations from the After Action Review document. Recommendations should be:\n- Actionable steps to prevent similar issues\n- Process improvements\n- Training or resource needs\n- Policy or procedure changes\n\nReturn a list of recommendations as structured JSON with priority and implementation details.",
+      "validation_rules": [
+        {
+          "type": "required_fields",
+          "fields": ["recommendations"]
+        }
+      ],
+      "required": true,
+      "custom_properties": {
+        "recommendation_types": ["process_improvement", "training", "policy_change", "resource_allocation"]
+      }
+    },
+    {
+      "name": "timeline",
+      "description": "Timeline of events during the incident or event",
+      "extraction_type": "llm",
+      "prompt_template": "Extract timeline of events from the After Action Review document. Timeline should include:\n- Chronological sequence of events\n- Key decision points\n- Response actions taken\n- Resolution milestones\n\nReturn a structured timeline as JSON with timestamps and event descriptions.",
+      "validation_rules": [
+        {
+          "type": "required_fields",
+          "fields": ["events"]
+        },
+        {
+          "type": "chronological_order",
+          "field": "events"
+        }
+      ],
+      "required": false,
+      "custom_properties": {
+        "timeline_format": "chronological",
+        "includes_timestamps": true
+      }
+    }
+  ],
+  "extraction_order": [
+    "timeline",
+    "lessons_learned",
+    "risks",
+    "recommendations"
+  ],
+  "dependencies": {
+    "recommendations": ["lessons_learned", "risks"]
+  },
+  "output_schema": {
+    "type": "object",
+    "properties": {
+      "lessons_learned": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "lesson": {"type": "string"},
+            "category": {"type": "string"},
+            "impact": {"type": "string"}
+          }
+        }
+      },
+      "risks": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "risk": {"type": "string"},
+            "severity": {"type": "string"},
+            "impact": {"type": "string"},
+            "mitigation": {"type": "string"}
+          }
+        }
+      },
+      "recommendations": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "recommendation": {"type": "string"},
+            "priority": {"type": "string"},
+            "implementation": {"type": "string"},
+            "owner": {"type": "string"}
+          }
+        }
+      },
+      "timeline": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "timestamp": {"type": "string"},
+            "event": {"type": "string"},
+            "description": {"type": "string"}
+          }
+        }
+      }
+    },
+    "required": ["lessons_learned", "risks", "recommendations"]
+  },
+  "custom_properties": {
+    "document_type": "after_action_review",
+    "use_case": "incident_analysis",
+    "extraction_complexity": "medium"
+  }
+}

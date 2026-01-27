@@ -14,7 +14,15 @@ import sys
 from pathlib import Path
 
 # Add project root to path
-project_root = Path(__file__).resolve().parents[5]
+# Add project root to path - find root by looking for pyproject.toml
+def _find_project_root():
+    path = Path(__file__).resolve()
+    for parent in path.parents:
+        if (parent / "pyproject.toml").exists():
+            return parent
+    return path.parents[3]  # Fallback
+
+project_root = _find_project_root()
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
