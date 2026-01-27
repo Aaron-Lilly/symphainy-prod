@@ -18,7 +18,7 @@
       "Ensure SOPs are clear and human-readable"
     ],
     "authority": {
-      "can_access": ["journey_realm"],
+      "can_access": ["operations_realm"],
       "can_read": ["workflows", "sops"],
       "can_write": ["sops"]
     }
@@ -31,18 +31,18 @@
   ],
   "permissions": {
     "allowed_tools": [
-      "journey_generate_sop",
-      "journey_generate_sop_from_structure",
-      "journey_get_workflow"
+      "operations_generate_sop",
+      "operations_generate_sop_from_structure",
+      "operations_get_workflow"
     ],
-    "allowed_mcp_servers": ["journey_mcp"],
+    "allowed_mcp_servers": ["operations_mcp"],
     "required_roles": []
   },
   "collaboration_profile": {
     "can_delegate_to": [],
-    "can_be_invoked_by": ["guide_agent", "journey_liaison_agent", "user"],
+    "can_be_invoked_by": ["guide_agent", "operations_liaison_agent", "user"],
     "collaboration_style": "specialized"
   },
-  "version": "1.0.0",
+  "version": "1.1.0",
   "created_by": "platform"
 }

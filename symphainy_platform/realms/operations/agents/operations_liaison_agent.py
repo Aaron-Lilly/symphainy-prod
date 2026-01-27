@@ -1,5 +1,5 @@
 """
-Journey Liaison Agent - Interactive SOP Generation Agent
+Operations Liaison Agent - Interactive SOP Generation Agent
 
 Agent for interactive SOP generation via chat.
 
@@ -7,6 +7,10 @@ WHAT (Agent Role): I provide interactive SOP generation from chat
 HOW (Agent Implementation): I reason about user requirements, build SOP through conversation
 
 Key Principle: Agentic reasoning - uses conversation to understand requirements and build SOP.
+
+NOTE: Renamed from JourneyLiaisonAgent to OperationsLiaisonAgent as part of
+realm naming cleanup. "Journey" is reserved for platform journeys (intent sequences),
+while "Operations" is the realm for SOPs, workflows, and coexistence analysis.
 """
 
 import sys
@@ -25,9 +29,9 @@ from symphainy_platform.civic_systems.agentic.agent_base import AgentBase
 from symphainy_platform.civic_systems.agentic.models.agent_runtime_context import AgentRuntimeContext
 
 
-class JourneyLiaisonAgent(AgentBase):
+class OperationsLiaisonAgent(AgentBase):
     """
-    Journey Liaison Agent - Interactive SOP generation.
+    Operations Liaison Agent - Interactive SOP generation.
     
     Provides:
     - Interactive SOP generation session
@@ -38,13 +42,13 @@ class JourneyLiaisonAgent(AgentBase):
     
     def __init__(
         self,
-        agent_definition_id: str = "journey_liaison_agent",
+        agent_definition_id: str = "operations_liaison_agent",
         public_works: Optional[Any] = None,
         sop_generation_agent: Optional[Any] = None,
         **kwargs
     ):
         """
-        Initialize Journey Liaison Agent.
+        Initialize Operations Liaison Agent.
         
         Args:
             agent_definition_id: Agent definition ID
@@ -128,7 +132,7 @@ class JourneyLiaisonAgent(AgentBase):
         
         return {
             "session_id": session_id,
-            "agent_type": "journey_liaison",
+            "agent_type": "operations_liaison",
             "status": "active",
             "capabilities": [
                 "gather_requirements",
@@ -529,4 +533,4 @@ Analyze and provide:
     
     async def get_agent_description(self) -> str:
         """Get agent description (required by AgentBase)."""
-        return "Journey Liaison Agent - Provides interactive SOP generation from chat"
+        return "Operations Liaison Agent - Provides interactive SOP generation from chat"

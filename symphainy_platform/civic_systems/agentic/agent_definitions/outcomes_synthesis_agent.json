@@ -16,7 +16,7 @@
       "Respect tenant-specific solution constraints"
     ],
     "authority": {
-      "can_access": ["outcomes_realm", "content_realm", "insights_realm", "journey_realm"],
+      "can_access": ["outcomes_realm", "content_realm", "insights_realm", "operations_realm"],
       "can_read": ["pillar_summaries", "solutions", "visualizations"],
       "can_write": ["solutions", "visualizations"]
     }

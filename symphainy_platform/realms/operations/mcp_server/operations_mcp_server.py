@@ -1,7 +1,11 @@
 """
-Journey Realm MCP Server
+Operations Realm MCP Server
 
-Exposes Journey Orchestrator SOA APIs as MCP Tools for agent consumption.
+Exposes Operations Orchestrator SOA APIs as MCP Tools for agent consumption.
+
+NOTE: Migrated from JourneyRealmMCPServer as part of realm naming cleanup.
+"Journey" is reserved for platform journeys (intent sequences),
+"Operations" is the realm for SOPs, workflows, and coexistence analysis.
 """
 
 import sys
@@ -16,21 +20,21 @@ from typing import Dict, Any
 from symphainy_platform.civic_systems.agentic.mcp_server_base import MCPServerBase
 
 
-class JourneyRealmMCPServer(MCPServerBase):
-    """Journey Realm MCP Server."""
+class OperationsRealmMCPServer(MCPServerBase):
+    """Operations Realm MCP Server."""
     
     def __init__(self, orchestrator):
-        """Initialize Journey Realm MCP Server."""
+        """Initialize Operations Realm MCP Server."""
         super().__init__(
-            service_name="journey_mcp",
-            realm_name="journey"
+            service_name="operations_mcp",
+            realm_name="operations"
         )
         self.orchestrator = orchestrator
     
     async def initialize(self) -> bool:
         """Initialize MCP Server and register tools from orchestrator SOA APIs."""
         try:
-            self.logger.info("🔧 Initializing Journey Realm MCP Server...")
+            self.logger.info("🔧 Initializing Operations Realm MCP Server...")
             
             if not hasattr(self.orchestrator, '_define_soa_api_handlers'):
                 self.logger.warning("⚠️ Orchestrator does not define SOA APIs.")
@@ -49,7 +53,7 @@ class JourneyRealmMCPServer(MCPServerBase):
                     if not handler:
                         continue
                     
-                    tool_name = f"journey_{api_name}"
+                    tool_name = f"operations_{api_name}"
                     
                     def create_tool_handler(api_name_inner, handler_inner):
                         async def tool_handler(**parameters):
@@ -70,7 +74,7 @@ class JourneyRealmMCPServer(MCPServerBase):
                         tool_name=tool_name,
                         handler=tool_handler,
                         input_schema=input_schema,
-                        description=api_def.get("description", f"Journey realm: {api_name}")
+                        description=api_def.get("description", f"Operations realm: {api_name}")
                     )
                     
                     self.soa_api_registry[api_name] = tool_name
@@ -80,19 +84,19 @@ class JourneyRealmMCPServer(MCPServerBase):
                     self.logger.error(f"❌ Failed to register tool '{api_name}': {e}")
                     continue
             
-            self.logger.info(f"✅ Journey Realm MCP Server initialized with {registered_count} tools")
+            self.logger.info(f"✅ Operations Realm MCP Server initialized with {registered_count} tools")
             return True
             
         except Exception as e:
-            self.logger.error(f"❌ Failed to initialize Journey Realm MCP Server: {e}")
+            self.logger.error(f"❌ Failed to initialize Operations Realm MCP Server: {e}")
             return False
     
     def get_usage_guide(self) -> Dict[str, Any]:
         """Return usage guide."""
         return {
-            "server_name": "journey_mcp",
-            "realm": "journey",
-            "description": "Journey Realm MCP Server",
+            "server_name": "operations_mcp",
+            "realm": "operations",
+            "description": "Operations Realm MCP Server - SOPs, Workflows, Coexistence Analysis",
             "tools": list(self.soa_api_registry.values()),
             "soa_api_mappings": self.soa_api_registry
         }

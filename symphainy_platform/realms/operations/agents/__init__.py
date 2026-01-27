@@ -1,10 +1,27 @@
 """
 Operations Realm Agents
 
-Links to Operations agents from Agentic SDK.
+Agents for Operations Realm capabilities:
+- Coexistence analysis and friction removal
+- SOP generation
+- Interactive SOP building (liaison)
+- Workflow optimization
 """
 
-# Import from Agentic SDK
-from symphainy_platform.civic_systems.agentic.agents.workflow_optimization_specialist import WorkflowOptimizationSpecialist
+# Operations Realm agents (migrated from journey realm)
+from .coexistence_analysis_agent import CoexistenceAnalysisAgent
+from .sop_generation_agent import SOPGenerationAgent
+from .operations_liaison_agent import OperationsLiaisonAgent
 
-__all__ = ["WorkflowOptimizationSpecialist"]
+# Import from Agentic SDK
+try:
+    from symphainy_platform.civic_systems.agentic.agents.workflow_optimization_specialist import WorkflowOptimizationSpecialist
+except ImportError:
+    WorkflowOptimizationSpecialist = None
+
+__all__ = [
+    "CoexistenceAnalysisAgent",
+    "SOPGenerationAgent", 
+    "OperationsLiaisonAgent",
+    "WorkflowOptimizationSpecialist"
+]

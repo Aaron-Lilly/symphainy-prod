@@ -40,20 +40,20 @@ GUIDE_AGENT_DEFINITION = AgentDefinition(
             "content_extract_embeddings",
             "insights_extract_structured_data",
             "insights_discover_extraction_pattern",
-            "journey_optimize_process",
-            "journey_generate_sop",
-            "journey_create_workflow",
+            "operations_optimize_process",
+            "operations_generate_sop",
+            "operations_create_workflow",
             "outcomes_synthesize_outcome",
             "outcomes_generate_roadmap",
             "outcomes_create_poc"
         ],
-        "allowed_mcp_servers": ["content_mcp", "insights_mcp", "journey_mcp", "outcomes_mcp"],
+        "allowed_mcp_servers": ["content_mcp", "insights_mcp", "operations_mcp", "outcomes_mcp"],
         "required_roles": []
     },
     collaboration_profile={
         "can_delegate_to": [
             "structured_extraction_agent",
-            "journey_liaison_agent",
+            "operations_liaison_agent",
             "content_liaison_agent",
             "insights_liaison_agent"
         ],
