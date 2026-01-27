@@ -90,14 +90,47 @@ Creating intent contracts for all 28 journeys, organized by journey folder. Each
 
 ---
 
-### 📋 Remaining Realms
+### ✅ Completed - Insights Realm (Reorganized into 5 Journeys)
 
-**Insights Realm (5 journeys):**
-- `journey_insights_data_quality/`
-- `journey_insights_semantic_embedding/`
-- `journey_insights_data_interpretation/`
-- `journey_insights_relationship_mapping/`
-- `journey_insights_business_analysis/`
+**Key Finding:** Backend is comprehensive (16 intents implemented), not shells. Journey contracts were placeholder templates.
+
+**Journey: Data Quality**
+- `insights_data_quality/`
+  - ✅ `intent_assess_data_quality.md` (comprehensive - combines parsing + embedding quality)
+
+**Journey: Data Interpretation**
+- `insights_data_interpretation/`
+  - ✅ `intent_interpret_data_self_discovery.md` (comprehensive - unguided discovery)
+  - ✅ `intent_interpret_data_guided.md` (comprehensive - guided with guide_id)
+
+**Journey: Data Analysis**
+- `insights_data_analysis/`
+  - ✅ `intent_analyze_structured_data.md` (comprehensive - statistics, patterns, anomalies)
+  - ✅ `intent_analyze_unstructured_data.md` (comprehensive - NLP, deep dive with agent)
+
+**Journey: Lineage & Relationships**
+- `insights_lineage/`
+  - ✅ `intent_visualize_lineage.md` (comprehensive - "Your Data Mash")
+  - ✅ `intent_map_relationships.md` (comprehensive - entity relationships)
+
+**Journey: Extraction & Matching**
+- `insights_extraction/`
+  - ✅ `intent_extract_structured_data.md` (MCP tool - patterns: VLP, AAR, PSO)
+  - ✅ `intent_match_source_to_target.md` (three-phase matching)
+
+**📊 Insights Realm Analysis**
+- ✅ `INSIGHTS_REALM_ANALYSIS.md` - Documents backend implementation (16 intents, 12 services)
+
+**Journey Contracts Updated:**
+- ✅ `journey_insights_data_quality.md` - Updated to reflect assess_data_quality
+- ✅ `journey_insights_data_interpretation.md` - Updated with self-discovery + guided
+- ✅ `journey_insights_business_analysis.md` - Updated with structured + unstructured
+- ✅ `journey_insights_relationship_mapping.md` - Updated with lineage + relationships
+- ✅ `journey_insights_semantic_embedding.md` - Renamed to Extraction & Matching
+
+---
+
+### 📋 Remaining Realms
 
 **Outcomes Realm (includes create_blueprint from Journey):**
 - `journey_outcomes_synthesis/`
@@ -147,11 +180,13 @@ Each intent contract includes:
 | Journey | 3 (reorganized) | 7 | ✅ Complete |
 | Journey (Guide Agent) | 1 | 3 | ⏳ Pending |
 | Journey (Cross-Pillar) | 1 | 2 | ⏳ Pending |
-| Insights | 5 | TBD | 📋 Remaining |
+| Insights | 5 (reorganized) | 9 | ✅ Complete |
 | Outcomes | 4 | TBD | 📋 Remaining |
 | Security | 2 | TBD | 📋 Remaining |
 | Coexistence | 3 | TBD | 📋 Remaining |
 | Control Tower | 4 | TBD | 📋 Remaining |
+
+**Note:** Insights Realm backend has 16 intents implemented, 9 documented in contracts (those used by frontend + key extraction intents).
 
 ---
 
