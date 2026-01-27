@@ -4,7 +4,7 @@
 **Intent Type:** `refresh_session`  
 **Journey:** Journey Security Authentication (`journey_security_authentication`)  
 **Realm:** Security Solution  
-**Status:** IN PROGRESS  
+**Status:** ✅ **ENHANCED** - Ready for implementation  
 **Priority:** PRIORITY 1
 
 ---
@@ -12,15 +12,34 @@
 ## 1. Intent Overview
 
 ### Purpose
-[Describe the purpose of this intent based on journey contract]
+Refresh an expired or expiring session. Generates a new session token, extends session expiration, and updates session artifact. This is an ongoing operation that can happen at any time after session creation.
 
 ### Intent Flow
 ```
-[Describe the flow for this intent]
+[Session token expires or is about to expire]
+    ↓
+[refresh_session intent executes]
+    ↓
+[Validate existing session token]
+    ↓
+[Generate new session token (JWT, extended expiration)]
+    ↓
+[Update session artifact (new token, extended expiration)]
+    ↓
+[Update session in Supabase (sessions table)]
+    ↓
+[Update session cookie (new token)]
+    ↓
+[Returns updated session artifact (new token, new expiration)]
 ```
 
 ### Expected Observable Artifacts
-- [List expected artifacts]
+- `session_id` - Session identifier (unchanged)
+- `session_token` - New JWT session token (updated)
+- `expires_at` - New expiration timestamp (extended)
+- `lifecycle_state: "ACTIVE"` - Session remains ACTIVE
+- Session artifact updated in State Surface
+- Session record updated in Supabase (sessions table)
 
 ---
 
@@ -30,7 +49,14 @@
 
 | Parameter | Type | Description | Validation |
 |-----------|------|-------------|------------|
-| `parameter_name` | `type` | Description | Validation rules |
+| `session_id` | `string` | Session identifier (from create_session) | Required, must exist and be ACTIVE |
+| `session_token` | `string` | Current session token (JWT) | Required, must be valid |
+
+### Optional Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `extend_hours` | `number` | Hours to extend session expiration | `24` (24 hours) |
 
 ### Optional Parameters
 
@@ -191,6 +217,6 @@ idempotency_key = hash([key components])
 
 ---
 
-**Last Updated:** [Date]  
-**Owner:** [Realm] Solution Team  
-**Status:** IN PROGRESS
+**Last Updated:** January 27, 2026  
+**Owner:** Security Solution Team  
+**Status:** ✅ **ENHANCED** - Ready for implementation
