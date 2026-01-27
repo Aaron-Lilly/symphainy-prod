@@ -660,6 +660,43 @@ export default function BusinessOutcomesPillarPage() {
       <GeneratedArtifactsDisplay
         artifacts={artifacts}
         onExport={handleExportArtifact}
+        onCreateSolution={async (artifactType, artifactId, artifactData) => {
+          /**
+           * Create Platform Solution from Outcome Artifact
+           * 
+           * This is the core "Outcomes → Solutions" capability:
+           * - Takes an outcome artifact (blueprint, poc, roadmap)
+           * - Creates a registered Platform Solution
+           * - Solution appears in Control Tower
+           * 
+           * Flow: UI → OutcomesAPIManager.createSolution() → Runtime
+           *       → OutcomesOrchestrator → CreateSolutionService → Solution Registry
+           */
+          try {
+            const result = await outcomesAPIManager.createSolution(
+              artifactType,
+              artifactId,
+              artifactData
+            );
+            
+            if (result.success && result.platform_solution) {
+              return {
+                success: true,
+                solution_id: result.platform_solution.solution_id
+              };
+            } else {
+              return {
+                success: false,
+                error: result.error || "Failed to create solution"
+              };
+            }
+          } catch (error: any) {
+            return {
+              success: false,
+              error: error.message || "Failed to create solution"
+            };
+          }
+        }}
         isOpen={showArtifactsModal}
         onClose={() => setShowArtifactsModal(false)}
         onLoadArtifact={async (artifactType, artifactId) => {

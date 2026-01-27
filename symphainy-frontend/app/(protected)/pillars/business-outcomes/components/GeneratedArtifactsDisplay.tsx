@@ -18,13 +18,20 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Download, FileText, Target, Map, Loader, CheckCircle2 } from "lucide-react";
+import { Download, FileText, Target, Map, Loader, CheckCircle2, Rocket, ExternalLink } from "lucide-react";
+import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
 
 interface Artifact {
   id: string;
   data: any;
   type: 'blueprint' | 'poc' | 'roadmap';
+}
+
+interface SolutionCreationResult {
+  success: boolean;
+  solution_id?: string;
+  error?: string;
 }
 
 interface GeneratedArtifactsDisplayProps {
@@ -34,6 +41,20 @@ interface GeneratedArtifactsDisplayProps {
     roadmap?: Artifact;
   };
   onExport: (artifactType: string, artifactId: string, format: string) => Promise<void>;
+  /**
+   * Create a Platform Solution from an outcome artifact.
+   * 
+   * This is the key capability that turns outcome artifacts (blueprints, POCs, roadmaps)
+   * into registered Platform Solutions that appear in Control Tower.
+   * 
+   * Flow: UI → OutcomesAPIManager.createSolution() → Runtime → OutcomesOrchestrator
+   *       → CreateSolutionService → Solution Registry
+   */
+  onCreateSolution?: (
+    artifactType: 'blueprint' | 'poc' | 'roadmap',
+    artifactId: string,
+    artifactData: any
+  ) => Promise<SolutionCreationResult>;
   isOpen: boolean;
   onClose: () => void;
   onLoadArtifact?: (artifactType: 'blueprint' | 'poc' | 'roadmap', artifactId: string) => Promise<any>;
@@ -42,6 +63,7 @@ interface GeneratedArtifactsDisplayProps {
 export default function GeneratedArtifactsDisplay({
   artifacts,
   onExport,
+  onCreateSolution,
   isOpen,
   onClose,
   onLoadArtifact
@@ -50,6 +72,10 @@ export default function GeneratedArtifactsDisplay({
   const [activeTab, setActiveTab] = useState<'blueprint' | 'poc' | 'roadmap'>('blueprint');
   const [loadedArtifacts, setLoadedArtifacts] = useState<typeof artifacts>(artifacts);
   const [loading, setLoading] = useState<string | null>(null);
+  
+  // Solution creation state
+  const [creatingSolution, setCreatingSolution] = useState<string | null>(null);
+  const [createdSolutions, setCreatedSolutions] = useState<Record<string, string>>({});
 
   // Load artifact data when modal opens
   React.useEffect(() => {
@@ -119,6 +145,60 @@ export default function GeneratedArtifactsDisplay({
     }
   };
 
+  /**
+   * Create a Platform Solution from an outcome artifact.
+   * 
+   * This is the core "Outcomes → Solutions" capability:
+   * - Blueprints, POCs, and Roadmaps are Outcome artifacts (what we deliver)
+   * - Platform Solutions are capabilities (what the platform can do)
+   * - This bridges the gap: user work product → operational platform capability
+   * 
+   * The created solution will appear in Control Tower and can be used
+   * to compose journeys and execute intents.
+   */
+  const handleCreateSolution = async (
+    artifactType: 'blueprint' | 'poc' | 'roadmap',
+    artifactId: string,
+    artifactData: any
+  ) => {
+    if (!onCreateSolution) {
+      toast.error("Solution creation not available");
+      return;
+    }
+
+    setCreatingSolution(artifactType);
+    
+    try {
+      const result = await onCreateSolution(artifactType, artifactId, artifactData);
+      
+      if (result.success && result.solution_id) {
+        setCreatedSolutions(prev => ({
+          ...prev,
+          [artifactType]: result.solution_id!
+        }));
+        
+        toast.success("Platform Solution Created!", {
+          description: `Solution ${result.solution_id} is now available in Control Tower`,
+          action: {
+            label: "View in Control Tower",
+            onClick: () => window.location.href = "/admin"
+          }
+        });
+      } else {
+        toast.error("Failed to create solution", {
+          description: result.error || "Unknown error"
+        });
+      }
+    } catch (error: any) {
+      console.error("Solution creation failed:", error);
+      toast.error("Failed to create solution", {
+        description: error.message || "Unknown error"
+      });
+    } finally {
+      setCreatingSolution(null);
+    }
+  };
+
   const hasArtifacts = loadedArtifacts.blueprint || loadedArtifacts.poc || loadedArtifacts.roadmap;
 
   return (
@@ -185,40 +265,76 @@ export default function GeneratedArtifactsDisplay({
                   </div>
                   <div className="flex justify-between items-center">
                     <h3 className="text-lg font-semibold">Coexistence Blueprint</h3>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline" disabled={!!exporting}>
-                          {exporting?.type === 'blueprint' ? (
-                            <>
-                              <Loader className="w-4 h-4 mr-2 animate-spin" />
-                              Exporting...
-                            </>
-                          ) : (
-                            <>
-                              <Download className="w-4 h-4 mr-2" />
-                              Export
-                            </>
-                          )}
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent>
-                        <DropdownMenuItem
-                          onClick={() => handleExport('blueprint', artifacts.blueprint!.id, 'json')}
-                        >
-                          Export as JSON
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleExport('blueprint', artifacts.blueprint!.id, 'docx')}
-                        >
-                          Export as DOCX
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleExport('blueprint', artifacts.blueprint!.id, 'yaml')}
-                        >
-                          Export as YAML
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <div className="flex gap-2">
+                      {/* Create Platform Solution Button */}
+                      {onCreateSolution && (
+                        createdSolutions['blueprint'] ? (
+                          <Button variant="outline" className="text-green-600" asChild>
+                            <a href="/admin">
+                              <CheckCircle2 className="w-4 h-4 mr-2" />
+                              View in Control Tower
+                              <ExternalLink className="w-3 h-3 ml-1" />
+                            </a>
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="default"
+                            onClick={() => handleCreateSolution(
+                              'blueprint',
+                              artifacts.blueprint!.id,
+                              loadedArtifacts.blueprint?.data || artifacts.blueprint!.data
+                            )}
+                            disabled={creatingSolution !== null}
+                          >
+                            {creatingSolution === 'blueprint' ? (
+                              <>
+                                <Loader className="w-4 h-4 mr-2 animate-spin" />
+                                Creating Solution...
+                              </>
+                            ) : (
+                              <>
+                                <Rocket className="w-4 h-4 mr-2" />
+                                Create Platform Solution
+                              </>
+                            )}
+                          </Button>
+                        )
+                      )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" disabled={!!exporting}>
+                            {exporting?.type === 'blueprint' ? (
+                              <>
+                                <Loader className="w-4 h-4 mr-2 animate-spin" />
+                                Exporting...
+                              </>
+                            ) : (
+                              <>
+                                <Download className="w-4 h-4 mr-2" />
+                                Export
+                              </>
+                            )}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                          <DropdownMenuItem
+                            onClick={() => handleExport('blueprint', artifacts.blueprint!.id, 'json')}
+                          >
+                            Export as JSON
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleExport('blueprint', artifacts.blueprint!.id, 'docx')}
+                          >
+                            Export as DOCX
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleExport('blueprint', artifacts.blueprint!.id, 'yaml')}
+                          >
+                            Export as YAML
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
 
                   <BlueprintContent blueprint={artifacts.blueprint.data} />
@@ -264,45 +380,81 @@ export default function GeneratedArtifactsDisplay({
                   </div>
                   <div className="flex justify-between items-center">
                     <h3 className="text-lg font-semibold">POC Proposal</h3>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline" disabled={!!exporting || loading === 'poc'}>
-                          {loading === 'poc' ? (
-                            <>
-                              <Loader className="w-4 h-4 mr-2 animate-spin" />
-                              Loading...
-                            </>
-                          ) : exporting?.type === 'poc' ? (
-                            <>
-                              <Loader className="w-4 h-4 mr-2 animate-spin" />
-                              Exporting...
-                            </>
-                          ) : (
-                            <>
-                              <Download className="w-4 h-4 mr-2" />
-                              Export
-                            </>
-                          )}
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent>
-                        <DropdownMenuItem
-                          onClick={() => handleExport('poc', loadedArtifacts.poc!.id, 'json')}
-                        >
-                          Export as JSON
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleExport('poc', loadedArtifacts.poc!.id, 'docx')}
-                        >
-                          Export as DOCX
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleExport('poc', loadedArtifacts.poc!.id, 'yaml')}
-                        >
-                          Export as YAML
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <div className="flex gap-2">
+                      {/* Create Platform Solution Button */}
+                      {onCreateSolution && (
+                        createdSolutions['poc'] ? (
+                          <Button variant="outline" className="text-green-600" asChild>
+                            <a href="/admin">
+                              <CheckCircle2 className="w-4 h-4 mr-2" />
+                              View in Control Tower
+                              <ExternalLink className="w-3 h-3 ml-1" />
+                            </a>
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="default"
+                            onClick={() => handleCreateSolution(
+                              'poc',
+                              loadedArtifacts.poc!.id,
+                              loadedArtifacts.poc?.data
+                            )}
+                            disabled={creatingSolution !== null || loading === 'poc'}
+                          >
+                            {creatingSolution === 'poc' ? (
+                              <>
+                                <Loader className="w-4 h-4 mr-2 animate-spin" />
+                                Creating Solution...
+                              </>
+                            ) : (
+                              <>
+                                <Rocket className="w-4 h-4 mr-2" />
+                                Create Platform Solution
+                              </>
+                            )}
+                          </Button>
+                        )
+                      )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" disabled={!!exporting || loading === 'poc'}>
+                            {loading === 'poc' ? (
+                              <>
+                                <Loader className="w-4 h-4 mr-2 animate-spin" />
+                                Loading...
+                              </>
+                            ) : exporting?.type === 'poc' ? (
+                              <>
+                                <Loader className="w-4 h-4 mr-2 animate-spin" />
+                                Exporting...
+                              </>
+                            ) : (
+                              <>
+                                <Download className="w-4 h-4 mr-2" />
+                                Export
+                              </>
+                            )}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                          <DropdownMenuItem
+                            onClick={() => handleExport('poc', loadedArtifacts.poc!.id, 'json')}
+                          >
+                            Export as JSON
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleExport('poc', loadedArtifacts.poc!.id, 'docx')}
+                          >
+                            Export as DOCX
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleExport('poc', loadedArtifacts.poc!.id, 'yaml')}
+                          >
+                            Export as YAML
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
 
                   {loading === 'poc' ? (
@@ -355,45 +507,81 @@ export default function GeneratedArtifactsDisplay({
                   </div>
                   <div className="flex justify-between items-center">
                     <h3 className="text-lg font-semibold">Strategic Roadmap</h3>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline" disabled={!!exporting || loading === 'roadmap'}>
-                          {loading === 'roadmap' ? (
-                            <>
-                              <Loader className="w-4 h-4 mr-2 animate-spin" />
-                              Loading...
-                            </>
-                          ) : exporting?.type === 'roadmap' ? (
-                            <>
-                              <Loader className="w-4 h-4 mr-2 animate-spin" />
-                              Exporting...
-                            </>
-                          ) : (
-                            <>
-                              <Download className="w-4 h-4 mr-2" />
-                              Export
-                            </>
-                          )}
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent>
-                        <DropdownMenuItem
-                          onClick={() => handleExport('roadmap', loadedArtifacts.roadmap!.id, 'json')}
-                        >
-                          Export as JSON
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleExport('roadmap', loadedArtifacts.roadmap!.id, 'docx')}
-                        >
-                          Export as DOCX
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onClick={() => handleExport('roadmap', loadedArtifacts.roadmap!.id, 'yaml')}
-                        >
-                          Export as YAML
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    <div className="flex gap-2">
+                      {/* Create Platform Solution Button */}
+                      {onCreateSolution && (
+                        createdSolutions['roadmap'] ? (
+                          <Button variant="outline" className="text-green-600" asChild>
+                            <a href="/admin">
+                              <CheckCircle2 className="w-4 h-4 mr-2" />
+                              View in Control Tower
+                              <ExternalLink className="w-3 h-3 ml-1" />
+                            </a>
+                          </Button>
+                        ) : (
+                          <Button
+                            variant="default"
+                            onClick={() => handleCreateSolution(
+                              'roadmap',
+                              loadedArtifacts.roadmap!.id,
+                              loadedArtifacts.roadmap?.data
+                            )}
+                            disabled={creatingSolution !== null || loading === 'roadmap'}
+                          >
+                            {creatingSolution === 'roadmap' ? (
+                              <>
+                                <Loader className="w-4 h-4 mr-2 animate-spin" />
+                                Creating Solution...
+                              </>
+                            ) : (
+                              <>
+                                <Rocket className="w-4 h-4 mr-2" />
+                                Create Platform Solution
+                              </>
+                            )}
+                          </Button>
+                        )
+                      )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" disabled={!!exporting || loading === 'roadmap'}>
+                            {loading === 'roadmap' ? (
+                              <>
+                                <Loader className="w-4 h-4 mr-2 animate-spin" />
+                                Loading...
+                              </>
+                            ) : exporting?.type === 'roadmap' ? (
+                              <>
+                                <Loader className="w-4 h-4 mr-2 animate-spin" />
+                                Exporting...
+                              </>
+                            ) : (
+                              <>
+                                <Download className="w-4 h-4 mr-2" />
+                                Export
+                              </>
+                            )}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent>
+                          <DropdownMenuItem
+                            onClick={() => handleExport('roadmap', loadedArtifacts.roadmap!.id, 'json')}
+                          >
+                            Export as JSON
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleExport('roadmap', loadedArtifacts.roadmap!.id, 'docx')}
+                          >
+                            Export as DOCX
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleExport('roadmap', loadedArtifacts.roadmap!.id, 'yaml')}
+                          >
+                            Export as YAML
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
 
                   {loading === 'roadmap' ? (
