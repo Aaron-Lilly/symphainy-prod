@@ -1,13 +1,18 @@
 """
-Insights Solution - Insights Realm Solution
+Insights Solution - Insights Realm Platform Solution
 
-Composes insights journeys for data analysis, quality assessment, and semantic discovery.
+The platform Solution that composes Insights Realm journeys, exposes SOA APIs,
+and wires up with the frontend via Experience SDK.
 
-Key Journeys:
-- BusinessAnalysisJourney: Analyze business data and generate insights
-- DataQualityJourney: Assess and report on data quality
-- SemanticEmbeddingJourney: Create semantic embeddings for insights
-- RelationshipMappingJourney: Map and visualize data relationships
+Key Components:
+- InsightsSolution: Main solution class
+- Journey Orchestrators: Compose intent services into journeys
+- InsightsSolutionMCPServer: Exposes SOA APIs as MCP tools
+
+Naming Convention:
+- Realm: Insights Realm
+- Solution: Platform construct (InsightsSolution)
+- Artifacts: insights_* prefix (e.g., insights_quality_report, insights_analysis)
 """
 
 from .insights_solution import InsightsSolution

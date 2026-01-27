@@ -1,17 +1,24 @@
-# Solution Realm Intent Contracts Analysis
+# Outcomes Realm Intent Contracts Analysis
 
 **Date:** January 27, 2026  
 **Status:** ✅ Completed  
-**Scope:** Solution Realm Solution (Outcomes Realm Implementation)
+**Scope:** Outcomes Realm Solution
+
+---
+
+## Naming Convention
+- **Realm:** Outcomes Realm (not Solution Realm)
+- **Solution:** OutcomesSolution (platform construct that composes journeys)
+- **Artifacts:** outcome_* prefix (e.g., outcome_synthesis, outcome_roadmap)
 
 ---
 
 ## Executive Summary
 
-This document summarizes the intent contracts created for the Solution Realm Solution, documenting the cross-reference analysis between journey contracts, backend implementations, and frontend expectations.
+This document summarizes the intent contracts created for the Outcomes Realm Solution, documenting the cross-reference analysis between journey contracts, backend implementations, and frontend expectations.
 
 ### Key Findings
-1. **Naming Alignment:** Solution Realm (contracts) = Outcomes Realm (backend implementation)
+1. **Naming:** Outcomes Realm (aligned with frontend pillar naming)
 2. **Intent Consolidation:** Original 12+ intents consolidated to 7 implemented intents
 3. **Architecture Compliance:** All implementations follow the intent-based architecture pattern
 4. **Frontend Alignment:** OutcomesAPIManager provides complete coverage of implemented intents
@@ -57,18 +64,18 @@ The following intents from the original contracts have been consolidated into ot
 
 | Journey ID | Intents | Status |
 |------------|---------|--------|
-| `journey_solution_synthesis` | `synthesize_outcome` | ✅ Updated |
-| `journey_solution_roadmap_generation` | `generate_roadmap` | ✅ Updated |
-| `journey_solution_poc_proposal` | `create_poc` | ✅ Updated |
-| `journey_solution_blueprint_creation` | `create_blueprint` | ✅ Created |
-| `journey_solution_creation` | `create_solution` | ✅ Created |
-| `journey_solution_artifact_export` | `export_artifact` | ✅ Created |
+| `journey_outcomes_synthesis` | `synthesize_outcome` | ✅ Implemented |
+| `journey_outcomes_roadmap_generation` | `generate_roadmap` | ✅ Implemented |
+| `journey_outcomes_poc_proposal` | `create_poc` | ✅ Implemented |
+| `journey_outcomes_blueprint_creation` | `create_blueprint` | ✅ Implemented |
+| `journey_outcomes_creation` | `create_solution` | ✅ Implemented |
+| `journey_outcomes_artifact_export` | `export_artifact` | ✅ Implemented |
 
 ### Deprecated/Consolidated Journey
 
 | Journey ID | Status | Notes |
 |------------|--------|-------|
-| `journey_solution_cross_pillar_integration` | ⚠️ Consolidated | Now part of `journey_solution_synthesis` |
+| `journey_outcomes_cross_pillar_integration` | ⚠️ Consolidated | Now part of `journey_outcomes_synthesis` |
 
 ---
 
@@ -127,25 +134,24 @@ Cross-pillar integration reads from session state:
 ## Files Modified
 
 ### Solution Contract
-- `docs/solution_contracts/realms/solution_realm_solution_v1.md` - Updated
+- `docs/solution_contracts/realms/outcomes_realm_solution_v1.md` - Updated
 
 ### Journey Contracts
-- `docs/journey_contracts/solution_realm_solution/journey_solution_synthesis.md` - Rewritten
-- `docs/journey_contracts/solution_realm_solution/journey_solution_roadmap_generation.md` - Rewritten
-- `docs/journey_contracts/solution_realm_solution/journey_solution_poc_proposal.md` - Rewritten
-- `docs/journey_contracts/solution_realm_solution/journey_solution_cross_pillar_integration.md` - Updated (consolidated)
-- `docs/journey_contracts/solution_realm_solution/journey_solution_blueprint_creation.md` - Created
-- `docs/journey_contracts/solution_realm_solution/journey_solution_creation.md` - Created
-- `docs/journey_contracts/solution_realm_solution/journey_solution_artifact_export.md` - Created
+- `docs/journey_contracts/outcomes_realm_solution/journey_outcomes_synthesis.md` - Implemented
+- `docs/journey_contracts/outcomes_realm_solution/journey_outcomes_roadmap_generation.md` - Implemented
+- `docs/journey_contracts/outcomes_realm_solution/journey_outcomes_poc_proposal.md` - Implemented
+- `docs/journey_contracts/outcomes_realm_solution/journey_outcomes_blueprint_creation.md` - Implemented
+- `docs/journey_contracts/outcomes_realm_solution/journey_outcomes_creation.md` - Implemented
+- `docs/journey_contracts/outcomes_realm_solution/journey_outcomes_artifact_export.md` - Implemented
 
 ### Intent Contracts
-- `docs/intent_contracts/journey_solution_synthesis/intent_synthesize_outcome.md` - Rewritten
-- `docs/intent_contracts/journey_solution_roadmap_generation/intent_generate_roadmap.md` - Rewritten
-- `docs/intent_contracts/journey_solution_poc_proposal/intent_create_poc.md` - Rewritten
-- `docs/intent_contracts/journey_solution_blueprint_creation/intent_create_blueprint.md` - Created
-- `docs/intent_contracts/journey_solution_creation/intent_create_solution.md` - Created
-- `docs/intent_contracts/journey_solution_artifact_export/intent_export_artifact.md` - Created
-- `docs/intent_contracts/journey_solution_cross_pillar_integration/README.md` - Created (consolidation note)
+- `docs/intent_contracts/journey_outcomes_synthesis/intent_synthesize_outcome.md` - Implemented
+- `docs/intent_contracts/journey_outcomes_roadmap_generation/intent_generate_roadmap.md` - Implemented
+- `docs/intent_contracts/journey_outcomes_poc_proposal/intent_create_poc.md` - Implemented
+- `docs/intent_contracts/journey_outcomes_blueprint_creation/intent_create_blueprint.md` - Implemented
+- `docs/intent_contracts/journey_outcomes_creation/intent_create_solution.md` - Implemented
+- `docs/intent_contracts/journey_outcomes_artifact_export/intent_export_artifact.md` - Implemented
+- `docs/intent_contracts/journey_outcomes_cross_pillar_integration/README.md` - Consolidation note
 
 ### Deleted Files (Consolidated)
 - `intent_integrate_cross_pillar_data.md` - Removed (part of synthesize_outcome)
@@ -176,7 +182,7 @@ Cross-pillar integration reads from session state:
 3. **Boundary Violations:** Each intent contract documents boundary violations to test.
 
 ### For Documentation Team
-1. **Naming Consistency:** Continue using "Solution Realm" in external documentation.
+1. **Naming Consistency:** Use "Outcomes Realm" in all documentation.
 2. **API Documentation:** OutcomesAPIManager methods align with intent contracts.
 3. **Consolidation Notice:** Cross-pillar integration is now part of synthesis - update any references.
 
@@ -184,7 +190,7 @@ Cross-pillar integration reads from session state:
 
 ## Conclusion
 
-The Solution Realm intent contracts have been fully aligned with the backend implementation and frontend expectations. The consolidation of 12+ original intents into 7 implemented intents simplifies the architecture while maintaining full functionality.
+The Outcomes Realm intent contracts have been fully aligned with the backend implementation and frontend expectations. The consolidation of 12+ original intents into 7 implemented intents simplifies the architecture while maintaining full functionality.
 
 All contracts follow the established patterns:
 - Intent-based architecture
