@@ -48,6 +48,24 @@ class IntentType(str, Enum):
     CREATE_POC = "create_poc"
     CREATE_SOLUTION = "create_solution"
     
+    # Control Tower intents (Solution-level)
+    COMPOSE_JOURNEY = "compose_journey"
+    GET_PLATFORM_STATISTICS = "get_platform_statistics"
+    GET_EXECUTION_METRICS = "get_execution_metrics"
+    GET_REALM_HEALTH = "get_realm_health"
+    GET_SYSTEM_HEALTH = "get_system_health"
+    LIST_SOLUTIONS = "list_solutions"
+    GET_SOLUTION_STATUS = "get_solution_status"
+    GET_SOLUTION_METRICS = "get_solution_metrics"
+    MANAGE_SOLUTION = "manage_solution"
+    GET_DOCUMENTATION = "get_documentation"
+    GET_PATTERNS = "get_patterns"
+    GET_CODE_EXAMPLES = "get_code_examples"
+    VALIDATE_SOLUTION = "validate_solution"
+    GET_SOLUTION_TEMPLATES = "get_solution_templates"
+    COMPOSE_SOLUTION = "compose_solution"
+    GET_COMPOSITION_GUIDE = "get_composition_guide"
+    
     # Generic intents
     EXECUTE_WORKFLOW = "execute_workflow"
     QUERY_DATA = "query_data"

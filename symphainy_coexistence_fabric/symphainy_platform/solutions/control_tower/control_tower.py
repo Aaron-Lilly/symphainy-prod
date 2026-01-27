@@ -17,7 +17,18 @@ Key Capabilities:
 import sys
 from pathlib import Path
 
-project_root = Path(__file__).resolve().parents[4]
+
+def _find_project_root() -> Path:
+    """Find project root by searching for pyproject.toml."""
+    current = Path(__file__).resolve().parent
+    for parent in [current] + list(current.parents):
+        if (parent / "pyproject.toml").exists():
+            return parent
+    # Fallback for when running from different locations
+    return Path(__file__).resolve().parents[3] if len(Path(__file__).resolve().parents) > 3 else Path.cwd()
+
+
+project_root = _find_project_root()
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
