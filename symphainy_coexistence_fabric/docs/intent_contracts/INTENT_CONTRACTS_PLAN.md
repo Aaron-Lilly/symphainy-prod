@@ -16,15 +16,35 @@ Creating intent contracts for all 28 journeys, organized by journey folder. Each
 
 ## Progress
 
-### ✅ Completed
+### ✅ Completed - Content Realm (All 4 Journeys)
+
+**Journey: File Upload & Materialization**
 - `journey_content_file_upload_materialization/`
   - ✅ `intent_ingest_file.md`
   - ✅ `intent_save_materialization.md`
 
-### ⏳ In Progress
+**Journey: File Parsing**
 - `journey_content_file_parsing/`
-  - ⏳ `intent_parse_content.md`
-  - ⏳ `intent_save_parsed_content.md`
+  - ✅ `intent_parse_content.md` (comprehensive)
+  - ✅ `intent_get_parsed_file.md` (added - used by frontend)
+  - ❌ `intent_save_parsed_content.md` (removed - not implemented, parsing auto-saves)
+
+**Journey: Deterministic Embedding**
+- `journey_content_deterministic_embedding/`
+  - ✅ `intent_create_deterministic_embeddings.md` (comprehensive)
+  - ✅ `intent_extract_embeddings.md` (renamed from save_embeddings - matches implementation)
+
+**Journey: File Management**
+- `journey_content_file_management/`
+  - ✅ `intent_list_files.md` (renamed from list_artifacts - matches implementation)
+  - ✅ `intent_retrieve_artifact_metadata.md` (renamed from get_artifact_metadata)
+  - ✅ `intent_archive_file.md` (comprehensive)
+
+### 📊 Cross-Reference Analysis
+- ✅ `CONTENT_REALM_ANALYSIS.md` - Documents all gaps and recommendations
+
+### ⏳ In Progress
+- None currently
 
 ### 📋 Pending (26 journeys remaining)
 
