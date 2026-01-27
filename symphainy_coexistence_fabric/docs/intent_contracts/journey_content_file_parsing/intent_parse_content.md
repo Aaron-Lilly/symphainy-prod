@@ -2,57 +2,51 @@
 
 **Intent:** parse_content  
 **Intent Type:** `parse_content`  
-**Journey:** Journey Content File Parsing (`journey_content_file_parsing`)  
+**Journey:** File Parsing (`journey_content_file_parsing`)  
 **Realm:** Content Realm  
-**Status:** IN PROGRESS  
-**Priority:** PRIORITY 1
+**Status:** ✅ **COMPREHENSIVE**  
+**Priority:** 🔴 **PRIORITY 1** - Foundation intent for Content Realm
 
 ---
 
 ## 1. Intent Overview
 
 ### Purpose
-Resume a pending parsing journey and parse an uploaded file. The ingest type and file type are retrieved from the pending intent context (created during `save_materialization`), so the user does not need to re-select them. This enables resumable parsing workflows.
+Parse an uploaded file to extract structured content. This intent resumes a pending parsing journey created during `save_materialization`, retrieving the ingest type and file type from the pending intent context.
 
 ### Intent Flow
 ```
-[User selects uploaded file from dropdown]
+[User selects file to parse]
     ↓
 [System identifies pending parsing journey for this file]
     ↓
-[System retrieves ingest type and file type from pending intent context]
+[parse_content intent]
     ↓
-[parse_content intent executes]
+[Retrieve ingest type and file type from pending intent context]
     ↓
-[Pending intent status updated to "in_progress"]
+[Select appropriate parser based on file type]
     ↓
-[File parsed using appropriate parser (based on ingest type and file type)]
+[Parse file content via FileParserService]
     ↓
-[Parsed content artifact created (lifecycle_state: PENDING → READY)]
+[Store parsed content in GCS]
     ↓
-[Artifact registered in State Surface with lineage (parent: file_artifact_id)]
+[Register artifact in State Surface (lifecycle_state: PENDING)]
     ↓
-[Artifact indexed in Supabase with lineage metadata]
+[Index artifact in Supabase with lineage]
     ↓
-[Parsed content stored in GCS (JSON format)]
+[Update pending intent status to COMPLETED]
     ↓
-[Pending parsing journey status: COMPLETED]
-    ↓
-[Returns parsed_file_id, parsed_content, preview]
+[Returns parsed_file_id, parsed_file_reference, parsing_type]
 ```
 
 ### Expected Observable Artifacts
 - `parsed_file_id` - Parsed content artifact identifier
 - `artifact_type: "parsed_content"`
-- `lifecycle_state: "READY"` (transitions from PENDING)
-- `parent_artifacts: [file_artifact_id]` (lineage)
-- `parsed_file_reference` - State Surface reference
-- `parsing_type` - Parser type used (from pending intent context)
-- `parsing_status: "success"`
+- `lifecycle_state: "PENDING"` (until explicitly saved)
+- `parent_artifacts: [file_artifact_id]` - Lineage to source file
+- `parsing_type` - Parser type used (e.g., "pdf", "csv", "binary")
 - `record_count` - Number of records parsed
 - `materializations` array (GCS JSON storage)
-- `parsed_data` - Full parsed content (in renderings)
-- `parsed_data_preview` - Preview of parsed content (first 10 items)
 
 ---
 
@@ -62,28 +56,35 @@ Resume a pending parsing journey and parse an uploaded file. The ingest type and
 
 | Parameter | Type | Description | Validation |
 |-----------|------|-------------|------------|
-| `file_id` | `string` | File artifact identifier (from uploaded file) | Required, must exist in State Surface |
+| `file_id` | `string` | File artifact identifier to parse | Required, must exist |
 
 ### Optional Parameters
 
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
-| `file_reference` | `string` | State Surface file reference (format: `file:{tenant_id}:{session_id}:{file_id}`) | Constructed from file_id if not provided |
-| `parsing_type` | `string` | Explicit parsing type (overrides pending intent context) | Retrieved from pending intent context |
-| `parse_options` | `object` | Parsing options (parser-specific configuration) | `{}` (or from pending intent context) |
-| `copybook_reference` | `string` | Copybook reference for binary files (COBOL, etc.) | From pending intent context if available |
+| `file_reference` | `string` | State Surface file reference | Auto-constructed from file_id |
+| `parsing_type` | `string` | Explicit parsing type override | From pending intent context |
+| `parse_options` | `object` | Parser-specific options | `{}` |
+| `copybook_reference` | `string` | Copybook reference for binary files | `null` |
 
 ### Context Metadata (from ExecutionContext)
 
 | Metadata Key | Type | Description | Source |
 |--------------|------|-------------|--------|
-| `pending_intent_id` | `string` | Pending parsing intent identifier | Intent Registry (retrieved by file_id) |
-| `ingestion_profile` | `string` | Ingestion profile (from pending intent context) | Pending Intent Context |
-| `file_type` | `string` | File type (from pending intent context) | Pending Intent Context |
-| `parse_options` | `object` | Parse options (from pending intent context) | Pending Intent Context |
-| `copybook_reference` | `string` | Copybook reference (from pending intent context) | Pending Intent Context |
+| `tenant_id` | `string` | Tenant identifier | Runtime (required) |
+| `session_id` | `string` | Session identifier | Runtime (required) |
+| `user_id` | `string` | User identifier | Runtime (optional) |
 
-**Note:** The intent first checks for a pending parsing journey associated with the `file_id`. If found, it retrieves `ingestion_profile`, `file_type`, and `parse_options` from the pending intent context. If no pending intent exists, it uses the parameters provided directly.
+### Pending Intent Context (Retrieved Automatically)
+
+When a pending parsing intent exists for the file, these values are retrieved from `intent_executions.context`:
+
+| Context Key | Type | Description |
+|-------------|------|-------------|
+| `ingestion_profile` | `string` | Ingest type (upload/edi/api) |
+| `file_type` | `string` | File type category |
+| `parse_options` | `object` | Saved parse options |
+| `copybook_reference` | `string` | Copybook reference (if binary) |
 
 ---
 
@@ -94,18 +95,30 @@ Resume a pending parsing journey and parse an uploaded file. The ingest type and
 ```json
 {
   "artifacts": {
-    "artifact_type": {
-      "result_type": "artifact",
+    "parsed_file": {
+      "result_type": "parsed_content",
       "semantic_payload": {
-        // Artifact data
+        "parsed_file_id": "parsed_abc123",
+        "parsed_file_reference": "parsed:tenant:session:parsed_abc123",
+        "file_id": "file_abc123",
+        "parsing_type": "pdf",
+        "parsing_status": "success",
+        "record_count": 150,
+        "parse_options": {}
       },
-      "renderings": {}
+      "renderings": {
+        "parsed_data": [...],
+        "parsed_data_preview": [...]
+      }
     }
   },
   "events": [
     {
-      "type": "event_type",
-      // Event data
+      "type": "content_parsed",
+      "parsed_file_id": "parsed_abc123",
+      "file_id": "file_abc123",
+      "parsing_type": "pdf",
+      "record_count": 150
     }
   ]
 }
@@ -126,17 +139,18 @@ Resume a pending parsing journey and parse an uploaded file. The ingest type and
 ## 4. Artifact Registration
 
 ### State Surface Registration
-- **Artifact ID:** [How artifact_id is generated]
-- **Artifact Type:** `"artifact_type"`
-- **Lifecycle State:** `"PENDING"` or `"READY"`
+- **Artifact ID:** Generated `parsed_file_id`
+- **Artifact Type:** `"parsed_content"`
+- **Lifecycle State:** `"PENDING"` (until embedding creation)
 - **Produced By:** `{ intent: "parse_content", execution_id: "<execution_id>" }`
-- **Semantic Descriptor:** [Descriptor details]
-- **Parent Artifacts:** [List of parent artifact IDs]
-- **Materializations:** [List of materializations]
+- **Parent Artifacts:** `[file_id]` (lineage to source file)
+- **Semantic Descriptor:** `{ schema: "parsed_content_v1", record_count: <count>, parser_type: "<type>", embedding_model: null }`
+- **Materializations:** `[{ materialization_id: "mat_<parsed_file_id>", storage_type: "gcs", uri: "parsed/<tenant_id>/<parsed_file_id>.json", format: "application/json" }]`
 
 ### Artifact Index Registration
-- Indexed in Supabase `artifact_index` table
-- Includes: [List of indexed fields]
+- Indexed in Supabase `parsed_results` table
+- Includes: `parsed_file_id`, `file_id`, `parser_type`, `record_count`, `status`
+- Enables lineage tracking and discovery
 
 ---
 
@@ -144,123 +158,89 @@ Resume a pending parsing journey and parse an uploaded file. The ingest type and
 
 ### Idempotency Key
 ```
-idempotency_key = hash(file_id + parsing_type + file_type + parse_options)
+parsing_fingerprint = hash(file_id + ingestion_profile + file_type + session_id)
 ```
 
 ### Scope
-- Per artifact, per parse configuration
-- Same file + same parsing type + same file type + same parse options = same parsed content artifact
+- Per file, per parse configuration, per session
+- Same file + same config = same parsed content artifact
 
 ### Behavior
-- If a parsed content artifact already exists for the same file_id with the same parsing configuration, the existing artifact is returned
-- Prevents duplicate parsing of the same file with the same configuration
-- Different parsing configurations (different parsing_type or parse_options) create different parsed content artifacts
+- If same file already parsed with same config, returns existing `parsed_file_id`
+- No duplicate parsing operations
+- No duplicate GCS storage
 
 ---
 
 ## 6. Implementation Details
 
 ### Handler Location
-- **Old Implementation:** `symphainy_platform/realms/content/orchestrators/content_orchestrator.py` (method: `_handle_parse_content`, line ~2713)
-- **New Implementation:** `symphainy_platform/realms/content/intent_services/parse_content_service.py` (to be created)
+`symphainy_platform/realms/content/orchestrators/content_orchestrator.py::ContentOrchestrator._handle_parse_content`
 
 ### Key Implementation Steps
-1. **Validate Parameters:** Ensure `file_id` is provided
-2. **Resolve File Reference:** Construct `file_reference` from `file_id` (format: `file:{tenant_id}:{session_id}:{file_id}`)
-   - If `file_reference` not provided, look up file metadata from Supabase to get correct `session_id`
-3. **Check for Pending Intent:** Query Intent Registry for pending `parse_content` intent associated with `file_id`
-   - If found, retrieve `ingestion_profile`, `file_type`, and `parse_options` from pending intent context
-   - Update pending intent status to "in_progress"
-4. **Select Parser:** Use `parsing_type` (from pending intent context or parameters) to select appropriate parser
-5. **Parse File:** Call `FileParserService.parse_file()` with:
-   - `file_id`, `file_reference`, `parsing_type`, `parse_options`, `copybook_reference`
-6. **Create Parsed Content Artifact:**
-   - Generate `parsed_file_id` (UUID format)
-   - Register artifact in State Surface with:
-     - `artifact_type: "parsed_content"`
-     - `lifecycle_state: "PENDING"` (initially)
-     - `parent_artifacts: [file_id]` (lineage)
-     - `semantic_descriptor` (schema, record_count, parser_type)
-   - Add GCS materialization (`parsed/{tenant_id}/{parsed_file_id}.json`)
-   - Update lifecycle state to `"READY"`
-7. **Track Parsed Result:** Store in Supabase `parsed_results` table for lineage
-8. **Index Artifact:** Index in Supabase `artifact_index` table with lineage metadata
-9. **Complete Pending Intent:** Update pending intent status to "COMPLETED"
-10. **Return Structured Artifact:** Return parsed content with full data and preview
+1. Validate `file_id` (required)
+2. Construct `file_reference` if not provided (lookup from Supabase)
+3. Check for pending intent in `intent_executions` table
+4. If pending intent exists:
+   - Update status to `in_progress`
+   - Extract `ingestion_profile`, `file_type`, `parse_options` from context
+5. Call `FileParserService.parse_file()` with parameters
+6. Track parsed result in Supabase (`parsed_results` table)
+7. Register artifact in State Surface (lifecycle_state: PENDING)
+8. Add GCS materialization to artifact
+9. Index artifact in Supabase artifact_index
+10. Return structured artifact response
 
 ### Dependencies
-- **Public Works:**
-  - `RegistryAbstraction` - For retrieving pending intents
-  - `FileParserService` - For parsing file content
-  - `FileStorageAbstraction` - For GCS storage
-- **State Surface:**
-  - `register_artifact()` - Register parsed content artifact
-  - `add_materialization()` - Add GCS materialization
-  - `update_artifact_lifecycle()` - Update lifecycle state
-- **Runtime:**
-  - `ExecutionContext` - Tenant, session, execution context
-  - `Intent Registry` - For pending intent management
+- **Public Works:** `FileStorageAbstraction` (for GCS storage)
+- **State Surface:** `register_artifact()`, `add_materialization()`
+- **Registry Abstraction:** `get_pending_intents()`, `update_intent_status()`
+- **FileParserService:** `parse_file()`
+- **Supabase:** `parsed_results` table (lineage tracking)
 
 ---
 
 ## 7. Frontend Integration
 
-### Frontend Usage
+### Frontend Usage (ContentAPIManager.ts)
 ```typescript
-// From ContentAPIManager.ts
-async parseFile(
-  fileId: string,
-  fileReference: string,
-  copybookReference?: string
-): Promise<ParseResponse> {
-  // Validate session
-  const sessionValid = await validateSession();
-  if (!sessionValid) {
-    throw new Error("Session invalid");
+// ContentAPIManager.parseFile()
+const executionId = await platformState.submitIntent(
+  "parse_content",
+  {
+    file_id: fileId,
+    file_reference: fileReference,
+    copybook_reference: copybookReference,
+    parse_options: parseOptions,
   }
-
-  // Submit parse_content intent
-  const executionId = await platformState.submitIntent(
-    'parse_content',
-    {
-      file_id: fileId,
-      file_reference: fileReference,
-      copybook_reference: copybookReference
-    }
-  );
-
-  // Track execution
-  await platformState.trackExecution(executionId);
-
-  // Wait for completion and return result
-  // ...
-}
+);
 ```
 
 ### Expected Frontend Behavior
-1. **User selects file from dropdown** - Frontend shows list of uploaded files (lifecycle_state: "READY")
-2. **System identifies pending parsing journey** - Frontend checks for pending intents for selected file
-3. **User clicks "Parse File"** - Frontend submits `parse_content` intent with `file_id`
-4. **Frontend tracks execution** - Uses `platformState.trackExecution()` to monitor progress
-5. **Frontend displays parsed content** - Shows parsed data preview and full content when available
-6. **Frontend updates UI** - Updates file status to "parsed", shows parsed content in preview
-7. **Frontend enables next step** - Enables "Create Embeddings" button for parsed file
+1. User selects file from dropdown
+2. System shows pending parsing journey (if exists)
+3. User clicks "Parse File"
+4. Submit `parse_content` intent via `submitIntent()`
+5. Track execution via `trackExecution()`
+6. Wait for execution completion
+7. Extract `parsed_file_id` from execution artifacts
+8. Update UI with parsed data preview
 
 ---
 
 ## 8. Error Handling
 
 ### Validation Errors
-- **Missing file_id:** `ValueError("file_id is required for parse_content intent")` -> Returns error response with `ERROR_CODE: "MISSING_PARAMETER"`
-- **File not found:** File does not exist in State Surface -> Returns error response with `ERROR_CODE: "FILE_NOT_FOUND"`
-- **Invalid file_reference:** Cannot construct valid file reference -> Returns error response with `ERROR_CODE: "INVALID_FILE_REFERENCE"`
+- `file_id` missing → ValueError
+- File not found → ValueError
+- Invalid `parsing_type` → ValueError
 
 ### Runtime Errors
-- **Parser unavailable:** Selected parser not available or not configured -> Returns error response with `ERROR_CODE: "PARSER_UNAVAILABLE"`
-- **Parsing failure:** File parsing fails (unsupported format, corrupted file, etc.) -> Returns error response with `ERROR_CODE: "PARSING_FAILED"` and details
-- **Storage failure:** GCS storage fails -> Returns error response with `ERROR_CODE: "STORAGE_FAILED"`
-- **Pending intent not found:** No pending parsing journey exists (should not happen in normal flow) -> Falls back to using parameters directly, logs warning
-- **Copybook validation failure:** Binary file requires copybook but copybook invalid -> Returns error response with `ERROR_CODE: "COPYBOOK_INVALID"`
+- Public Works not initialized → RuntimeError
+- FileParserService not available → RuntimeError
+- Parser failed → RuntimeError (with parser error message)
+- GCS storage failed → RuntimeError
+- Artifact registration failed → RuntimeError
 
 ### Error Response Format
 ```json
@@ -268,12 +248,7 @@ async parseFile(
   "error": "Error message",
   "error_code": "ERROR_CODE",
   "execution_id": "exec_abc123",
-  "intent_type": "parse_content",
-  "file_id": "file_xyz789",
-  "details": {
-    "parsing_type": "structured",
-    "reason": "Parser unavailable"
-  }
+  "intent_type": "parse_content"
 }
 ```
 
@@ -282,56 +257,73 @@ async parseFile(
 ## 9. Testing & Validation
 
 ### Happy Path
-1. User selects uploaded file (file_id: "file_abc123")
-2. System identifies pending parsing journey (intent_id: "intent_xyz789", status: "PENDING")
-3. System retrieves ingest type ("structured") and file type ("csv") from pending intent context
-4. User clicks "Parse File"
-5. `parse_content` intent executes with `file_id: "file_abc123"`
-6. Pending intent status updated to "in_progress"
-7. File parsed using structured parser
-8. Parsed content artifact created (parsed_file_id: "parsed_def456", lifecycle_state: "READY")
-9. Artifact registered in State Surface with lineage (parent: "file_abc123")
-10. Artifact indexed in Supabase
-11. Parsed content stored in GCS (parsed/tenant_123/parsed_def456.json)
-12. Pending parsing journey status: COMPLETED
-13. Returns parsed_file_id, parsed_content, preview
+1. User selects uploaded file
+2. System identifies pending parsing journey
+3. `parse_content` intent executes
+4. File parsed successfully
+5. Parsed content stored in GCS
+6. Artifact registered (lifecycle_state: PENDING)
+7. Artifact indexed in Supabase with lineage
+8. Pending intent status updated to COMPLETED
+9. Returns parsed_file_id and parsed data
 
 ### Boundary Violations
-- **File not uploaded:** File does not exist in State Surface -> Returns `ERROR_CODE: "FILE_NOT_FOUND"`
-- **File already parsed:** Parsed content artifact already exists for same configuration -> Returns existing artifact (idempotent)
-- **Invalid parsing type:** Parsing type not supported -> Returns `ERROR_CODE: "PARSER_UNAVAILABLE"`
-- **Missing copybook for binary file:** Binary file requires copybook but not provided -> Returns `ERROR_CODE: "COPYBOOK_REQUIRED"`
+- Missing `file_id` → Validation error
+- File not found → Validation error
+- Unsupported file type → Parser error
+- Missing copybook for binary file → Validation error
 
 ### Failure Scenarios
-- **Parser failure:** Parser crashes or throws exception -> Returns `ERROR_CODE: "PARSING_FAILED"` with details, pending intent remains in PENDING status (can retry)
-- **Storage failure:** GCS write fails -> Returns `ERROR_CODE: "STORAGE_FAILED"`, artifact not created, pending intent remains in PENDING status
-- **Network timeout:** Long-running parse operation times out -> Returns `ERROR_CODE: "TIMEOUT"`, pending intent remains in PENDING status
-- **State Surface failure:** Artifact registration fails -> Returns `ERROR_CODE: "REGISTRATION_FAILED"`, parsed content may be stored but not registered
+- Parser failure → RuntimeError (parser-specific message)
+- GCS storage failure → RuntimeError
+- State Surface registration failure → RuntimeError
+- Supabase indexing failure → Logged but non-blocking
 
 ---
 
 ## 10. Contract Compliance
 
 ### Required Artifacts
-- `parsed_content` - Required (parsed content artifact)
+- `parsed_file` (parsed content artifact) - Required
 
 ### Required Events
-- `parsing_completed` - Required (emitted when parsing succeeds)
+- `content_parsed` - Required
 
 ### Lifecycle State
-- **Initial State:** `"PENDING"` (when artifact first registered)
-- **Final State:** `"READY"` (after parsed content stored in GCS)
-- **Transition:** `"PENDING"` → `"READY"` (automatic after storage)
+- Must create artifact with `lifecycle_state: "PENDING"`
+- Must set `parent_artifacts: [file_id]` for lineage
+- Must track in Supabase `parsed_results` for lineage
 
-### Contract Validation
-- ✅ Artifact must have `parent_artifacts: [file_artifact_id]` (lineage)
-- ✅ Artifact must have `materializations` array with GCS storage
-- ✅ Artifact must have `semantic_descriptor` with `record_count` and `parser_type`
-- ✅ Pending intent must be updated to "COMPLETED" status
-- ✅ Parsed result must be tracked in `parsed_results` table
+### Pending Intent Handling
+- Must check for pending intent before parsing
+- Must update pending intent status to `in_progress` when starting
+- Must update pending intent status to `completed` on success
+
+---
+
+## 11. Cross-Reference Analysis
+
+### Journey Contract Says
+- Parse file using ingest type and file type from intent context
+- Create parsed_content artifact with lineage to file
+- Mark pending parsing journey as COMPLETED
+
+### Implementation Does
+- ✅ Checks for pending intent and retrieves context
+- ✅ Uses `ingestion_profile` and `file_type` from pending intent context
+- ✅ Creates parsed_content artifact with parent_artifacts lineage
+- ✅ Updates pending intent status
+
+### Frontend Expects
+- ✅ `parsed_file_id` in response
+- ✅ `parsed_data` or `parsed_data_preview` in renderings
+- ✅ Execution tracking via `trackExecution()`
+
+### Gaps/Discrepancies
+- None identified - implementation aligns with contract and frontend
 
 ---
 
 **Last Updated:** January 27, 2026  
 **Owner:** Content Realm Solution Team  
-**Status:** ✅ **ENHANCED** - Ready for implementation
+**Status:** ✅ **COMPREHENSIVE**

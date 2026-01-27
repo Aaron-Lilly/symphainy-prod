@@ -2,25 +2,38 @@
 
 **Intent:** archive_file  
 **Intent Type:** `archive_file`  
-**Journey:** Journey Content File Management (`journey_content_file_management`)  
+**Journey:** File Management (`journey_content_file_management`)  
 **Realm:** Content Realm  
-**Status:** IN PROGRESS  
-**Priority:** PRIORITY 1
+**Status:** ✅ **COMPREHENSIVE**  
+**Priority:** 🟡 **PRIORITY 2** - Lifecycle management intent for Content Realm
 
 ---
 
 ## 1. Intent Overview
 
 ### Purpose
-[Describe the purpose of this intent based on journey contract]
+Archive a file artifact (soft delete). Transitions the file's lifecycle state from READY to ARCHIVED. The file remains in storage but is marked as archived and hidden from normal queries.
 
 ### Intent Flow
 ```
-[Describe the flow for this intent]
+[User requests file archive]
+    ↓
+[archive_file intent]
+    ↓
+[Validate file exists in State Surface]
+    ↓
+[Update metadata to archived status]
+    ↓
+[Update lifecycle state in State Surface]
+    ↓
+[Returns archive confirmation]
 ```
 
 ### Expected Observable Artifacts
-- [List expected artifacts]
+- `file_id` - Archived file identifier
+- `file_reference` - State Surface reference
+- `status: "archived"` - New status
+- `archived_at` - Timestamp of archive
 
 ---
 
@@ -30,19 +43,21 @@
 
 | Parameter | Type | Description | Validation |
 |-----------|------|-------------|------------|
-| `parameter_name` | `type` | Description | Validation rules |
+| `file_id` | `string` | File artifact identifier | Required (or file_reference) |
 
 ### Optional Parameters
 
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
-| `parameter_name` | `type` | Description | Default value |
+| `file_reference` | `string` | State Surface file reference | Auto-constructed from file_id |
+| `reason` | `string` | Archive reason | `"User requested"` |
 
 ### Context Metadata (from ExecutionContext)
 
 | Metadata Key | Type | Description | Source |
 |--------------|------|-------------|--------|
-| `metadata_key` | `type` | Description | Runtime |
+| `tenant_id` | `string` | Tenant identifier | Runtime (required) |
+| `session_id` | `string` | Session identifier | Runtime (required) |
 
 ---
 
@@ -53,18 +68,17 @@
 ```json
 {
   "artifacts": {
-    "artifact_type": {
-      "result_type": "artifact",
-      "semantic_payload": {
-        // Artifact data
-      },
-      "renderings": {}
-    }
+    "file_id": "file_abc123",
+    "file_reference": "file:tenant:session:file_abc123",
+    "status": "archived",
+    "archived_at": "2026-01-27T15:30:00Z"
   },
   "events": [
     {
-      "type": "event_type",
-      // Event data
+      "type": "file_archived",
+      "file_id": "file_abc123",
+      "file_reference": "file:tenant:session:file_abc123",
+      "reason": "User requested"
     }
   ]
 }
@@ -74,8 +88,8 @@
 
 ```json
 {
-  "error": "Error message",
-  "error_code": "ERROR_CODE",
+  "error": "File not found in State Surface",
+  "error_code": "NOT_FOUND",
   "execution_id": "exec_abc123"
 }
 ```
@@ -84,18 +98,10 @@
 
 ## 4. Artifact Registration
 
-### State Surface Registration
-- **Artifact ID:** [How artifact_id is generated]
-- **Artifact Type:** `"artifact_type"`
-- **Lifecycle State:** `"PENDING"` or `"READY"`
-- **Produced By:** `{ intent: "archive_file", execution_id: "<execution_id>" }`
-- **Semantic Descriptor:** [Descriptor details]
-- **Parent Artifacts:** [List of parent artifact IDs]
-- **Materializations:** [List of materializations]
-
-### Artifact Index Registration
-- Indexed in Supabase `artifact_index` table
-- Includes: [List of indexed fields]
+### State Surface Update
+- **Lifecycle Transition:** READY → ARCHIVED
+- **Metadata Update:** Add `archived_at`, `archive_reason`, `status: "archived"`
+- **Storage:** File remains in GCS (not deleted)
 
 ---
 
@@ -103,54 +109,67 @@
 
 ### Idempotency Key
 ```
-idempotency_key = hash([key components])
+archive_fingerprint = hash(file_id + tenant_id)
 ```
 
 ### Scope
-- [Describe scope: per tenant, per session, per artifact, etc.]
+- Per file, per tenant
+- Multiple archive requests for same file are idempotent
 
 ### Behavior
-- [Describe idempotent behavior]
+- If file already archived, returns success with existing archived_at
+- No duplicate archive operations
+- Safe to retry
 
 ---
 
 ## 6. Implementation Details
 
 ### Handler Location
-[Path to handler implementation]
+`symphainy_platform/realms/content/orchestrators/content_orchestrator.py::ContentOrchestrator._handle_archive_file`
 
 ### Key Implementation Steps
-1. [Step 1]
-2. [Step 2]
-3. [Step 3]
+1. Validate `file_id` or `file_reference` (at least one required)
+2. Construct `file_reference` if not provided
+3. Get file metadata from State Surface
+4. Validate storage location exists
+5. Update metadata with archive status:
+   - `status: "archived"`
+   - `archived_at: <timestamp>`
+   - `archive_reason: <reason>`
+6. Store updated metadata in State Surface
+7. Return confirmation
 
 ### Dependencies
-- **Public Works:** [Abstractions needed]
-- **State Surface:** [Methods needed]
-- **Runtime:** [Context requirements]
+- **State Surface:** `get_file_metadata()`, `store_file_reference()`
+- **Supabase:** Optional update to file index
 
 ---
 
 ## 7. Frontend Integration
 
 ### Frontend Usage
-```typescript
-// [Frontend code example]
-```
+Not directly exposed in ContentAPIManager.ts. Could be added for file management UI.
 
 ### Expected Frontend Behavior
-1. [Behavior 1]
-2. [Behavior 2]
+1. User selects file to archive
+2. User confirms archive action
+3. Submit `archive_file` intent
+4. Track execution
+5. Update UI to remove/hide file from list
 
 ---
 
 ## 8. Error Handling
 
 ### Validation Errors
-- [Error type] -> [Error response]
+- Neither `file_id` nor `file_reference` provided → ValueError
+- File not found → ValueError
+- Storage location not found → ValueError
 
 ### Runtime Errors
-- [Error type] -> [Error response]
+- State Surface unavailable → RuntimeError
+- Metadata update failed → RuntimeError
 
 ### Error Response Format
 ```json
@@ -167,30 +186,72 @@ idempotency_key = hash([key components])
 ## 9. Testing & Validation
 
 ### Happy Path
-1. [Step 1]
-2. [Step 2]
+1. User requests file archive
+2. `archive_file` intent executes
+3. File metadata updated
+4. Lifecycle state changed to ARCHIVED
+5. Returns archive confirmation
+6. File no longer appears in normal queries
 
 ### Boundary Violations
-- [Violation type] -> [Expected behavior]
+- Missing file_id and file_reference → Validation error
+- File not found → Not found error
 
 ### Failure Scenarios
-- [Failure type] -> [Expected behavior]
+- State Surface unavailable → RuntimeError
+- Metadata update failure → RuntimeError
 
 ---
 
 ## 10. Contract Compliance
 
 ### Required Artifacts
-- `artifact_type` - Required
+- Archive confirmation with file_id, status, archived_at - Required
 
 ### Required Events
-- `event_type` - Required
+- `file_archived` - Required
 
 ### Lifecycle State
-- [Lifecycle state requirements]
+- Must transition artifact from READY → ARCHIVED
+- Must NOT delete file from storage (soft delete)
+
+### Audit Trail
+- Must record archive reason
+- Must record archived_at timestamp
 
 ---
 
-**Last Updated:** [Date]  
-**Owner:** [Realm] Solution Team  
-**Status:** IN PROGRESS
+## 11. Cross-Reference Analysis
+
+### Journey Contract Says
+- Archive file for lifecycle management
+- Soft delete (file remains recoverable)
+
+### Implementation Does
+- ✅ Validates file exists
+- ✅ Updates metadata with archive status
+- ✅ Preserves file in storage (soft delete)
+- ✅ Records archive reason and timestamp
+
+### Frontend Expects
+- Not directly used by frontend (could be added)
+
+### Gaps/Discrepancies
+- Frontend doesn't currently expose archive functionality
+- **Recommendation:** Add archive button to file management UI when needed
+
+---
+
+## 12. Related Intents
+
+### purge_file
+Hard delete - permanently removes file from storage. Requires archived state first.
+
+### restore_file
+Restore archived file - transitions from ARCHIVED back to READY.
+
+---
+
+**Last Updated:** January 27, 2026  
+**Owner:** Content Realm Solution Team  
+**Status:** ✅ **COMPREHENSIVE**

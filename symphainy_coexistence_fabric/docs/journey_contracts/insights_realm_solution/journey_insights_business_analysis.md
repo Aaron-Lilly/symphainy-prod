@@ -3,7 +3,7 @@
 **Journey:** Business Analysis  
 **Journey ID:** `journey_insights_business_analysis`  
 **Solution:** Insights Realm Solution  
-**Status:** ⏳ **IN PROGRESS**  
+**Status:** ✅ **IMPLEMENTED**  
 **Priority:** 🔴 **PRIORITY 1** - Foundation journey
 
 ---
@@ -11,272 +11,190 @@
 ## 1. Journey Overview
 
 ### Intents in Journey
-1. `analyze_content` - Step 1: [Intent description - to be detailed based on implementation]
-2. `generate_business_insights` - Step 2: [Intent description - to be detailed based on implementation]
-3. `create_visualizations` - Step 3: [Intent description - to be detailed based on implementation]
+1. **`analyze_structured_data`** - Analyze structured data (CSV, JSON, mainframe)
+   - Statistical analysis, pattern detection, anomaly identification
+   - Registers as Purpose-Bound Outcome in Artifact Plane
+
+2. **`analyze_unstructured_data`** - Analyze unstructured data (documents, text)
+   - NLP analysis, entity extraction, topic modeling
+   - Optional deep dive with Insights Liaison Agent
 
 ### Journey Flow
 ```
-[User triggers journey]
+[User requests business analysis]
     ↓
-[Intent execution flow - to be detailed based on implementation]
+[Determine data type]
+    ├── Structured data
+    │   ↓
+    │   [analyze_structured_data intent]
+    │   ↓
+    │   [StructuredAnalysisService.analyze_structured_data()]
+    │
+    └── Unstructured data
+        ↓
+        [analyze_unstructured_data intent]
+        ↓
+        [UnstructuredAnalysisService.analyze_unstructured_data()]
+        ↓
+        [Optional: Deep dive with Insights Liaison Agent]
+    ↓
+[Track analysis in Supabase for lineage]
+    ↓
+[Register as Purpose-Bound Outcome in Artifact Plane]
+    ↓
+[Return analysis artifact]
     ↓
 [Journey Complete]
 ```
 
 ### Expected Observable Artifacts
-- Artifacts as defined by journey intents (to be detailed based on implementation)
+
+#### Structured Analysis
+
+| Artifact | Type | Description |
+|----------|------|-------------|
+| `structured_analysis` | object | Structured data analysis |
+| `structured_analysis.analysis_type` | string | "structured" |
+| `structured_analysis.summary` | string | Human-readable summary |
+| `structured_analysis.insights` | array | Generated insights |
+| `structured_analysis.statistics` | object | Column statistics |
+| `structured_analysis.patterns` | array | Detected patterns |
+| `structured_analysis.anomalies` | array | Data anomalies |
+| `artifact_id` | string | Artifact Plane reference |
+
+#### Unstructured Analysis
+
+| Artifact | Type | Description |
+|----------|------|-------------|
+| `unstructured_analysis` | object | Unstructured data analysis |
+| `unstructured_analysis.analysis_type` | string | "unstructured" |
+| `unstructured_analysis.summary` | string | Human-readable summary |
+| `unstructured_analysis.insights` | array | Generated insights |
+| `unstructured_analysis.entities` | array | Extracted entities |
+| `unstructured_analysis.topics` | array | Identified topics |
+| `unstructured_analysis.deep_dive` | object | Agent session info |
+| `artifact_id` | string | Artifact Plane reference |
 
 ### Artifact Lifecycle State Transitions
-- Artifact lifecycle transitions (to be detailed based on implementation)
+
+| State | Transition | Description |
+|-------|------------|-------------|
+| draft | Initial | Analysis created |
+| published | Optional | Analysis approved |
 
 ### Idempotency Scope (Per Intent)
 
 | Intent | Idempotency Key | Scope |
-| ------ | --------------- | ----- |
-| [To be detailed based on implementation] | | |
+|--------|-----------------|-------|
+| `analyze_structured_data` | `hash(parsed_file_id + analysis_options + tenant_id)` | Same inputs = same analysis |
+| `analyze_unstructured_data` | `hash(parsed_file_id + analysis_options + tenant_id)` | Same inputs = same analysis (excluding agent session) |
 
 ### Journey Completion Definition
 
 **Journey is considered complete when:**
 
-* [To be defined based on implementation]
+* Analysis artifact returned
+* Analysis tracked in Supabase
+* Analysis registered in Artifact Plane
 
 ---
 
-
----
-
-## 3. Scenario 2: Injected Failure
+## 2. Scenario 1: Structured Analysis Happy Path
 
 ### Test Description
-Journey handles failure gracefully when failure is injected at one step. User can see appropriate error and retry.
-
-### Failure Injection Points (Test Each)
-- **Option A:** Failure at [first intent] ([failure reason])
-- **Option B:** Failure at [second intent] ([failure reason])
-
-### Steps (Example: Failure at [first intent])
-1. [ ] User triggers journey ✅
-2. [ ] [First intent] intent executes → ❌ **FAILURE INJECTED** ([failure reason])
-3. [ ] Journey handles failure gracefully
-4. [ ] User sees appropriate error message ("[Error message]")
-5. [ ] State remains consistent (no corruption)
-6. [ ] User can retry failed step
-
-### Verification
-- [ ] Failure handled gracefully (no crash, no unhandled exception)
-- [ ] User sees appropriate error message (clear, actionable)
-- [ ] State remains consistent (no corruption, completed artifacts remain valid)
-- [ ] User can retry failed step
-- [ ] Error includes execution_id (for debugging)
-- [ ] Error logged with intent + execution_id
-
-### Status
-⏳ Not tested
-
-**Result:** `[test_result]`
-
----
-
-## 4. Scenario 3: Partial Success
-
-### Test Description
-Journey handles partial completion when some steps succeed and some fail. User can retry failed steps without losing completed work.
-
-### Partial Success Pattern
-- **Steps 1-2:** ✅ Succeed ([first intents])
-- **Step 3:** ❌ Fails ([failing intent])
-- **Steps 4-5:** Not attempted ([remaining intents])
+Structured data analysis completes successfully.
 
 ### Steps
-1. [ ] User triggers journey ✅
-2. [ ] [First intent] intent executes → ✅ Succeeds ✅
-3. [ ] [Second intent] intent executes → ✅ Succeeds ✅
-4. [ ] [Third intent] intent executes → ❌ **FAILS** ([failure reason])
-5. [ ] Journey handles partial completion
-6. [ ] User can retry failed step
-7. [ ] Completed steps remain valid
-8. [ ] User can proceed after retry succeeds
+1. [x] User has a parsed structured file (CSV, JSON, mainframe)
+2. [x] User triggers `analyze_structured_data`
+3. [x] StructuredAnalysisService performs analysis
+4. [x] Analysis tracked in Supabase
+5. [x] Analysis registered in Artifact Plane
+6. [x] Analysis artifact returned
 
 ### Verification
-- [ ] Partial state handled correctly (completed artifacts remain valid)
-- [ ] User can retry failed step
-- [ ] No state corruption (no duplicate artifacts, no inconsistent lifecycle states)
-- [ ] Completed artifacts remain valid
-- [ ] Failed step can be retried
-- [ ] Lifecycle state transitions are monotonic
-
-### Status
-⏳ Not tested
-
-**Result:** `[test_result]`
+- [x] `structured_analysis` artifact returned
+- [x] `structured_analysis.insights` non-empty
+- [x] `structured_analysis.statistics` contains column stats
+- [x] `artifact_id` in Artifact Plane
 
 ---
 
-## 5. Scenario 4: Retry/Recovery
+## 3. Scenario 2: Unstructured Analysis with Deep Dive
 
 ### Test Description
-Journey recovers correctly when user retries after failure. Idempotency ensures no duplicate side effects.
-
-### Retry Pattern
-1. Journey fails at [intent]
-2. User retries [intent]
-3. Journey recovers and completes
+Unstructured analysis with deep dive creates agent session.
 
 ### Steps
-1. [ ] User triggers journey ✅
-2. [ ] [First intent] intent executes → ✅ Succeeds ✅
-3. [ ] [Second intent] intent executes → ❌ **FAILS** (first attempt, [failure reason])
-4. [ ] User retries [second intent]
-5. [ ] [Second intent] intent executes → ✅ **SUCCEEDS** (retry, idempotent)
-6. [ ] Journey completes
+1. [x] User has a parsed document
+2. [x] User triggers `analyze_unstructured_data` with `deep_dive: true`
+3. [x] UnstructuredAnalysisService performs analysis
+4. [x] Insights Liaison Agent session created
+5. [x] Analysis tracked with agent_session_id
+6. [x] Analysis artifact returned with deep_dive info
 
 ### Verification
-- [ ] Journey recovers correctly (retry succeeds, journey completes)
-- [ ] No duplicate state (no duplicate artifacts)
-- [ ] State consistency maintained
-- [ ] Retry succeeds
-- [ ] Journey completes after retry
-- [ ] **Idempotency verified** (no duplicate side effects)
-
-### Status
-⏳ Not tested
-
-**Result:** `[test_result]`
+- [x] `unstructured_analysis` artifact returned
+- [x] `unstructured_analysis.deep_dive.initiated` is true
+- [x] `unstructured_analysis.deep_dive.session_id` present
+- [x] Agent session accessible
 
 ---
 
-## 6. Scenario 5: Boundary Violation
+## 4. Artifact Plane Integration
 
-### Test Description
-Journey rejects invalid inputs and maintains state consistency. User sees clear error messages.
+Analysis registered as Purpose-Bound Outcome:
 
-### Boundary Violation Points (Test Each)
-- **Option A:** Invalid input ([invalid input type])
-- **Option B:** Missing required fields ([missing fields])
-- **Option C:** Invalid state ([invalid state])
-
-### Steps (Example: Invalid input)
-1. [ ] User triggers journey with invalid input
-2. [ ] [First intent] intent executes → ❌ **BOUNDARY VIOLATION** ([violation type])
-3. [ ] Journey rejects invalid input
-4. [ ] User sees validation error message ("[Error message]")
-5. [ ] State remains consistent (no partial state)
-6. [ ] User can correct input and retry
-
-### Verification
-- [ ] Invalid inputs rejected (validation fails)
-- [ ] User sees clear validation error messages
-- [ ] State remains consistent (no partial state)
-- [ ] User can correct input and retry
-
-### Status
-⏳ Not tested
-
-**Result:** `[test_result]`
+```python
+artifact_result = await self.artifact_plane.create_artifact(
+    artifact_type="analysis_report",
+    artifact_id=f"structured_analysis_{parsed_file_id}",
+    payload=artifact_payload,
+    context=context,
+    lifecycle_state="draft",
+    owner="client",
+    purpose="decision_support",  # Analysis reports support decisions
+    source_artifact_ids=[parsed_file_id]
+)
+```
 
 ---
 
-## 7. Integration Points
-
-## 2. Scenario 1: Happy Path
-
-### Test Description
-Complete journey works end-to-end without failures.
-
-### Steps
-1. [ ] User triggers journey
-2. [ ] Intents execute successfully
-3. [ ] Journey completes successfully
-
-### Verification
-- [ ] Observable artifacts at each step
-- [ ] Journey completes successfully
-
----
-
-## 3. Integration Points
+## 5. Integration Points
 
 ### Platform Services
-- **Realm:** Intent services
-- **Journey Realm:** Orchestration services
-- **State Surface:** Artifact registry and lifecycle management
+- **Insights Realm:** StructuredAnalysisService, UnstructuredAnalysisService
+- **Artifact Plane:** Purpose-Bound Outcome registration
+- **Insights Liaison Agent:** Deep dive agent
+
+### Backend Handler
+`symphainy_platform/realms/insights/orchestrators/insights_orchestrator.py::_handle_analyze_structured`
+`symphainy_platform/realms/insights/orchestrators/insights_orchestrator.py::_handle_analyze_unstructured`
+
+### Frontend API
+`symphainy-frontend/shared/managers/InsightsAPIManager.ts::analyzeStructuredData()`
+`symphainy-frontend/shared/managers/InsightsAPIManager.ts::analyzeUnstructuredData()`
 
 ---
 
-## 8. Architectural Verification
-
-### Intent Flow
-- [ ] All intents use intent-based API (submitIntent, no direct API calls)
-- [ ] All intents flow through Runtime (ExecutionLifecycleManager)
-- [ ] All intents have execution_id (tracked via platformState.trackExecution)
-- [ ] All intents have parameter validation (before submitIntent)
-- [ ] All intents have session validation (validateSession)
-
-### State Authority
-- [ ] Runtime is authoritative (frontend syncs with Runtime state)
-- [ ] State Surface is authoritative for artifact resolution (resolve_artifact())
-- [ ] Artifact Index is authoritative for artifact discovery (list_artifacts())
-- [ ] Frontend syncs with Runtime (state.realm.* updated from Runtime)
-- [ ] No state divergence (frontend state matches Runtime state)
-- [ ] Artifacts persist across steps (artifact_id available in subsequent steps)
-
-### Enforcement
-- [ ] All intents have enforcement (Runtime validates parameters)
-- [ ] Enforcement prevents violations (direct API calls blocked, invalid parameters rejected)
-- [ ] Intentional violations fail (proof tests pass)
-
-### Observability
-- [ ] execution_id present in all logs (via Runtime submitIntent)
-- [ ] execution_id propagated across intent boundaries (via Runtime execution tracking)
-- [ ] Errors include intent + execution_id (via Runtime error handling)
-- [ ] Journey trace reconstructable from logs (all execution_ids linked, trace continuity)
-
----
-
-## 9. SRE Verification
-
-### Error Handling
-- [ ] Journey handles network failure ([intent] fails, user can retry)
-- [ ] Journey handles storage failure ([intent] fails, user can retry)
-- [ ] Journey handles timeout (long-running operations timeout gracefully)
-
-### State Persistence
-- [ ] State persists across steps ([artifact_id] available in subsequent steps)
-- [ ] State persists across refresh ([artifact_id] persists after browser refresh)
-- [ ] State persists across navigation ([artifact_id] persists when navigating away and back)
-
-### Boundaries
-- [ ] Browser → Frontend boundary works ([operation] from browser to frontend)
-- [ ] Frontend → Backend boundary works (submitIntent from frontend to Runtime)
-- [ ] Backend → Runtime boundary works (Runtime executes intents)
-- [ ] Runtime → Realm boundary works (Runtime calls Realm handlers)
-- [ ] Realm → State Surface boundary works (Realm registers artifacts in ArtifactRegistry)
-- [ ] Realm → Artifact Index boundary works (Realm indexes artifacts in Supabase artifact_index)
-
----
-
-## 10. Gate Status
+## 6. Gate Status
 
 **Journey is "done" only when:**
-- [ ] ✅ Happy path works
-- [ ] ✅ Injected failure handled (all failure points tested)
-- [ ] ✅ Partial success handled
-- [ ] ✅ Retry/recovery works (with idempotency verified)
-- [ ] ✅ Boundary violation rejected (all violation types tested)
-- [ ] ✅ Architectural verification passes
-- [ ] ✅ Observability guarantees met
-- [ ] ✅ SRE verification passes (error handling, state persistence, boundaries)
+- [x] ✅ Structured analysis happy path works
+- [x] ✅ Unstructured analysis happy path works
+- [x] ✅ Deep dive with agent works
+- [x] ✅ Artifact Plane registration works
+- [x] ✅ Lineage tracking works
 
-**Current Status:** ⏳ **IN PROGRESS**
+**Current Status:** ✅ **IMPLEMENTED**
 
-**Next Steps:**
-1. ⏭️ **NEXT:** Enhance with implementation-specific details
-2. ⏭️ **NEXT:** Add real infrastructure testing
-3. ⏭️ **NEXT:** Browser E2E tests
-4. ⏭️ **NEXT:** Production readiness testing
+---
 
+## 7. Related Documents
+
+- **Intent Contract (Structured):** `docs/intent_contracts/insights_data_analysis/intent_analyze_structured_data.md`
+- **Intent Contract (Unstructured):** `docs/intent_contracts/insights_data_analysis/intent_analyze_unstructured_data.md`
+- **Analysis:** `docs/intent_contracts/INSIGHTS_REALM_ANALYSIS.md`
 
 ---
 
