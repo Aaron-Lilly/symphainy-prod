@@ -12,10 +12,12 @@ Solutions bind domain services to external systems.
 
 Available Solutions:
 - ContentSolution: Content Realm capabilities (file upload, parsing, embedding)
+- InsightsSolution: Insights Realm capabilities (quality, analysis, interpretation, lineage)
 - OutcomesSolution: Outcomes Realm capabilities (synthesis, roadmaps, POCs, blueprints)
 """
 
 from .content_solution import ContentSolution
+from .insights_solution import InsightsSolution
 from .outcomes_solution import OutcomesSolution
 
-__all__ = ["ContentSolution", "OutcomesSolution"]
+__all__ = ["ContentSolution", "InsightsSolution", "OutcomesSolution"]

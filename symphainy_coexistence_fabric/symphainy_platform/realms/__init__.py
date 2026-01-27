@@ -17,6 +17,16 @@ from .outcomes import (
     ExportArtifactService
 )
 
+from .insights import (
+    AssessDataQualityService,
+    InterpretDataSelfDiscoveryService,
+    InterpretDataGuidedService,
+    AnalyzeStructuredDataService,
+    AnalyzeUnstructuredDataService,
+    VisualizeLineageService,
+    MapRelationshipsService
+)
+
 __all__ = [
     # Outcomes Realm
     "SynthesizeOutcomeService",
@@ -24,5 +34,13 @@ __all__ = [
     "CreatePOCService",
     "CreateBlueprintService",
     "CreateSolutionService",
-    "ExportArtifactService"
+    "ExportArtifactService",
+    # Insights Realm
+    "AssessDataQualityService",
+    "InterpretDataSelfDiscoveryService",
+    "InterpretDataGuidedService",
+    "AnalyzeStructuredDataService",
+    "AnalyzeUnstructuredDataService",
+    "VisualizeLineageService",
+    "MapRelationshipsService"
 ]
