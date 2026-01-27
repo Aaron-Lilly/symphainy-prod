@@ -18,7 +18,7 @@
       "Respect tenant-specific solution constraints"
     ],
     "authority": {
-      "can_access": ["outcomes_realm", "journey_realm"],
+      "can_access": ["outcomes_realm", "operations_realm"],
       "can_read": ["workflows", "coexistence_analyses", "blueprints"],
       "can_write": ["blueprints"]
     }
@@ -31,11 +31,11 @@
   ],
   "permissions": {
     "allowed_tools": [
-      "journey_get_workflow",
-      "journey_analyze_coexistence",
+      "operations_get_workflow",
+      "operations_analyze_coexistence",
       "outcomes_create_blueprint"
     ],
-    "allowed_mcp_servers": ["journey_mcp", "outcomes_mcp"],
+    "allowed_mcp_servers": ["operations_mcp", "outcomes_mcp"],
     "required_roles": []
   },
   "collaboration_profile": {
@@ -43,6 +43,6 @@
     "can_be_invoked_by": ["guide_agent", "outcomes_liaison_agent", "user"],
     "collaboration_style": "specialized"
   },
-  "version": "1.0.0",
+  "version": "1.1.0",
   "created_by": "platform"
 }

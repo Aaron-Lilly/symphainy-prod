@@ -43,6 +43,8 @@ class RuntimeServices:
     # Optional services
     wal: Optional[Any] = None  # WriteAheadLog
     intent_registry: Optional[Any] = None  # IntentRegistry
+    solution_registry: Optional[Any] = None  # SolutionRegistry
+    solution_services: Optional[Any] = None  # SolutionServices (all platform solutions)
     
     def __post_init__(self):
         """Validate that required services are present."""
