@@ -9,7 +9,7 @@ import json
 
 
 @pytest.mark.unit
-@pytest.mark.journey
+@pytest.mark.operations
 @pytest.mark.asyncio
 class TestWorkflowConversionService:
     """Test Workflow Conversion Service."""

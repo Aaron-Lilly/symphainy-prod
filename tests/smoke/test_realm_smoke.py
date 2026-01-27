@@ -115,8 +115,8 @@ async def test_insights_realm_analyze_content(runtime_client: httpx.AsyncClient,
 
 
 @pytest.mark.asyncio
-async def test_journey_realm_optimize_process(runtime_client: httpx.AsyncClient, test_session: str):
-    """Test Journey Realm can handle optimize_process intent."""
+async def test_operations_realm_optimize_process(runtime_client: httpx.AsyncClient, test_session: str):
+    """Test Operations Realm can handle optimize_process intent."""
     intent_request = {
         "intent_type": IntentType.OPTIMIZE_PROCESS.value,
         "tenant_id": "test_tenant",
@@ -138,7 +138,7 @@ async def test_journey_realm_optimize_process(runtime_client: httpx.AsyncClient,
     assert intent_data["status"] == "accepted"
     assert "execution_id" in intent_data
     
-    logger.info(f"✅ Journey Realm optimize_process intent accepted: {intent_data['execution_id']}")
+    logger.info(f"✅ Operations Realm optimize_process intent accepted: {intent_data['execution_id']}")
 
 
 @pytest.mark.asyncio

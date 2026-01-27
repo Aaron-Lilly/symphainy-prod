@@ -8,7 +8,7 @@ import pytest
 
 
 @pytest.mark.unit
-@pytest.mark.journey
+@pytest.mark.operations
 @pytest.mark.asyncio
 class TestCoexistenceAnalysisService:
     """Test Coexistence Analysis Service."""

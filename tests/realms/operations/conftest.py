@@ -1,5 +1,8 @@
 """
-Pytest fixtures for Journey Realm tests.
+Pytest fixtures for Operations Realm tests.
+
+NOTE: Migrated from Journey Realm tests. The Operations Realm uses
+enabling_services pattern instead of the old service pattern.
 """
 
 import pytest
@@ -7,10 +10,9 @@ from typing import Dict, Any
 
 from symphainy_platform.runtime.state_surface import StateSurface
 from symphainy_platform.runtime.in_memory_file_storage import InMemoryFileStorage
-from symphainy_platform.realms.journey.services.sop_builder_service.sop_builder_service import SOPBuilderService
-from symphainy_platform.realms.journey.services.workflow_conversion_service.workflow_conversion_service import WorkflowConversionService
-from symphainy_platform.realms.journey.services.coexistence_analysis_service.coexistence_analysis_service import CoexistenceAnalysisService
-from symphainy_platform.realms.journey.orchestrators.journey_orchestrator import JourneyOrchestrator
+from symphainy_platform.realms.operations.enabling_services.workflow_conversion_service import WorkflowConversionService
+from symphainy_platform.realms.operations.enabling_services.coexistence_analysis_service import CoexistenceAnalysisService
+from symphainy_platform.realms.operations.orchestrators.operations_orchestrator import OperationsOrchestrator
 
 
 @pytest.fixture
@@ -30,52 +32,21 @@ def state_surface(in_memory_file_storage):
 
 
 @pytest.fixture
-def sop_builder_service(state_surface, in_memory_file_storage):
-    """Create SOP Builder Service for testing."""
-    return SOPBuilderService(
-        state_surface=state_surface,
-        file_storage_abstraction=in_memory_file_storage,
-        platform_gateway=None
-    )
-
-
-@pytest.fixture
-def workflow_conversion_service(state_surface, in_memory_file_storage):
+def workflow_conversion_service():
     """Create Workflow Conversion Service for testing."""
-    return WorkflowConversionService(
-        state_surface=state_surface,
-        file_storage_abstraction=in_memory_file_storage,
-        platform_gateway=None
-    )
+    return WorkflowConversionService()
 
 
 @pytest.fixture
-def coexistence_analysis_service(state_surface, in_memory_file_storage):
+def coexistence_analysis_service():
     """Create Coexistence Analysis Service for testing."""
-    return CoexistenceAnalysisService(
-        state_surface=state_surface,
-        file_storage_abstraction=in_memory_file_storage,
-        platform_gateway=None
-    )
+    return CoexistenceAnalysisService()
 
 
 @pytest.fixture
-def journey_orchestrator(
-    sop_builder_service,
-    workflow_conversion_service,
-    coexistence_analysis_service,
-    state_surface,
-    in_memory_file_storage
-):
-    """Create Journey Orchestrator for testing."""
-    return JourneyOrchestrator(
-        sop_builder_service=sop_builder_service,
-        workflow_conversion_service=workflow_conversion_service,
-        coexistence_analysis_service=coexistence_analysis_service,
-        state_surface=state_surface,
-        file_storage_abstraction=in_memory_file_storage,
-        agent_foundation=None
-    )
+def operations_orchestrator():
+    """Create Operations Orchestrator for testing."""
+    return OperationsOrchestrator()
 
 
 @pytest.fixture

@@ -238,7 +238,7 @@ def e2e_setup(test_public_works, test_redis, test_arango):
     try:
         from symphainy_platform.realms.content.content_realm import ContentRealm
         from symphainy_platform.realms.insights.insights_realm import InsightsRealm
-        from symphainy_platform.realms.journey.journey_realm import JourneyRealm
+        from symphainy_platform.realms.operations.operations_realm import OperationsRealm
         from symphainy_platform.realms.outcomes.outcomes_realm import OutcomesRealm
         
         ContentRealm(public_works=test_public_works).register_intents(intent_registry)

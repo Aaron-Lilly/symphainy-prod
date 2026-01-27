@@ -73,9 +73,9 @@ class TestPhase3ExplicitImplementationGuarantee:
         assert True  # Placeholder - actual test requires full setup
     
     @pytest.mark.asyncio
-    async def test_journey_realm_semantic_signals(self):
+    async def test_operations_realm_semantic_signals(self):
         """
-        Test: Journey Realm uses semantic signals.
+        Test: Operations Realm uses semantic signals (formerly Journey Realm).
         
         Validates:
         - Workflow/SOP files chunked

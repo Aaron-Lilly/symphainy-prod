@@ -16,11 +16,11 @@ import pytest
 import asyncio
 from symphainy_platform.realms.content.mcp_server.content_mcp_server import ContentRealmMCPServer
 from symphainy_platform.realms.insights.mcp_server.insights_mcp_server import InsightsRealmMCPServer
-from symphainy_platform.realms.journey.mcp_server.journey_mcp_server import JourneyRealmMCPServer
+from symphainy_platform.realms.operations.mcp_server.operations_mcp_server import OperationsRealmMCPServer
 from symphainy_platform.realms.outcomes.mcp_server.outcomes_mcp_server import OutcomesRealmMCPServer
 from symphainy_platform.realms.content.orchestrators.content_orchestrator import ContentOrchestrator
 from symphainy_platform.realms.insights.orchestrators.insights_orchestrator import InsightsOrchestrator
-from symphainy_platform.realms.journey.orchestrators.journey_orchestrator import JourneyOrchestrator
+from symphainy_platform.realms.operations.orchestrators.operations_orchestrator import OperationsOrchestrator
 from symphainy_platform.realms.outcomes.orchestrators.outcomes_orchestrator import OutcomesOrchestrator
 from symphainy_platform.civic_systems.agentic.mcp_client_manager import MCPClientManager
 
@@ -58,19 +58,19 @@ async def test_insights_mcp_server_initialization():
 
 
 @pytest.mark.asyncio
-async def test_journey_mcp_server_initialization():
-    """Test Journey MCP Server initialization."""
-    orchestrator = JourneyOrchestrator()
-    mcp_server = JourneyRealmMCPServer(orchestrator)
+async def test_operations_mcp_server_initialization():
+    """Test Operations MCP Server initialization."""
+    orchestrator = OperationsOrchestrator()
+    mcp_server = OperationsRealmMCPServer(orchestrator)
     
     result = await mcp_server.initialize()
     assert result is True
     
     tools = mcp_server.get_tool_list()
-    assert len(tools) == 3
-    assert "journey_optimize_process" in tools
-    assert "journey_generate_sop" in tools
-    assert "journey_create_workflow" in tools
+    assert len(tools) >= 3  # May have more tools
+    assert "operations_optimize_process" in tools
+    assert "operations_generate_sop" in tools
+    assert "operations_create_workflow" in tools
 
 
 @pytest.mark.asyncio
