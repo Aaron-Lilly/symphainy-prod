@@ -64,56 +64,73 @@ This solution composes the following journeys:
 
 ### Journey Orchestration
 
-**Sequential Flow:**
-1. User lands on platform → Journey: Platform Introduction
-2. User explores platform → Journey: Solution Navigation
-3. User needs help → Journey: GuideAgent Interaction
+**Chat-First Flow:**
+1. User opens chat interface → Journey: Chat Session Management
+2. User converses with GuideAgent → Journey: GuideAgent Conversation
+3. User toggles to Liaison Agent → Journey: Agent Context Sharing → Journey: Liaison Agent Conversation
+4. Agent needs platform action → Journey: Agent-Orchestrator Interaction
 
 **Parallel Flow:**
-- Journeys can overlap (user can navigate while chatting with GuideAgent)
-- GuideAgent can be active while user navigates
+- Chat journeys can overlap (user can toggle between agents)
+- Context sharing happens automatically on agent toggle
+- Orchestrator interactions happen in background during conversations
+- Multiple agent conversations can be active (one at a time in UI, but context preserved)
 
 ---
 
 ## 3. User Experience Flows
 
-### Primary User Flow
+### Primary User Flow (Chat-First Experience)
 ```
-1. User lands on landing page
-   → Sees coexistence concept introduction
-   → Sees GuideAgent introduction
-   → Sees navbar across the top for solution navigation
+1. User opens chat interface (right side panel)
+   → Chat session initialized
+   → GuideAgent active by default
+   → GuideAgent greets user and explains platform
    
-2. User interacts with GuideAgent
-   → GuideAgent greets user
-   → GuideAgent explains platform capabilities
-   → GuideAgent explains to use the navbar to navigate to solutions
+2. User converses with GuideAgent
+   → GuideAgent provides platform-wide guidance
+   → GuideAgent can route to solutions or execute orchestrator actions
+   → Conversation context maintained
    
-3. User provides solution context
-   → GuideAgent prompts user for solution context to customize their experience
-   → User enters solution context (industry, specializations, etc.)
-   → Solution-specific guidance available
+3. User toggles to Liaison Agent (e.g., Content Liaison)
+   → Context shared from GuideAgent conversation
+   → Liaison Agent activated with pillar awareness
+   → User receives Content Realm-specific assistance
+   
+4. User toggles back to GuideAgent
+   → Context shared from Liaison Agent conversation
+   → GuideAgent continues with full platform awareness
+   → Seamless conversation continuity
+   
+5. Agent executes platform action
+   → Agent interacts with orchestrator (governed)
+   → Orchestrator executes journey/intent
+   → Agent reports results back to user
 ```
 
 ### Alternative Flows
-- **Flow A:** User directly navigates to solution → Skip introduction, enter solution
-- **Flow B:** User returns to landing page → Show recent solutions, quick navigation
-- **Flow C:** User asks GuideAgent question → GuideAgent answers, offers navigation
+- **Flow A:** User starts with Liaison Agent → Context shared when toggling to GuideAgent
+- **Flow B:** Agent-to-agent routing → GuideAgent routes to Liaison Agent with context
+- **Flow C:** Multi-pillar conversation → User toggles between multiple Liaison Agents, context preserved
+- **Flow D:** Orchestrator-mediated action → Agent requests journey execution, orchestrator validates and executes
 
 ### Error Flows
-- **Error A:** Solution not found → GuideAgent suggests alternatives
-- **Error B:** Navigation failed → Show error, allow retry
-- **Error C:** GuideAgent unavailable → Show fallback navigation
+- **Error A:** Agent unavailable → Show error, allow retry or switch to other agent
+- **Error B:** Context sharing failed → Agent continues with limited context, log error
+- **Error C:** Orchestrator interaction failed → Agent reports error, suggests alternative
+- **Error D:** Governance violation → Orchestrator rejects action, agent explains limitation
 
 ---
 
 ## 4. Non-Functional Requirements
 
 ### Performance
-- **Response Time:** Landing page load < 2 seconds
-- **Response Time:** GuideAgent response < 3 seconds
-- **Throughput:** Support 500+ concurrent users
-- **Scalability:** Auto-scale based on load
+- **Response Time:** Chat interface load < 1 second
+- **Response Time:** Agent message response < 3 seconds
+- **Response Time:** Agent toggle (context sharing) < 500ms
+- **Response Time:** Orchestrator interaction < 5 seconds
+- **Throughput:** Support 500+ concurrent chat sessions
+- **Scalability:** Auto-scale agents based on load
 
 ### Security
 - **Authentication:** Guide Agent Requires Security Solution authentication 
@@ -129,35 +146,64 @@ This solution composes the following journeys:
 
 ## 5. Solution Components
 
-### 5.1 Coexistence Component
-**Purpose:** Human-platform interaction interface
+### 5.1 Coexistence Component (Chat-First)
+**Purpose:** Unified conversational interface for human-platform interaction
+
+**Chat Architecture:**
+- **Shared Chat Space:** Single chat interface (right side panel) shared by all agents
+- **Agent Toggle:** User can toggle between GuideAgent and any Liaison Agent
+- **Context Preservation:** Conversation context shared automatically on toggle
+- **Multi-Agent Support:** GuideAgent + 4 Liaison Agents (Content, Insights, Journey, Solution)
 
 **Business Logic:**
-- **Journey:** Platform Introduction
-  - Intent: `introduce_platform` - Show platform overview
-  - Intent: `show_solution_catalog` - Display available solutions
-  - Intent: `explain_coexistence` - Explain coexistence concept
+- **Journey:** Chat Session Management
+  - Intent: `initialize_chat_session` - Create chat session with context
+  - Intent: `get_chat_session` - Retrieve active chat session
+  - Intent: `update_chat_context` - Update shared conversation context
 
-- **Journey:** Solution Navigation
-  - Intent: `navigate_to_solution` - Route user to solution
-  - Intent: `get_solution_context` - Get solution information
-  - Intent: `establish_solution_context` - Set solution context
-
-- **Journey:** GuideAgent Interaction
+- **Journey:** GuideAgent Conversation
   - Intent: `initiate_guide_agent` - Start GuideAgent conversation
-  - Intent: `process_guide_agent_message` - Handle user message
-  - Intent: `route_to_liaison_agent` - Route to solution-specific agent
+  - Intent: `process_guide_agent_message` - Handle user message to GuideAgent
+  - Intent: `route_to_liaison_agent` - GuideAgent routes to Liaison Agent
+  - Intent: `execute_orchestrator_action` - GuideAgent requests orchestrator action (governed)
+
+- **Journey:** Liaison Agent Conversation
+  - Intent: `initiate_liaison_agent` - Start Liaison Agent conversation (pillar-aware)
+  - Intent: `process_liaison_agent_message` - Handle user message to Liaison Agent
+  - Intent: `get_pillar_context` - Retrieve pillar-specific context
+  - Intent: `execute_pillar_action` - Liaison Agent executes pillar-specific action
+
+- **Journey:** Agent Context Sharing
+  - Intent: `share_context_to_agent` - Share context when switching agents
+  - Intent: `get_shared_context` - Retrieve shared context for agent
+  - Intent: `merge_agent_contexts` - Merge contexts from multiple agents
+
+- **Journey:** Agent-Orchestrator Interaction
+  - Intent: `request_orchestrator_action` - Agent requests orchestrator to execute journey
+  - Intent: `validate_orchestrator_request` - Validate agent request against governance
+  - Intent: `execute_governed_action` - Execute orchestrator action within governance boundaries
 
 **UI Components:**
-- Landing page
-- Solution navigation cards
-- GuideAgent chat interface
-- Solution context display
+- **Chat Interface:** Right side panel with message history
+- **Agent Toggle:** UI control to switch between GuideAgent and Liaison Agents
+- **Agent Indicator:** Visual indicator showing active agent
+- **Context Display:** Show shared context when toggling agents
+- **Orchestrator Status:** Show orchestrator action status when agent requests action
 
-**Coexistence Component:**
-- **GuideAgent:** Platform concierge (primary interface)
-- **Solution Navigation:** Visual navigation to solutions
-- **Conversational Interface:** Chat with GuideAgent
+**Agent Capabilities:**
+- **GuideAgent:**
+  - Platform-wide knowledge (all pillars, all solutions)
+  - Can interact with any orchestrator (governed)
+  - Can route to any Liaison Agent
+  - Full conversation context awareness
+  - Can execute cross-pillar actions
+
+- **Liaison Agents:**
+  - Pillar-specific knowledge (Content, Insights, Journey, or Solution)
+  - Can interact with pillar orchestrators (governed)
+  - Can request GuideAgent assistance
+  - Pillar-aware conversation context
+  - Can execute pillar-specific actions
 
 **Policies:**
 - Platform access policies (Smart City: Security Guard)
@@ -165,8 +211,18 @@ This solution composes the following journeys:
 - Conversation policies (Smart City: Traffic Cop)
 
 **Experiences:**
-- REST API: `/api/coexistence/introduce`, `/api/coexistence/navigate`, `/api/coexistence/guide-agent`
-- Websocket: GuideAgent chat interface, real-time navigation updates
+- REST API:
+  - `POST /api/coexistence/chat/session` - Initialize chat session
+  - `POST /api/coexistence/chat/guide-agent/message` - Send message to GuideAgent
+  - `POST /api/coexistence/chat/liaison-agent/message` - Send message to Liaison Agent
+  - `POST /api/coexistence/chat/toggle-agent` - Toggle between agents
+  - `GET /api/coexistence/chat/context` - Get shared context
+  - `POST /api/coexistence/chat/orchestrator/request` - Request orchestrator action
+- WebSocket:
+  - Chat interface (real-time messages)
+  - Agent toggle events
+  - Context sharing events
+  - Orchestrator action status updates
 
 ### 5.2 Security Component
 **Purpose:** Authentication integration
@@ -222,20 +278,22 @@ This solution composes the following journeys:
 - GuideAgent Interaction Journey
 
 **Intents:**
-- `introduce_platform` - Show platform overview
-- `navigate_to_solution` - Route to solution
-- `initiate_guide_agent` - Start GuideAgent
-- `process_guide_agent_message` - Handle message
-- `route_to_liaison_agent` - Route to solution agent
+- **Chat Session:** `initialize_chat_session`, `get_chat_session`, `update_chat_context`
+- **GuideAgent:** `initiate_guide_agent`, `process_guide_agent_message`, `route_to_liaison_agent`, `execute_orchestrator_action`
+- **Liaison Agent:** `initiate_liaison_agent`, `process_liaison_agent_message`, `get_pillar_context`, `execute_pillar_action`
+- **Context Sharing:** `share_context_to_agent`, `get_shared_context`, `merge_agent_contexts`
+- **Orchestrator Interaction:** `request_orchestrator_action`, `validate_orchestrator_request`, `execute_governed_action`
 
 ---
 
 ## 6. Solution Artifacts
 
 ### Artifacts Produced
-- **Navigation Artifacts:** User navigation events (logged for analytics)
-- **Conversation Artifacts:** GuideAgent conversations (stored if enabled)
-- **Solution Context Artifacts:** Current solution context (ephemeral)
+- **Chat Session Artifacts:** Chat session metadata (session_id, active_agent, created_at)
+- **Conversation Artifacts:** Agent conversations (messages, timestamps, agent_type)
+- **Context Artifacts:** Shared conversation context (cross-agent context, pillar context)
+- **Orchestrator Request Artifacts:** Agent-orchestrator interaction requests (governed actions)
+- **Agent Toggle Artifacts:** Agent switch events (from_agent, to_agent, context_shared)
 
 ### Artifact Relationships
 - **Lineage:** Navigation Event → User, Conversation → User
@@ -246,9 +304,10 @@ This solution composes the following journeys:
 ## 7. Integration Points
 
 ### Platform Services
-- **Coexistence Realm:** Intent services (`introduce_platform`, `navigate_to_solution`, `initiate_guide_agent`)
-- **Journey Realm:** Orchestration services (compose coexistence journeys)
-- **Agent Framework:** GuideAgent, Liaison Agents
+- **Coexistence Realm:** Intent services for chat, agents, context sharing, orchestrator interactions
+- **Journey Realm:** Orchestration services (agents can request journey execution)
+- **Agent Framework:** GuideAgent (platform concierge), Liaison Agents (pillar-specific)
+- **Orchestrator Services:** Journey orchestrators (accessible via governed agent requests)
 
 ### Civic Systems
 - **Smart City Primitives:** Security Guard, Traffic Cop, City Manager
@@ -309,15 +368,65 @@ This solution composes the following journeys:
 ### Human Interaction Interface
 This solution IS the coexistence component - it provides the primary human-platform interaction interface.
 
-**GuideAgent Integration:**
-- **Platform Concierge:** GuideAgent is the primary interface
-- **Navigation:** GuideAgent helps users navigate to solutions
-- **Context Awareness:** GuideAgent understands user intent and solution context
+**Chat-First Architecture:**
+- **Shared Chat Interface:** Single chat panel (right side) shared by all agents
+- **Agent Toggle:** User can switch between GuideAgent and any Liaison Agent
+- **Context Continuity:** Conversation context automatically shared on agent toggle
 
-**Solution-Specific Liaison Agents:**
-- **Routing:** GuideAgent routes to solution-specific liaison agents
-- **Context:** GuideAgent establishes solution context before routing
-- **Handoff:** Seamless handoff from GuideAgent to solution liaison agents
+**GuideAgent (Platform Concierge):**
+- **Scope:** Platform-wide knowledge (all pillars, all solutions, all orchestrators)
+- **Capabilities:**
+  - Answer platform questions
+  - Navigate to solutions
+  - Route to Liaison Agents
+  - Execute orchestrator actions (governed)
+  - Access cross-pillar information
+- **Context:** Full platform awareness, can access any realm's context
+
+**Liaison Agents (Pillar-Specific):**
+- **Scope:** Pillar-specific knowledge (Content, Insights, Journey, or Solution)
+- **Capabilities:**
+  - Answer pillar-specific questions
+  - Execute pillar-specific actions
+  - Request GuideAgent assistance
+  - Interact with pillar orchestrators (governed)
+- **Context:** Pillar-aware, can access pillar context and request GuideAgent help
+
+**Context Sharing:**
+- **Automatic:** Context shared automatically when toggling agents
+- **Bidirectional:** Context flows both ways (GuideAgent ↔ Liaison Agents)
+- **Merged:** Multiple agent contexts can be merged for comprehensive awareness
+- **Persistent:** Context persists across agent toggles and session restarts
+
+**Orchestrator Interactions:**
+- **Governed:** All agent-orchestrator interactions are validated against governance policies
+- **Request-Based:** Agents request orchestrator actions, orchestrators validate and execute
+- **Status Updates:** Agents receive real-time status updates on orchestrator actions
+- **Error Handling:** Governance violations result in clear error messages to agents
+
+**Conversation Topics:**
+- **GuideAgent:** "What is SymphAIny?", "What can I do?", "Navigate to Content Solution", "Execute file upload journey"
+- **Liaison Agents:** "How do I parse a file?" (Content), "What insights are available?" (Insights), "Create a workflow" (Journey), "Build a solution" (Solution)
+
+---
+
+## 11. Evolution & Roadmap
+
+### Current Version
+- **Version:** 1.0
+- **Status:** DRAFT
+
+### Planned Enhancements
+- **Version 1.1:** Enhanced GuideAgent capabilities
+- **Version 1.2:** Personalized solution recommendations
+- **Version 1.3:** Multi-language support
+- **Version 1.4:** Voice interface (future)
+
+---
+
+**Last Updated:** January 27, 2026  
+**Owner:** C-Suite
+n liaison agents
 
 **Conversation Topics:**
 - "What is SymphAIny?"
