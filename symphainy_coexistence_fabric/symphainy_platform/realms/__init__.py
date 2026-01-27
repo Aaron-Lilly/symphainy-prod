@@ -4,8 +4,13 @@ Realms Package - Domain Services for SymphAIny Platform
 Realms contain domain-specific services organized by business capability:
 - Content Realm: File ingestion, parsing, and content management
 - Insights Realm: Analysis, extraction, and intelligence generation
-- Journey Realm: Workflow orchestration and journey management
+- Operations Realm: Workflow/SOP management, coexistence analysis
 - Outcomes Realm: Outcomes synthesis, roadmaps, POCs, blueprints, and strategic deliverables
+
+Naming Conventions:
+- "Realm" = domain area (user-facing business capability)
+- "Solution" = platform construct (composes journeys, exposes SOA APIs)
+- "Journey" = platform capability (invisible to users, orchestration mechanism)
 """
 
 from .outcomes import (
@@ -27,6 +32,15 @@ from .insights import (
     MapRelationshipsService
 )
 
+from .operations import (
+    OptimizeProcessService,
+    GenerateSOPService,
+    CreateWorkflowService,
+    AnalyzeCoexistenceService,
+    GenerateSOPFromChatService,
+    SOPChatMessageService
+)
+
 __all__ = [
     # Outcomes Realm
     "SynthesizeOutcomeService",
@@ -42,5 +56,12 @@ __all__ = [
     "AnalyzeStructuredDataService",
     "AnalyzeUnstructuredDataService",
     "VisualizeLineageService",
-    "MapRelationshipsService"
+    "MapRelationshipsService",
+    # Operations Realm
+    "OptimizeProcessService",
+    "GenerateSOPService",
+    "CreateWorkflowService",
+    "AnalyzeCoexistenceService",
+    "GenerateSOPFromChatService",
+    "SOPChatMessageService"
 ]
