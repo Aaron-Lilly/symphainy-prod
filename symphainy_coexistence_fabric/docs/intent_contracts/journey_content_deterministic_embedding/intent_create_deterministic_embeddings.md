@@ -2,25 +2,43 @@
 
 **Intent:** create_deterministic_embeddings  
 **Intent Type:** `create_deterministic_embeddings`  
-**Journey:** Journey Content Deterministic Embedding (`journey_content_deterministic_embedding`)  
+**Journey:** Deterministic Embedding Creation (`journey_content_deterministic_embedding`)  
 **Realm:** Content Realm  
-**Status:** IN PROGRESS  
-**Priority:** PRIORITY 1
+**Status:** ✅ **COMPREHENSIVE**  
+**Priority:** 🔴 **PRIORITY 1** - Foundation intent for Content Realm
 
 ---
 
 ## 1. Intent Overview
 
 ### Purpose
-[Describe the purpose of this intent based on journey contract]
+Create deterministic embeddings from parsed content. Deterministic embeddings capture structural patterns (schema fingerprint, pattern signature) that are reproducible and consistent across runs. These serve as the foundation for semantic embeddings.
 
 ### Intent Flow
 ```
-[Describe the flow for this intent]
+[Parsed content available]
+    ↓
+[create_deterministic_embeddings intent]
+    ↓
+[Retrieve parsed content from FileParserService]
+    ↓
+[Create deterministic embeddings via DeterministicEmbeddingService]
+    ↓
+[Generate schema fingerprint and pattern signature]
+    ↓
+[Store in DuckDB (deterministic compute abstraction)]
+    ↓
+[Register artifact in State Surface]
+    ↓
+[Returns deterministic_embedding_id, schema_fingerprint, pattern_signature]
 ```
 
 ### Expected Observable Artifacts
-- [List expected artifacts]
+- `deterministic_embedding_id` - Embedding artifact identifier
+- `artifact_type: "deterministic_embeddings"`
+- `schema_fingerprint` - Structural fingerprint of the data
+- `pattern_signature` - Pattern-based signature
+- `parent_artifacts: [parsed_file_id]` - Lineage to parsed content
 
 ---
 
@@ -30,19 +48,20 @@
 
 | Parameter | Type | Description | Validation |
 |-----------|------|-------------|------------|
-| `parameter_name` | `type` | Description | Validation rules |
+| `parsed_file_id` | `string` | Parsed content artifact identifier | Required, must exist |
 
 ### Optional Parameters
 
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
-| `parameter_name` | `type` | Description | Default value |
+| `embedding_options` | `object` | Embedding generation options | `{}` |
 
 ### Context Metadata (from ExecutionContext)
 
 | Metadata Key | Type | Description | Source |
 |--------------|------|-------------|--------|
-| `metadata_key` | `type` | Description | Runtime |
+| `tenant_id` | `string` | Tenant identifier | Runtime (required) |
+| `session_id` | `string` | Session identifier | Runtime (required) |
 
 ---
 
@@ -53,18 +72,17 @@
 ```json
 {
   "artifacts": {
-    "artifact_type": {
-      "result_type": "artifact",
-      "semantic_payload": {
-        // Artifact data
-      },
-      "renderings": {}
-    }
+    "deterministic_embeddings_created": true,
+    "parsed_file_id": "parsed_abc123",
+    "deterministic_embedding_id": "det_emb_xyz789",
+    "schema_fingerprint": "fp_abc123def456",
+    "pattern_signature": "sig_789xyz"
   },
   "events": [
     {
-      "type": "event_type",
-      // Event data
+      "type": "deterministic_embeddings_created",
+      "parsed_file_id": "parsed_abc123",
+      "deterministic_embedding_id": "det_emb_xyz789"
     }
   ]
 }
@@ -85,17 +103,17 @@
 ## 4. Artifact Registration
 
 ### State Surface Registration
-- **Artifact ID:** [How artifact_id is generated]
-- **Artifact Type:** `"artifact_type"`
-- **Lifecycle State:** `"PENDING"` or `"READY"`
+- **Artifact ID:** Generated `deterministic_embedding_id`
+- **Artifact Type:** `"deterministic_embeddings"`
+- **Lifecycle State:** `"PENDING"` (until semantic embeddings created)
 - **Produced By:** `{ intent: "create_deterministic_embeddings", execution_id: "<execution_id>" }`
-- **Semantic Descriptor:** [Descriptor details]
-- **Parent Artifacts:** [List of parent artifact IDs]
-- **Materializations:** [List of materializations]
+- **Parent Artifacts:** `[parsed_file_id]` (lineage to parsed content)
+- **Semantic Descriptor:** `{ schema: "deterministic_embeddings_v1", parser_type: null, embedding_model: "deterministic" }`
+- **Materializations:** `[{ materialization_id: "mat_<id>", storage_type: "duckdb", uri: "<duckdb_path>", format: "parquet" }]`
 
-### Artifact Index Registration
-- Indexed in Supabase `artifact_index` table
-- Includes: [List of indexed fields]
+### Storage Location
+- **DuckDB:** Deterministic embeddings stored via `DeterministicComputeAbstraction`
+- **NOT ArangoDB:** Per architectural requirements, deterministic embeddings use DuckDB
 
 ---
 
@@ -103,54 +121,64 @@
 
 ### Idempotency Key
 ```
-idempotency_key = hash([key components])
+embedding_fingerprint = hash(parsed_file_id + schema_fingerprint)
 ```
 
 ### Scope
-- [Describe scope: per tenant, per session, per artifact, etc.]
+- Per parsed content, per schema fingerprint
+- Same parsed content = same deterministic embeddings
 
 ### Behavior
-- [Describe idempotent behavior]
+- If same parsed content already has deterministic embeddings, returns existing
+- No duplicate computation
+- Deterministic = reproducible results
 
 ---
 
 ## 6. Implementation Details
 
 ### Handler Location
-[Path to handler implementation]
+`symphainy_platform/realms/content/orchestrators/content_orchestrator.py::ContentOrchestrator._handle_create_deterministic_embeddings`
 
 ### Key Implementation Steps
-1. [Step 1]
-2. [Step 2]
-3. [Step 3]
+1. Validate `parsed_file_id` (required)
+2. Retrieve parsed content via `FileParserService.get_parsed_file()`
+3. Create deterministic embeddings via `DeterministicEmbeddingService.create_deterministic_embeddings()`
+4. Store in DuckDB via `DeterministicComputeAbstraction`
+5. Register artifact in State Surface
+6. Return structured artifact response
 
 ### Dependencies
-- **Public Works:** [Abstractions needed]
-- **State Surface:** [Methods needed]
-- **Runtime:** [Context requirements]
+- **Public Works:** `DeterministicComputeAbstraction` (for DuckDB storage)
+- **State Surface:** `register_artifact()`, `add_materialization()`
+- **FileParserService:** `get_parsed_file()`
+- **DeterministicEmbeddingService:** `create_deterministic_embeddings()`
 
 ---
 
 ## 7. Frontend Integration
 
 ### Frontend Usage
-```typescript
-// [Frontend code example]
-```
+Not directly used by frontend - called as part of embedding pipeline. Frontend uses `extract_embeddings` which requires `deterministic_embedding_id`.
 
-### Expected Frontend Behavior
-1. [Behavior 1]
-2. [Behavior 2]
+### Pipeline Flow
+```
+ingest_file → save_materialization → parse_content → create_deterministic_embeddings → extract_embeddings
+```
 
 ---
 
 ## 8. Error Handling
 
 ### Validation Errors
-- [Error type] -> [Error response]
+- `parsed_file_id` missing → ValueError
+- Parsed content not found → ValueError
 
 ### Runtime Errors
-- [Error type] -> [Error response]
+- DeterministicEmbeddingService not available → RuntimeError
+- Embedding creation failed → RuntimeError
+- DuckDB storage failed → RuntimeError
+- Artifact registration failed → RuntimeError
 
 ### Error Response Format
 ```json
@@ -167,30 +195,64 @@ idempotency_key = hash([key components])
 ## 9. Testing & Validation
 
 ### Happy Path
-1. [Step 1]
-2. [Step 2]
+1. Parsed content available
+2. `create_deterministic_embeddings` intent executes
+3. Deterministic embeddings created
+4. Stored in DuckDB
+5. Artifact registered
+6. Returns deterministic_embedding_id
 
 ### Boundary Violations
-- [Violation type] -> [Expected behavior]
+- Missing `parsed_file_id` → Validation error
+- Parsed content not found → Validation error
 
 ### Failure Scenarios
-- [Failure type] -> [Expected behavior]
+- Embedding creation failure → RuntimeError
+- DuckDB storage failure → RuntimeError
+- Artifact registration failure → RuntimeError
 
 ---
 
 ## 10. Contract Compliance
 
 ### Required Artifacts
-- `artifact_type` - Required
+- `deterministic_embedding_id` - Required
+- `schema_fingerprint` - Required
+- `pattern_signature` - Required
 
 ### Required Events
-- `event_type` - Required
+- `deterministic_embeddings_created` - Required
 
 ### Lifecycle State
-- [Lifecycle state requirements]
+- Must create artifact with `lifecycle_state: "PENDING"`
+- Must set `parent_artifacts: [parsed_file_id]` for lineage
+
+### Storage Requirements
+- **Must use DuckDB** for deterministic embeddings (per architectural requirements)
+- NOT ArangoDB (reserved for semantic embeddings)
 
 ---
 
-**Last Updated:** [Date]  
-**Owner:** [Realm] Solution Team  
-**Status:** IN PROGRESS
+## 11. Cross-Reference Analysis
+
+### Journey Contract Says
+- Create deterministic embeddings from parsed content
+- Store embeddings for subsequent semantic embedding creation
+
+### Implementation Does
+- ✅ Creates deterministic embeddings via DeterministicEmbeddingService
+- ✅ Stores in DuckDB via DeterministicComputeAbstraction
+- ✅ Registers artifact with lineage
+
+### Frontend Expects
+- Not directly used by frontend
+- Required as prerequisite for `extract_embeddings`
+
+### Gaps/Discrepancies
+- None identified - implementation aligns with contract
+
+---
+
+**Last Updated:** January 27, 2026  
+**Owner:** Content Realm Solution Team  
+**Status:** ✅ **COMPREHENSIVE**

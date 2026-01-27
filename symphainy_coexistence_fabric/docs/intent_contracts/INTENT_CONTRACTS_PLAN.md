@@ -1,7 +1,7 @@
 # Intent Contracts Creation Plan
 
 **Date:** January 27, 2026  
-**Status:** ✅ **ALL TEMPLATES GENERATED** (82 intent contracts)
+**Status:** ⏳ **IN PROGRESS**
 
 ---
 
@@ -16,49 +16,127 @@ Creating intent contracts for all 28 journeys, organized by journey folder. Each
 
 ## Progress
 
-### ✅ Templates Generated (82 total)
-**Script:** `scripts/generate_intent_contracts.py`
+### ✅ Completed - Content Realm (All 4 Journeys)
 
-All intent contract templates have been generated. They are currently placeholders and need to be filled in with:
-- Intent purpose and flow details
-- Parameters (required, optional, context)
-- Return structures
-- Artifact registration details
-- Implementation details
-- Frontend integration
-- Error handling
-- Testing scenarios
-
-### ✅ Fully Completed (2 intents)
+**Journey: File Upload & Materialization**
 - `journey_content_file_upload_materialization/`
-  - ✅ `intent_ingest_file.md` - Fully detailed
-  - ✅ `intent_save_materialization.md` - Fully detailed
+  - ✅ `intent_ingest_file.md`
+  - ✅ `intent_save_materialization.md`
 
-### ⏳ Templates Generated, Needs Enhancement (80 intents)
+**Journey: File Parsing**
+- `journey_content_file_parsing/`
+  - ✅ `intent_parse_content.md` (comprehensive)
+  - ✅ `intent_get_parsed_file.md` (added - used by frontend)
+  - ❌ `intent_save_parsed_content.md` (removed - not implemented, parsing auto-saves)
 
-**Content Realm (2 remaining journeys):**
+**Journey: Deterministic Embedding**
 - `journey_content_deterministic_embedding/`
+  - ✅ `intent_create_deterministic_embeddings.md` (comprehensive)
+  - ✅ `intent_extract_embeddings.md` (renamed from save_embeddings - matches implementation)
+
+**Journey: File Management**
 - `journey_content_file_management/`
+  - ✅ `intent_list_artifacts.md` (artifact-centric vocabulary - backend to be updated)
+  - ✅ `intent_retrieve_artifact_metadata.md` (renamed from get_artifact_metadata)
+  - ✅ `intent_archive_file.md` (comprehensive)
 
-**Insights Realm (5 journeys):**
-- `journey_insights_data_quality/`
-- `journey_insights_semantic_embedding/`
-- `journey_insights_data_interpretation/`
-- `journey_insights_relationship_mapping/`
-- `journey_insights_business_analysis/`
+**📊 Content Realm Analysis**
+- ✅ `CONTENT_REALM_ANALYSIS.md` - Documents all gaps and recommendations
 
-**Journey Realm (5 journeys):**
-- `journey_journey_workflow_sop_visualization/`
-- `journey_journey_workflow_sop_conversion/`
-- `journey_journey_sop_creation_chat/`
-- `journey_journey_coexistence_analysis/`
-- `journey_journey_create_coexistence_blueprint/`
+---
 
-**Solution Realm (4 journeys):**
-- `journey_solution_synthesis/`
-- `journey_solution_roadmap_generation/`
-- `journey_solution_poc_proposal/`
-- `journey_solution_cross_pillar_integration/`
+### ✅ Completed - Journey Realm (Reorganized into 5 Journeys)
+
+**Journey: Coexistence Analysis**
+- `journey_coexistence_analysis/`
+  - ✅ `intent_analyze_coexistence.md` (comprehensive - includes identify_opportunities)
+  - ✅ `intent_optimize_process.md` (comprehensive)
+
+**Journey: SOP Management**
+- `journey_sop_management/`
+  - ✅ `intent_generate_sop.md` (comprehensive - supports workflow_id or chat_mode)
+  - ✅ `intent_generate_sop_from_chat.md` (comprehensive)
+  - ✅ `intent_sop_chat_message.md` (comprehensive)
+
+**Journey: Workflow Management**
+- `journey_workflow_management/`
+  - ✅ `intent_create_workflow.md` (comprehensive - supports SOP or BPMN file)
+  - ✅ `intent_get_workflow.md` (comprehensive)
+
+**📊 Journey Realm Analysis**
+- ✅ `JOURNEY_REALM_ANALYSIS.md` - Documents all gaps and recommendations
+
+**Note:** Original journey contracts reorganized based on implementation:
+- `journey_journey_coexistence_analysis` → `journey_coexistence_analysis`
+- `journey_journey_sop_creation_chat` → `journey_sop_management`
+- `journey_journey_workflow_sop_conversion` → `journey_workflow_management`
+- `journey_journey_workflow_sop_visualization` → Intents integrated into above
+- `journey_journey_create_coexistence_blueprint` → Moved to Outcomes Realm
+
+---
+
+### ⏳ Pending - To Be Implemented
+
+**Journey Realm - Guide Agent Operations (Frontend expects, not yet in orchestrator)**
+- `journey_agent_operations/`
+  - ⏳ `intent_analyze_user_intent.md`
+  - ⏳ `intent_get_journey_guidance.md`
+  - ⏳ `intent_get_conversation_history.md`
+
+**Journey Realm - Cross-Pillar Operations (Frontend expects, not yet in orchestrator)**
+- `journey_cross_pillar_operations/`
+  - ⏳ `intent_send_message_to_pillar_agent.md`
+  - ⏳ `intent_get_pillar_conversation_history.md`
+
+---
+
+### ✅ Completed - Insights Realm (Reorganized into 5 Journeys)
+
+**Key Finding:** Backend is comprehensive (16 intents implemented), not shells. Journey contracts were placeholder templates.
+
+**Journey: Data Quality**
+- `insights_data_quality/`
+  - ✅ `intent_assess_data_quality.md` (comprehensive - combines parsing + embedding quality)
+
+**Journey: Data Interpretation**
+- `insights_data_interpretation/`
+  - ✅ `intent_interpret_data_self_discovery.md` (comprehensive - unguided discovery)
+  - ✅ `intent_interpret_data_guided.md` (comprehensive - guided with guide_id)
+
+**Journey: Data Analysis**
+- `insights_data_analysis/`
+  - ✅ `intent_analyze_structured_data.md` (comprehensive - statistics, patterns, anomalies)
+  - ✅ `intent_analyze_unstructured_data.md` (comprehensive - NLP, deep dive with agent)
+
+**Journey: Lineage & Relationships**
+- `insights_lineage/`
+  - ✅ `intent_visualize_lineage.md` (comprehensive - "Your Data Mash")
+  - ✅ `intent_map_relationships.md` (comprehensive - entity relationships)
+
+**Journey: Extraction & Matching**
+- `insights_extraction/`
+  - ✅ `intent_extract_structured_data.md` (MCP tool - patterns: VLP, AAR, PSO)
+  - ✅ `intent_match_source_to_target.md` (three-phase matching)
+
+**📊 Insights Realm Analysis**
+- ✅ `INSIGHTS_REALM_ANALYSIS.md` - Documents backend implementation (16 intents, 12 services)
+
+**Journey Contracts Updated:**
+- ✅ `journey_insights_data_quality.md` - Updated to reflect assess_data_quality
+- ✅ `journey_insights_data_interpretation.md` - Updated with self-discovery + guided
+- ✅ `journey_insights_business_analysis.md` - Updated with structured + unstructured
+- ✅ `journey_insights_relationship_mapping.md` - Updated with lineage + relationships
+- ✅ `journey_insights_semantic_embedding.md` - Renamed to Extraction & Matching
+
+---
+
+### 📋 Remaining Realms
+
+**Outcomes Realm (includes create_blueprint from Journey):**
+- `journey_outcomes_synthesis/`
+- `journey_outcomes_blueprint/` (moved from Journey Realm)
+- `journey_outcomes_roadmap/`
+- `journey_outcomes_poc/`
 
 **Security Solution (2 journeys):**
 - `journey_security_registration/`
@@ -69,11 +147,44 @@ All intent contract templates have been generated. They are currently placeholde
 - `journey_coexistence_navigation/`
 - `journey_coexistence_guide_agent/`
 
-**Control Tower Solution (4 journeys):**
-- `journey_control_tower_monitoring/`
-- `journey_control_tower_solution_management/`
-- `journey_control_tower_developer_docs/`
-- `journey_control_tower_solution_composition/`
+---
+
+### ✅ Completed - Control Tower / Admin Dashboard (3 Views, 16 Intents)
+
+**Key Finding:** Control Tower is implemented as **Admin Dashboard** in `civic_systems/experience/admin_dashboard/`.
+
+**View: Control Room (Platform Observability)**
+- `control_tower_monitoring/`
+  - ✅ `intent_admin_get_platform_statistics.md` (comprehensive)
+  - ✅ `intent_admin_get_execution_metrics.md` (MVP - aggregation TODO)
+  - ✅ `intent_admin_get_realm_health.md` (comprehensive)
+  - ✅ `intent_admin_get_solution_registry_status.md` (comprehensive)
+  - ✅ `intent_admin_get_system_health.md` (comprehensive)
+
+**View: Developer View (SDK Documentation & Tools)**
+- `control_tower_developer/`
+  - ✅ `intent_admin_get_documentation.md` (comprehensive)
+  - ✅ `intent_admin_get_code_examples.md` (comprehensive)
+  - ✅ `intent_admin_get_patterns.md` (comprehensive)
+  - ✅ `intent_admin_validate_solution.md` (comprehensive - Solution Builder Playground)
+  - ✅ `intent_admin_preview_solution.md` (comprehensive)
+  - ✅ `intent_admin_submit_feature_request.md` (Coming Soon - gated)
+
+**View: Business User View (Solution Composition)**
+- `control_tower_business/`
+  - ✅ `intent_admin_get_composition_guide.md` (comprehensive)
+  - ✅ `intent_admin_get_solution_templates.md` (comprehensive)
+  - ✅ `intent_admin_compose_solution.md` (comprehensive - gated)
+  - ✅ `intent_admin_register_solution.md` (comprehensive)
+  - ✅ `intent_admin_submit_business_feature_request.md` (comprehensive)
+
+**📊 Control Tower Analysis**
+- ✅ `CONTROL_TOWER_ANALYSIS.md` - Documents backend implementation (3 views, 16 intents)
+
+**Architecture Notes:**
+- Frontend (AdminAPIManager.ts) uses intent-based API
+- Backend has REST endpoints + services
+- All intents use `admin_` prefix for access control filtering
 
 ---
 
@@ -90,15 +201,27 @@ Each intent contract includes:
 8. Error Handling (validation, runtime errors)
 9. Testing & Validation (happy path, boundary violations, failures)
 10. Contract Compliance (required artifacts, events, lifecycle)
+11. Cross-Reference Analysis (contract vs implementation vs frontend)
 
 ---
 
-## Next Steps
+## Summary
 
-1. **Continue with File Parsing Journey** (2 intents)
-2. **Create script to extract intents from journey contracts** (automation)
-3. **Create intent contracts for remaining journeys** (systematic approach)
-4. **Validate against implementations** (ensure alignment)
+| Realm/Solution | Journeys/Views | Intents | Status |
+|----------------|----------------|---------|--------|
+| Content | 4 | 9 | ✅ Complete |
+| Journey | 3 (reorganized) | 7 | ✅ Complete |
+| Journey (Guide Agent) | 1 | 3 | ⏳ Pending |
+| Journey (Cross-Pillar) | 1 | 2 | ⏳ Pending |
+| Insights | 5 (reorganized) | 9 | ✅ Complete |
+| Control Tower | 3 views | 16 | ✅ Complete |
+| Outcomes | 4 | TBD | 📋 Remaining |
+| Security | 2 | TBD | 📋 Remaining |
+| Coexistence | 3 | TBD | 📋 Remaining |
+
+**Notes:**
+- Insights Realm backend has 16 intents implemented, 9 documented in contracts (those used by frontend + key extraction intents).
+- Control Tower = Admin Dashboard in `civic_systems/experience/admin_dashboard/`
 
 ---
 

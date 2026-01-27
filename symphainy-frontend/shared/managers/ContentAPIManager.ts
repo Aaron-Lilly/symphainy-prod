@@ -996,6 +996,190 @@ export class ContentAPIManager {
       throw error;
     }
   }
+
+  // ============================================
+  // Journey-Based Methods (compose_journey pattern)
+  // ============================================
+
+  /**
+   * Upload and materialize file using compose_journey pattern
+   * 
+   * This is an alternative to calling uploadFile() + saveMaterialization() separately.
+   * Uses the compose_journey intent to execute the complete FileUploadMaterialization journey.
+   * 
+   * Flow: submitIntent("compose_journey") → Runtime → ContentSolution → FileUploadMaterializationJourney
+   */
+  async uploadAndMaterializeJourney(
+    file: File,
+    contentType?: string,
+    fileType?: string
+  ): Promise<UploadResponse> {
+    try {
+      const platformState = this.getPlatformState();
+      validateSession(platformState, "upload and materialize journey");
+
+      // Convert file to base64
+      const fileBuffer = await file.arrayBuffer();
+      const fileContentBase64 = btoa(String.fromCharCode(...new Uint8Array(fileBuffer)));
+
+      // Submit compose_journey intent for file_upload_materialization journey
+      const executionId = await platformState.submitIntent(
+        "compose_journey",
+        {
+          journey_id: "file_upload_materialization",
+          journey_params: {
+            file_content: fileContentBase64,
+            file_name: file.name,
+            content_type: contentType || "unstructured",
+            file_type: fileType || this._inferFileType(file.name),
+            auto_save: true, // Complete journey in one step
+          },
+        }
+      );
+
+      // Track execution
+      platformState.trackExecution(executionId);
+
+      // Wait for journey completion
+      const maxAttempts = 30;
+      let attempts = 0;
+
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const status = await platformState.getExecutionStatus(executionId);
+
+        if (status?.status === "completed") {
+          const fileArtifact = status.artifacts?.file;
+          const semanticPayload = fileArtifact?.semantic_payload || {};
+
+          return {
+            success: true,
+            file_id: semanticPayload.artifact_id,
+            boundary_contract_id: semanticPayload.boundary_contract_id,
+            materialization_pending: false,
+            file: {
+              id: semanticPayload.artifact_id || "",
+              name: file.name,
+              type: file.type,
+              size: file.size,
+              uploadDate: new Date().toISOString(),
+              status: "uploaded",
+            },
+          };
+        } else if (status?.status === "failed") {
+          throw new Error(status.error || "Journey execution failed");
+        }
+        attempts++;
+      }
+
+      throw new Error("Timeout waiting for journey completion");
+    } catch (error) {
+      console.error("Error in uploadAndMaterializeJourney:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Journey failed",
+      };
+    }
+  }
+
+  /**
+   * Parse file using compose_journey pattern
+   * 
+   * Uses the FileParsingJourney to parse content and save parsed artifact.
+   */
+  async parseFileJourney(
+    artifactId: string,
+    pendingJourneyId?: string
+  ): Promise<ParseResponse> {
+    try {
+      const platformState = this.getPlatformState();
+      validateSession(platformState, "parse file journey");
+
+      const executionId = await platformState.submitIntent(
+        "compose_journey",
+        {
+          journey_id: "file_parsing",
+          journey_params: {
+            artifact_id: artifactId,
+            pending_journey_id: pendingJourneyId,
+            auto_save: true,
+          },
+        }
+      );
+
+      platformState.trackExecution(executionId);
+
+      const maxAttempts = 30;
+      let attempts = 0;
+
+      while (attempts < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, 500));
+        const status = await platformState.getExecutionStatus(executionId);
+
+        if (status?.status === "completed") {
+          const parsedArtifact = status.artifacts?.parsed_content;
+          return {
+            success: true,
+            parsed_file_id: parsedArtifact?.semantic_payload?.parsed_artifact_id,
+            parsed_content: parsedArtifact,
+          };
+        } else if (status?.status === "failed") {
+          throw new Error(status.error || "Parsing journey failed");
+        }
+        attempts++;
+      }
+
+      throw new Error("Timeout waiting for parsing journey");
+    } catch (error) {
+      console.error("Error in parseFileJourney:", error);
+      return {
+        success: false,
+        error: error instanceof Error ? error.message : "Parsing journey failed",
+      };
+    }
+  }
+
+  /**
+   * List available journeys in the Content Solution
+   */
+  async listContentJourneys(): Promise<{ journeys: Array<{ journey_id: string; journey_name: string }> }> {
+    try {
+      const platformState = this.getPlatformState();
+      validateSession(platformState, "list content journeys");
+
+      // For now, return static list (could be fetched from backend)
+      return {
+        journeys: [
+          { journey_id: "file_upload_materialization", journey_name: "File Upload & Materialization" },
+          { journey_id: "file_parsing", journey_name: "File Parsing" },
+          { journey_id: "deterministic_embedding", journey_name: "Deterministic Embedding Creation" },
+          { journey_id: "file_management", journey_name: "File Management" },
+        ],
+      };
+    } catch (error) {
+      console.error("Error listing journeys:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * Helper: Infer file type from filename
+   */
+  private _inferFileType(filename: string): string {
+    const ext = filename.split('.').pop()?.toLowerCase() || "";
+    const typeMap: Record<string, string> = {
+      pdf: "pdf",
+      csv: "csv",
+      json: "json",
+      xml: "xml",
+      txt: "txt",
+      xlsx: "xlsx",
+      xls: "xls",
+      doc: "doc",
+      docx: "docx",
+    };
+    return typeMap[ext] || "unknown";
+  }
 }
 
 // Factory function for use in components

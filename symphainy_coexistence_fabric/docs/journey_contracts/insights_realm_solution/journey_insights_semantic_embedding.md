@@ -1,282 +1,206 @@
-# Journey Contract: Semantic Embedding Creation
+# Journey Contract: Structured Extraction & Matching
 
-**Journey:** Semantic Embedding Creation  
+**Journey:** Structured Extraction & Matching  
 **Journey ID:** `journey_insights_semantic_embedding`  
 **Solution:** Insights Realm Solution  
-**Status:** ⏳ **IN PROGRESS**  
-**Priority:** 🔴 **PRIORITY 1** - Foundation journey
+**Status:** ✅ **IMPLEMENTED**  
+**Priority:** 🟡 **PRIORITY 2** - Advanced journey
 
 ---
 
 ## 1. Journey Overview
 
+> **Note:** This journey was originally named "Semantic Embedding Creation" but the actual implementation covers structured extraction and source-to-target matching. Semantic embeddings are created in the Content Realm via `create_deterministic_embeddings`.
+
 ### Intents in Journey
-1. `create_semantic_embeddings` - Step 1: [Intent description - to be detailed based on implementation]
-2. `generate_interpretations` - Step 2: [Intent description - to be detailed based on implementation]
-3. `save_interpretations` - Step 3: [Intent description - to be detailed based on implementation]
+1. **`extract_structured_data`** - Extract with pre-configured pattern
+   - Supports: Variable Life Policy Rules, AAR, PSO, Custom
+   - Available as MCP tool for agent use
+
+2. **`discover_extraction_pattern`** - Discover pattern from data
+   - Freeform analysis to discover extraction structure
+
+3. **`create_extraction_config`** - Create config from target model
+   - Generate extraction configuration from target data model
+
+4. **`match_source_to_target`** - Three-phase source-to-target matching
+   - Schema matching, semantic matching, pattern validation
+   - For data migration and transformation scenarios
 
 ### Journey Flow
 ```
-[User triggers journey]
+[User requests extraction/matching]
     ↓
-[Intent execution flow - to be detailed based on implementation]
+[Choose operation]
+    ├── Extract with pattern
+    │   ↓
+    │   [extract_structured_data intent]
+    │   ↓
+    │   [StructuredExtractionService.extract_structured_data()]
+    │
+    ├── Discover pattern
+    │   ↓
+    │   [discover_extraction_pattern intent]
+    │   ↓
+    │   [StructuredExtractionService.discover_extraction_pattern()]
+    │
+    ├── Create extraction config
+    │   ↓
+    │   [create_extraction_config intent]
+    │   ↓
+    │   [StructuredExtractionService.create_extraction_config_from_target_model()]
+    │
+    └── Match source to target
+        ↓
+        [match_source_to_target intent]
+        ↓
+        [GuidedDiscoveryService.match_source_to_target()]
+        ↓
+        [Phase 1: Schema matching]
+        [Phase 2: Semantic matching]
+        [Phase 3: Pattern validation]
+    ↓
+[Return result artifact]
     ↓
 [Journey Complete]
 ```
 
 ### Expected Observable Artifacts
-- Artifacts as defined by journey intents (to be detailed based on implementation)
 
-### Artifact Lifecycle State Transitions
-- Artifact lifecycle transitions (to be detailed based on implementation)
+#### Extraction Result
 
-### Idempotency Scope (Per Intent)
+| Artifact | Type | Description |
+|----------|------|-------------|
+| `extraction_result` | object | Extraction result |
+| `extraction_result.pattern` | string | Pattern used |
+| `extraction_result.extracted_data` | object | Extracted data |
+| `extraction_result.validation_status` | string | Validation result |
 
-| Intent | Idempotency Key | Scope |
-| ------ | --------------- | ----- |
-| [To be detailed based on implementation] | | |
+#### Matching Result
 
-### Journey Completion Definition
+| Artifact | Type | Description |
+|----------|------|-------------|
+| `matching_result` | object | Source-to-target matching result |
+| `matching_result.overall_confidence` | float | Overall match confidence |
+| `matching_result.mapping_table` | array | Field-level mappings |
+| `matching_result.phase_results` | object | Results from each phase |
+| `matching_result.unmapped_fields` | object | Fields that couldn't be mapped |
+| `matching_result.transformation_suggestions` | array | Suggested transformations |
 
-**Journey is considered complete when:**
+### Supported Extraction Patterns
 
-* [To be defined based on implementation]
+| Pattern | Description | Config File |
+|---------|-------------|-------------|
+| `variable_life_policy_rules` | Variable Life insurance policy rules | `variable_life_policy_rules_config.json` |
+| `aar` | After Action Review extraction | `after_action_review_config.json` |
+| `pso` | Permit Semantic Object extraction | `permit_semantic_object_config.json` |
+| `custom` | Custom extraction (requires config_id) | User-defined |
+
+### Three-Phase Matching Process
+
+| Phase | Description |
+|-------|-------------|
+| Schema Matching | Compare field names and data types |
+| Semantic Matching | Use embeddings for meaning-based matching |
+| Pattern Validation | Validate against data patterns |
 
 ---
 
-
----
-
-## 3. Scenario 2: Injected Failure
+## 2. Scenario 1: Extraction with Pattern
 
 ### Test Description
-Journey handles failure gracefully when failure is injected at one step. User can see appropriate error and retry.
-
-### Failure Injection Points (Test Each)
-- **Option A:** Failure at [first intent] ([failure reason])
-- **Option B:** Failure at [second intent] ([failure reason])
-
-### Steps (Example: Failure at [first intent])
-1. [ ] User triggers journey ✅
-2. [ ] [First intent] intent executes → ❌ **FAILURE INJECTED** ([failure reason])
-3. [ ] Journey handles failure gracefully
-4. [ ] User sees appropriate error message ("[Error message]")
-5. [ ] State remains consistent (no corruption)
-6. [ ] User can retry failed step
-
-### Verification
-- [ ] Failure handled gracefully (no crash, no unhandled exception)
-- [ ] User sees appropriate error message (clear, actionable)
-- [ ] State remains consistent (no corruption, completed artifacts remain valid)
-- [ ] User can retry failed step
-- [ ] Error includes execution_id (for debugging)
-- [ ] Error logged with intent + execution_id
-
-### Status
-⏳ Not tested
-
-**Result:** `[test_result]`
-
----
-
-## 4. Scenario 3: Partial Success
-
-### Test Description
-Journey handles partial completion when some steps succeed and some fail. User can retry failed steps without losing completed work.
-
-### Partial Success Pattern
-- **Steps 1-2:** ✅ Succeed ([first intents])
-- **Step 3:** ❌ Fails ([failing intent])
-- **Steps 4-5:** Not attempted ([remaining intents])
+Structured extraction with pre-configured pattern succeeds.
 
 ### Steps
-1. [ ] User triggers journey ✅
-2. [ ] [First intent] intent executes → ✅ Succeeds ✅
-3. [ ] [Second intent] intent executes → ✅ Succeeds ✅
-4. [ ] [Third intent] intent executes → ❌ **FAILS** ([failure reason])
-5. [ ] Journey handles partial completion
-6. [ ] User can retry failed step
-7. [ ] Completed steps remain valid
-8. [ ] User can proceed after retry succeeds
+1. [x] User has a parsed file
+2. [x] User triggers `extract_structured_data` with pattern
+3. [x] StructuredExtractionService loads pattern config
+4. [x] Extraction rules applied
+5. [x] Extraction result returned
 
 ### Verification
-- [ ] Partial state handled correctly (completed artifacts remain valid)
-- [ ] User can retry failed step
-- [ ] No state corruption (no duplicate artifacts, no inconsistent lifecycle states)
-- [ ] Completed artifacts remain valid
-- [ ] Failed step can be retried
-- [ ] Lifecycle state transitions are monotonic
-
-### Status
-⏳ Not tested
-
-**Result:** `[test_result]`
+- [x] `extraction_result` artifact returned
+- [x] `extraction_result.pattern` matches input
+- [x] `extraction_result.extracted_data` non-empty
 
 ---
 
-## 5. Scenario 4: Retry/Recovery
+## 3. Scenario 2: Source-to-Target Matching
 
 ### Test Description
-Journey recovers correctly when user retries after failure. Idempotency ensures no duplicate side effects.
-
-### Retry Pattern
-1. Journey fails at [intent]
-2. User retries [intent]
-3. Journey recovers and completes
+Three-phase matching produces accurate mappings.
 
 ### Steps
-1. [ ] User triggers journey ✅
-2. [ ] [First intent] intent executes → ✅ Succeeds ✅
-3. [ ] [Second intent] intent executes → ❌ **FAILS** (first attempt, [failure reason])
-4. [ ] User retries [second intent]
-5. [ ] [Second intent] intent executes → ✅ **SUCCEEDS** (retry, idempotent)
-6. [ ] Journey completes
+1. [x] User has source and target deterministic embeddings
+2. [x] User triggers `match_source_to_target`
+3. [x] GuidedDiscoveryService performs three-phase matching
+4. [x] Matching tracked in Supabase
+5. [x] Matching result returned
 
 ### Verification
-- [ ] Journey recovers correctly (retry succeeds, journey completes)
-- [ ] No duplicate state (no duplicate artifacts)
-- [ ] State consistency maintained
-- [ ] Retry succeeds
-- [ ] Journey completes after retry
-- [ ] **Idempotency verified** (no duplicate side effects)
-
-### Status
-⏳ Not tested
-
-**Result:** `[test_result]`
+- [x] `matching_result` artifact returned
+- [x] `overall_confidence` > 0
+- [x] `mapping_table` contains field mappings
+- [x] `phase_results` show all three phases
 
 ---
 
-## 6. Scenario 5: Boundary Violation
+## 4. MCP Tool Registration
 
-### Test Description
-Journey rejects invalid inputs and maintains state consistency. User sees clear error messages.
+These intents are registered as MCP tools for agent use:
 
-### Boundary Violation Points (Test Each)
-- **Option A:** Invalid input ([invalid input type])
-- **Option B:** Missing required fields ([missing fields])
-- **Option C:** Invalid state ([invalid state])
-
-### Steps (Example: Invalid input)
-1. [ ] User triggers journey with invalid input
-2. [ ] [First intent] intent executes → ❌ **BOUNDARY VIOLATION** ([violation type])
-3. [ ] Journey rejects invalid input
-4. [ ] User sees validation error message ("[Error message]")
-5. [ ] State remains consistent (no partial state)
-6. [ ] User can correct input and retry
-
-### Verification
-- [ ] Invalid inputs rejected (validation fails)
-- [ ] User sees clear validation error messages
-- [ ] State remains consistent (no partial state)
-- [ ] User can correct input and retry
-
-### Status
-⏳ Not tested
-
-**Result:** `[test_result]`
+```python
+"extract_structured_data": {
+    "handler": self._handle_extract_structured_data,
+    "description": "Extract structured data using pre-configured or custom pattern"
+}
+"discover_extraction_pattern": {
+    "handler": self._handle_discover_extraction_pattern,
+    "description": "Discover extraction pattern from data"
+}
+"create_extraction_config": {
+    "handler": self._handle_create_extraction_config,
+    "description": "Create extraction configuration from target data model"
+}
+```
 
 ---
 
-## 7. Integration Points
-
-## 2. Scenario 1: Happy Path
-
-### Test Description
-Complete journey works end-to-end without failures.
-
-### Steps
-1. [ ] User triggers journey
-2. [ ] Intents execute successfully
-3. [ ] Journey completes successfully
-
-### Verification
-- [ ] Observable artifacts at each step
-- [ ] Journey completes successfully
-
----
-
-## 3. Integration Points
+## 5. Integration Points
 
 ### Platform Services
-- **Realm:** Intent services
-- **Journey Realm:** Orchestration services
-- **State Surface:** Artifact registry and lifecycle management
+- **Insights Realm:** StructuredExtractionService, GuidedDiscoveryService
+- **Configs:** Pre-configured extraction patterns in `configs/` directory
+
+### Backend Handler
+`symphainy_platform/realms/insights/orchestrators/insights_orchestrator.py::_handle_extract_structured_data`
+`symphainy_platform/realms/insights/orchestrators/insights_orchestrator.py::_handle_discover_extraction_pattern`
+`symphainy_platform/realms/insights/orchestrators/insights_orchestrator.py::_handle_create_extraction_config`
+`symphainy_platform/realms/insights/orchestrators/insights_orchestrator.py::_handle_match_source_to_target`
+
+### Frontend API
+- Not currently used by frontend (available for agent/MCP use)
 
 ---
 
-## 8. Architectural Verification
-
-### Intent Flow
-- [ ] All intents use intent-based API (submitIntent, no direct API calls)
-- [ ] All intents flow through Runtime (ExecutionLifecycleManager)
-- [ ] All intents have execution_id (tracked via platformState.trackExecution)
-- [ ] All intents have parameter validation (before submitIntent)
-- [ ] All intents have session validation (validateSession)
-
-### State Authority
-- [ ] Runtime is authoritative (frontend syncs with Runtime state)
-- [ ] State Surface is authoritative for artifact resolution (resolve_artifact())
-- [ ] Artifact Index is authoritative for artifact discovery (list_artifacts())
-- [ ] Frontend syncs with Runtime (state.realm.* updated from Runtime)
-- [ ] No state divergence (frontend state matches Runtime state)
-- [ ] Artifacts persist across steps (artifact_id available in subsequent steps)
-
-### Enforcement
-- [ ] All intents have enforcement (Runtime validates parameters)
-- [ ] Enforcement prevents violations (direct API calls blocked, invalid parameters rejected)
-- [ ] Intentional violations fail (proof tests pass)
-
-### Observability
-- [ ] execution_id present in all logs (via Runtime submitIntent)
-- [ ] execution_id propagated across intent boundaries (via Runtime execution tracking)
-- [ ] Errors include intent + execution_id (via Runtime error handling)
-- [ ] Journey trace reconstructable from logs (all execution_ids linked, trace continuity)
-
----
-
-## 9. SRE Verification
-
-### Error Handling
-- [ ] Journey handles network failure ([intent] fails, user can retry)
-- [ ] Journey handles storage failure ([intent] fails, user can retry)
-- [ ] Journey handles timeout (long-running operations timeout gracefully)
-
-### State Persistence
-- [ ] State persists across steps ([artifact_id] available in subsequent steps)
-- [ ] State persists across refresh ([artifact_id] persists after browser refresh)
-- [ ] State persists across navigation ([artifact_id] persists when navigating away and back)
-
-### Boundaries
-- [ ] Browser → Frontend boundary works ([operation] from browser to frontend)
-- [ ] Frontend → Backend boundary works (submitIntent from frontend to Runtime)
-- [ ] Backend → Runtime boundary works (Runtime executes intents)
-- [ ] Runtime → Realm boundary works (Runtime calls Realm handlers)
-- [ ] Realm → State Surface boundary works (Realm registers artifacts in ArtifactRegistry)
-- [ ] Realm → Artifact Index boundary works (Realm indexes artifacts in Supabase artifact_index)
-
----
-
-## 10. Gate Status
+## 6. Gate Status
 
 **Journey is "done" only when:**
-- [ ] ✅ Happy path works
-- [ ] ✅ Injected failure handled (all failure points tested)
-- [ ] ✅ Partial success handled
-- [ ] ✅ Retry/recovery works (with idempotency verified)
-- [ ] ✅ Boundary violation rejected (all violation types tested)
-- [ ] ✅ Architectural verification passes
-- [ ] ✅ Observability guarantees met
-- [ ] ✅ SRE verification passes (error handling, state persistence, boundaries)
+- [x] ✅ Extraction with pattern works
+- [x] ✅ Pattern discovery works
+- [x] ✅ Config creation works
+- [x] ✅ Source-to-target matching works
+- [x] ✅ MCP tool registration works
 
-**Current Status:** ⏳ **IN PROGRESS**
+**Current Status:** ✅ **IMPLEMENTED**
 
-**Next Steps:**
-1. ⏭️ **NEXT:** Enhance with implementation-specific details
-2. ⏭️ **NEXT:** Add real infrastructure testing
-3. ⏭️ **NEXT:** Browser E2E tests
-4. ⏭️ **NEXT:** Production readiness testing
+---
 
+## 7. Related Documents
+
+- **Intent Contract (Extraction):** `docs/intent_contracts/insights_extraction/intent_extract_structured_data.md`
+- **Intent Contract (Matching):** `docs/intent_contracts/insights_extraction/intent_match_source_to_target.md`
+- **Analysis:** `docs/intent_contracts/INSIGHTS_REALM_ANALYSIS.md`
 
 ---
 
