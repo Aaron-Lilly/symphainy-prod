@@ -12,15 +12,30 @@
 ## 1. Intent Overview
 
 ### Purpose
-[Describe the purpose of this intent based on journey contract]
+Route conversation from GuideAgent to appropriate Liaison Agent with context sharing. GuideAgent determines which Liaison Agent based on user intent and pillar context. Context is shared to enable seamless conversation continuity.
 
 ### Intent Flow
 ```
-[Describe the flow for this intent]
+[GuideAgent determines user needs pillar-specific assistance]
+    ↓
+[route_to_liaison_agent intent executes]
+    ↓
+[Extract conversation context from GuideAgent]
+    ↓
+[Determine appropriate Liaison Agent (content, insights, journey, or solution)]
+    ↓
+[Share context to Liaison Agent via share_context_to_agent]
+    ↓
+[Update chat session active_agent to Liaison Agent]
+    ↓
+[Returns liaison_agent_activation_artifact]
 ```
 
 ### Expected Observable Artifacts
-- [List expected artifacts]
+- `liaison_agent_activation_artifact` - Activation artifact with shared context
+- `routing_decision` - GuideAgent's routing decision (which Liaison Agent)
+- `shared_context` - Context shared to Liaison Agent (via `share_context_to_agent` intent)
+- `chat_session` - Updated chat session with `active_agent` changed to Liaison Agent
 
 ---
 
@@ -30,13 +45,15 @@
 
 | Parameter | Type | Description | Validation |
 |-----------|------|-------------|------------|
-| `parameter_name` | `type` | Description | Validation rules |
+| `target_pillar` | `string` | Target pillar for Liaison Agent | Required, one of: "content", "insights", "journey", "solution" |
 
 ### Optional Parameters
 
 | Parameter | Type | Description | Default |
 |-----------|------|-------------|---------|
-| `parameter_name` | `type` | Description | Default value |
+| `chat_session_id` | `string` | Chat session identifier | If not provided, uses active session for user |
+| `routing_reason` | `string` | Reason for routing decision | Optional explanation |
+| `context_to_share` | `object` | Specific context to share (if not provided, shares all context) | If not provided, shares all conversation context |
 
 ### Context Metadata (from ExecutionContext)
 
@@ -85,17 +102,12 @@
 ## 4. Artifact Registration
 
 ### State Surface Registration
-- **Artifact ID:** [How artifact_id is generated]
-- **Artifact Type:** `"artifact_type"`
-- **Lifecycle State:** `"PENDING"` or `"READY"`
-- **Produced By:** `{ intent: "route_to_liaison_agent", execution_id: "<execution_id>" }`
-- **Semantic Descriptor:** [Descriptor details]
-- **Parent Artifacts:** [List of parent artifact IDs]
-- **Materializations:** [List of materializations]
+- **No artifacts registered** - Activation is ephemeral, context shared via `share_context_to_agent`
+- Chat session artifact updated (active_agent changed to Liaison Agent)
 
 ### Artifact Index Registration
-- Indexed in Supabase `artifact_index` table
-- Includes: [List of indexed fields]
+- **No artifacts indexed** - Activation-only intent
+- Chat session updated in Supabase (chat_sessions table, active_agent field)
 
 ---
 
@@ -103,31 +115,55 @@
 
 ### Idempotency Key
 ```
-idempotency_key = hash([key components])
+idempotency_key = hash(chat_session_id + target_pillar + context_hash)
 ```
 
 ### Scope
-- [Describe scope: per tenant, per session, per artifact, etc.]
+- Per chat session, per target pillar, per context state
+- Same session + same pillar + same context = same routing result (idempotent)
 
 ### Behavior
-- [Describe idempotent behavior]
+- If routing to same pillar with same context is called multiple times, returns same activation (idempotent)
+- Context sharing is idempotent (handled by `share_context_to_agent` intent)
 
 ---
 
 ## 6. Implementation Details
 
 ### Handler Location
-[Path to handler implementation]
+- **New Implementation:** `symphainy_platform/realms/coexistence/intent_services/route_to_liaison_agent_service.py` (to be created)
 
 ### Key Implementation Steps
-1. [Step 1]
-2. [Step 2]
-3. [Step 3]
+1. **Extract Parameters:** Get `target_pillar`, `chat_session_id`, `routing_reason`, `context_to_share` from intent parameters
+2. **Retrieve Chat Session:**
+   - If `chat_session_id` provided: Get session by ID
+   - If not provided: Get active session for user
+   - Verify session exists and `active_agent: "guide"`
+3. **Extract Conversation Context:**
+   - Get `context` from chat session
+   - If `context_to_share` provided: Use it
+   - If not: Extract all conversation context (conversation_history, shared_intent, etc.)
+4. **Share Context to Liaison Agent:**
+   - Call `share_context_to_agent` intent with:
+     - `source_agent: "guide"`
+     - `target_agent: "liaison_{target_pillar}"`
+     - `shared_context: context_to_share or all context`
+5. **Update Chat Session:**
+   - Update `active_agent` to `"liaison_{target_pillar}"`
+   - Update session in Supabase (chat_sessions table)
+6. **Return Liaison Agent Activation:**
+   - Return `target_pillar`, `liaison_agent_id`, `shared_context`, `routing_reason`, `active_agent_updated`
 
 ### Dependencies
-- **Public Works:** [Abstractions needed]
-- **State Surface:** [Methods needed]
-- **Runtime:** [Context requirements]
+- **Public Works:**
+  - `TenantAbstraction` - For tenant-scoped operations
+- **State Surface:**
+  - `get_artifact()` - Retrieve chat session artifact
+  - `update_artifact()` - Update chat session artifact
+- **Runtime:**
+  - `ExecutionContext` - Tenant, user, session, execution context
+- **Other Intents:**
+  - `share_context_to_agent` - For context sharing
 
 ---
 
@@ -147,10 +183,14 @@ idempotency_key = hash([key components])
 ## 8. Error Handling
 
 ### Validation Errors
-- [Error type] -> [Error response]
+- **Missing target_pillar:** `ValueError("target_pillar is required")` -> Returns error response with `ERROR_CODE: "MISSING_PARAMETER"`
+- **Invalid target_pillar:** Pillar not one of valid values -> Returns error response with `ERROR_CODE: "INVALID_PILLAR"`
+- **Chat session not found:** Chat session does not exist -> Returns error response with `ERROR_CODE: "SESSION_NOT_FOUND"`
 
 ### Runtime Errors
-- [Error type] -> [Error response]
+- **Context sharing failed:** Cannot share context to Liaison Agent -> Returns error response with `ERROR_CODE: "CONTEXT_SHARING_FAILED"`
+- **Session update failed:** Cannot update chat session -> Returns error response with `ERROR_CODE: "SESSION_UPDATE_FAILED"`
+- **Liaison Agent unavailable:** Target Liaison Agent not available -> Returns error response with `ERROR_CODE: "LIAISON_AGENT_UNAVAILABLE"`
 
 ### Error Response Format
 ```json
@@ -158,7 +198,11 @@ idempotency_key = hash([key components])
   "error": "Error message",
   "error_code": "ERROR_CODE",
   "execution_id": "exec_abc123",
-  "intent_type": "route_to_liaison_agent"
+  "intent_type": "route_to_liaison_agent",
+  "details": {
+    "target_pillar": "content",
+    "reason": "Context sharing failed"
+  }
 }
 ```
 
@@ -181,16 +225,24 @@ idempotency_key = hash([key components])
 ## 10. Contract Compliance
 
 ### Required Artifacts
-- `artifact_type` - Required
+- `liaison_agent_activation` - Required (Liaison Agent activation artifact)
 
 ### Required Events
-- `event_type` - Required
+- `liaison_agent_activated` - Required (emitted when Liaison Agent is activated)
 
 ### Lifecycle State
-- [Lifecycle state requirements]
+- **No lifecycle state** - This is an activation-only intent with no persistent artifacts
+- **Chat session active_agent** - Updated to Liaison Agent identifier
+
+### Contract Validation
+- ✅ Intent must return Liaison Agent activation with shared context
+- ✅ Context must be shared via `share_context_to_agent` intent
+- ✅ Chat session must be updated with new active_agent
+- ✅ Routing decision must be included
+- ✅ Idempotent (same session + same pillar + same context = same activation)
 
 ---
 
-**Last Updated:** [Date]  
-**Owner:** [Realm] Solution Team  
-**Status:** IN PROGRESS
+**Last Updated:** January 27, 2026  
+**Owner:** Coexistence Solution Team  
+**Status:** ✅ **ENHANCED** - Ready for implementation
