@@ -74,9 +74,9 @@ class InsightsLiaisonAgent(AgentBase):
         self.file_parser_service = None
         self.semantic_signal_extractor = None
         if public_works:
-            from symphainy_platform.realms.content.enabling_services.deterministic_chunking_service import DeterministicChunkingService
-            from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
-            from symphainy_platform.realms.content.enabling_services.semantic_signal_extractor import SemanticSignalExtractor
+            from symphainy_platform.foundations.libraries.chunking.deterministic_chunking_service import DeterministicChunkingService
+            from symphainy_platform.foundations.libraries.parsing.file_parser_service import FileParserService
+            from symphainy_platform.civic_systems.agentic.agents.semantic_signal_extractor import SemanticSignalExtractor
             self.deterministic_chunking_service = DeterministicChunkingService(public_works=public_works)
             self.file_parser_service = FileParserService(public_works=public_works)
             self.semantic_signal_extractor = SemanticSignalExtractor(public_works=public_works)

@@ -43,8 +43,8 @@ from ..agents.insights_liaison_agent import InsightsLiaisonAgent
 from ..agents.business_analysis_agent import BusinessAnalysisAgent
 from symphainy_platform.civic_systems.artifact_plane.artifact_plane import ArtifactPlane
 from symphainy_platform.civic_systems.smart_city.sdk.data_steward_sdk import DataStewardSDK
-from symphainy_platform.realms.content.enabling_services.deterministic_chunking_service import DeterministicChunkingService
-from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
+from symphainy_platform.foundations.libraries.chunking.deterministic_chunking_service import DeterministicChunkingService
+from symphainy_platform.foundations.libraries.parsing.file_parser_service import FileParserService
 
 
 class InsightsOrchestrator:
@@ -1520,7 +1520,7 @@ class InsightsOrchestrator:
             return {"success": False, "error": "parsed_file_id is required"}
         
         try:
-            from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
+            from symphainy_platform.foundations.libraries.parsing.file_parser_service import FileParserService
             file_parser_service = FileParserService(public_works=self.public_works)
             
             exec_context = context or ExecutionContext(

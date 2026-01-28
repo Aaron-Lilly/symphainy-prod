@@ -181,7 +181,7 @@ class OperationsOrchestrator:
             # Try to get from parsed file if workflow_file_path is a file_id
             if self.public_works:
                 try:
-                    from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
+                    from symphainy_platform.foundations.libraries.parsing.file_parser_service import FileParserService
                     file_parser_service = FileParserService(public_works=self.public_works)
                     parsed_content = await file_parser_service.get_parsed_file(
                         parsed_file_id=workflow_file_path,

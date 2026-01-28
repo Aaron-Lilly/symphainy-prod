@@ -450,8 +450,8 @@ Extract {category.name} information accurately and return valid JSON.
                     "metadata": data_source.get("metadata", {})
                 }
             
-            # Use Content Realm service (governed access)
-            from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
+            # Use File Parser library (governed access)
+            from symphainy_platform.foundations.libraries.parsing.file_parser_service import FileParserService
             file_parser_service = FileParserService(public_works=self.public_works)
             
             parsed_file = await file_parser_service.get_parsed_file(
@@ -643,8 +643,8 @@ Return valid JSON with suggested categories and extraction methods.
                     "LLM will only receive file_id."
                 )
             else:
-                # Use Content Realm service (governed access)
-                from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
+                # Use File Parser library (governed access)
+                from symphainy_platform.foundations.libraries.parsing.file_parser_service import FileParserService
                 file_parser_service = FileParserService(public_works=self.public_works)
                 
                 target_model_file = await file_parser_service.get_parsed_file(

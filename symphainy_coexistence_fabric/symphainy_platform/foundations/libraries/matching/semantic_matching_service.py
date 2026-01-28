@@ -15,8 +15,8 @@ ARCHITECTURAL PRINCIPLE: This is Phase 2 of three-phase matching.
 from typing import Dict, Any, Optional, List
 from utilities import get_logger
 from symphainy_platform.runtime.execution_context import ExecutionContext
-from symphainy_platform.realms.content.enabling_services.deterministic_chunking_service import DeterministicChunkingService
-from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
+from symphainy_platform.foundations.libraries.chunking.deterministic_chunking_service import DeterministicChunkingService
+from symphainy_platform.foundations.libraries.parsing.file_parser_service import FileParserService
 
 
 class SemanticMatchingService:

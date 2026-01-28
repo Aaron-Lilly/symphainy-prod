@@ -63,8 +63,8 @@ class MetricsCalculatorService:
         self.logger.info(f"Calculating metrics: {parsed_file_id} for tenant: {tenant_id}")
         
         try:
-            # Get parsed file content via Content Realm service
-            from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
+            # Get parsed file content via File Parser library
+            from symphainy_platform.foundations.libraries.parsing.file_parser_service import FileParserService
             file_parser_service = FileParserService(public_works=self.public_works)
             parsed_content = await file_parser_service.get_parsed_file(
                 parsed_file_id=parsed_file_id,

@@ -21,8 +21,8 @@ from typing import Dict, Any, Optional, List
 
 from utilities import get_logger
 from symphainy_platform.runtime.execution_context import ExecutionContext
-from symphainy_platform.realms.content.enabling_services.deterministic_chunking_service import DeterministicChunkingService
-from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
+from symphainy_platform.foundations.libraries.chunking.deterministic_chunking_service import DeterministicChunkingService
+from symphainy_platform.foundations.libraries.parsing.file_parser_service import FileParserService
 
 
 class DataQualityService:
@@ -197,8 +197,8 @@ class DataQualityService:
                 self.logger.warning("Public Works not available - cannot retrieve parsed file via Content Realm")
                 return None
             
-            # Use Content Realm service (governed access)
-            from symphainy_platform.realms.content.enabling_services.file_parser_service import FileParserService
+            # Use File Parser library (governed access)
+            from symphainy_platform.foundations.libraries.parsing.file_parser_service import FileParserService
             file_parser_service = FileParserService(public_works=self.public_works)
             
             parsed_file = await file_parser_service.get_parsed_file(
