@@ -27,7 +27,7 @@ if str(project_root) not in sys.path:
 from utilities import get_logger, generate_event_id
 from symphainy_platform.bases.orchestrator_base import BaseOrchestrator
 from symphainy_platform.runtime.execution_context import ExecutionContext
-from symphainy_coexistence_fabric.symphainy_platform.realms.operations import (
+from symphainy_platform.realms.operations import (
     GenerateSOPService,
     GenerateSOPFromChatService,
     SOPChatMessageService

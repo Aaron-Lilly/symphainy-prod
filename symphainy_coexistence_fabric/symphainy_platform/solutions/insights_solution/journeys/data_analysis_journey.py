@@ -90,7 +90,7 @@ class DataAnalysisJourney:
     
     async def _get_structured_service(self):
         if not self._structured_service:
-            from symphainy_coexistence_fabric.symphainy_platform.realms.insights.intent_services import (
+            from symphainy_platform.realms.insights.intent_services import (
                 AnalyzeStructuredDataService
             )
             self._structured_service = AnalyzeStructuredDataService(
@@ -101,7 +101,7 @@ class DataAnalysisJourney:
     
     async def _get_unstructured_service(self):
         if not self._unstructured_service:
-            from symphainy_coexistence_fabric.symphainy_platform.realms.insights.intent_services import (
+            from symphainy_platform.realms.insights.intent_services import (
                 AnalyzeUnstructuredDataService
             )
             self._unstructured_service = AnalyzeUnstructuredDataService(

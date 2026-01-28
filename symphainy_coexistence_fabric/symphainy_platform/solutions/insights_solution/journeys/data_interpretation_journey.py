@@ -92,7 +92,7 @@ class DataInterpretationJourney:
     
     async def _get_self_discovery_service(self):
         if not self._self_discovery_service:
-            from symphainy_coexistence_fabric.symphainy_platform.realms.insights.intent_services import (
+            from symphainy_platform.realms.insights.intent_services import (
                 InterpretDataSelfDiscoveryService
             )
             self._self_discovery_service = InterpretDataSelfDiscoveryService(
@@ -103,7 +103,7 @@ class DataInterpretationJourney:
     
     async def _get_guided_service(self):
         if not self._guided_service:
-            from symphainy_coexistence_fabric.symphainy_platform.realms.insights.intent_services import (
+            from symphainy_platform.realms.insights.intent_services import (
                 InterpretDataGuidedService
             )
             self._guided_service = InterpretDataGuidedService(

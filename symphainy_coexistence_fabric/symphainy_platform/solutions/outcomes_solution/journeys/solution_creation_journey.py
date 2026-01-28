@@ -149,7 +149,7 @@ class SolutionCreationJourney:
     async def _get_intent_service(self):
         """Get or create the intent service."""
         if not self._intent_service:
-            from symphainy_coexistence_fabric.symphainy_platform.realms.outcomes.intent_services import (
+            from symphainy_platform.realms.outcomes.intent_services import (
                 CreateSolutionService
             )
             self._intent_service = CreateSolutionService(

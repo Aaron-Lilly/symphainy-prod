@@ -82,7 +82,7 @@ class DataQualityJourney:
     
     async def _get_intent_service(self):
         if not self._intent_service:
-            from symphainy_coexistence_fabric.symphainy_platform.realms.insights.intent_services import (
+            from symphainy_platform.realms.insights.intent_services import (
                 AssessDataQualityService
             )
             self._intent_service = AssessDataQualityService(
