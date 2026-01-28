@@ -86,4 +86,4 @@ class TestAnalyzeCoexistenceExecution:
         
         # Services return artifacts containing analysis results
         assert "artifacts" in result
-        assert "analysis" in result["artifacts"]
+        assert "coexistence_analysis" in result["artifacts"]

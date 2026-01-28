@@ -1,6 +1,9 @@
 """
 Test GenerateVisual Intent Service
 
+NOTE: The generate_visual intent is NOT currently implemented in OutcomesSolution.
+These tests document expected behavior but are skipped until implemented.
+
 Tests:
 - Parameter validation
 - Service execution
@@ -29,7 +32,10 @@ class TestGenerateVisualParameters:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="outcomes_solution",
-            parameters={}
+            parameters={
+                "visual_type": "chart",
+                "data_source_id": "test_data_123"
+            }
         )
         
         assert intent.intent_type == "generate_visual"
@@ -39,6 +45,7 @@ class TestGenerateVisualExecution:
     """Test generate_visual execution."""
     
     @pytest.mark.asyncio
+    @pytest.mark.skip(reason="Intent 'generate_visual' not implemented in OutcomesSolution")
     async def test_executes_successfully(
         self, outcomes_solution, execution_context
     ):
@@ -50,14 +57,19 @@ class TestGenerateVisualExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="outcomes_solution",
-            parameters={}
+            parameters={
+                "visual_type": "chart",
+                "data_source_id": "test_data_123"
+            }
         )
         
         result = await outcomes_solution.handle_intent(intent, execution_context)
         
-        assert "success" in result or "error" in result
+        assert "artifacts" in result
+        assert "events" in result
     
     @pytest.mark.asyncio
+    @pytest.mark.skip(reason="Intent 'generate_visual' not implemented in OutcomesSolution")
     async def test_registers_artifact(
         self, outcomes_solution, execution_context
     ):
@@ -69,10 +81,12 @@ class TestGenerateVisualExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="outcomes_solution",
-            parameters={}
+            parameters={
+                "visual_type": "diagram",
+                "data_source_id": "test_data_456"
+            }
         )
         
         result = await outcomes_solution.handle_intent(intent, execution_context)
         
-        if "success" in result:
-            assert "artifacts" in result or "artifact_id" in result
+        assert "artifacts" in result

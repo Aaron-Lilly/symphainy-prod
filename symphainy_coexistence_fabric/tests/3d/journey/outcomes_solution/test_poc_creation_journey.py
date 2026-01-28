@@ -1,10 +1,12 @@
 """
-Test POCCreation Journey
+Test POC Proposal Journey
 
 Tests:
 - Journey structure
 - Journey execution
 - SOA API exposure
+
+Note: The poc_creation journey was renamed to poc_proposal in the platform overhaul.
 """
 
 import pytest
@@ -17,57 +19,64 @@ if str(project_root) not in sys.path:
 
 
 class TestPOCCreationJourneyStructure:
-    """Test POCCreationJourney structure."""
+    """Test POCProposalJourney structure (formerly POCCreation)."""
     
     def test_journey_exists(self, outcomes_solution):
-        """POCCreationJourney should exist."""
-        journey = outcomes_solution.get_journey("poc_creation")
+        """POCProposalJourney should exist."""
+        # Journey was renamed from poc_creation to poc_proposal
+        journey = outcomes_solution._journeys.get("poc_proposal")
         assert journey is not None
     
     def test_has_compose_journey(self, outcomes_solution):
         """Should have compose_journey method."""
-        journey = outcomes_solution.get_journey("poc_creation")
+        journey = outcomes_solution._journeys.get("poc_proposal")
         assert hasattr(journey, 'compose_journey')
 
 
 class TestPOCCreationJourneyExecution:
-    """Test POCCreationJourney execution."""
+    """Test POCProposalJourney execution."""
     
     @pytest.mark.asyncio
     async def test_execute_journey(
         self, outcomes_solution, execution_context
     ):
         """Should execute journey successfully."""
-        journey = outcomes_solution.get_journey("poc_creation")
+        journey = outcomes_solution._journeys.get("poc_proposal")
         
         result = await journey.compose_journey(
             context=execution_context,
-            journey_params={}
+            journey_params={
+                "solution_id": "test_solution_123"
+            }
         )
         
-        assert "success" in result or "error" in result
+        # Journey returns artifacts and journey metadata
+        assert "artifacts" in result
+        assert "journey_execution_id" in result
     
     @pytest.mark.asyncio
     async def test_returns_artifacts(
         self, outcomes_solution, execution_context
     ):
         """Should return artifacts in result."""
-        journey = outcomes_solution.get_journey("poc_creation")
+        journey = outcomes_solution._journeys.get("poc_proposal")
         
         result = await journey.compose_journey(
             context=execution_context,
-            journey_params={}
+            journey_params={
+                "solution_id": "test_solution_456"
+            }
         )
         
         assert "artifacts" in result
 
 
 class TestPOCCreationJourneySOAAPIs:
-    """Test POCCreationJourney SOA APIs."""
+    """Test POCProposalJourney SOA APIs."""
     
     def test_has_soa_apis(self, outcomes_solution):
         """Should expose SOA APIs."""
-        journey = outcomes_solution.get_journey("poc_creation")
+        journey = outcomes_solution._journeys.get("poc_proposal")
         apis = journey.get_soa_apis()
         
         assert isinstance(apis, dict)

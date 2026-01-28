@@ -86,4 +86,4 @@ class TestGenerateSOPFromChatExecution:
         
         # Services return artifacts containing chat session info
         assert "artifacts" in result
-        assert "session" in result["artifacts"]
+        assert "chat_session" in result["artifacts"]

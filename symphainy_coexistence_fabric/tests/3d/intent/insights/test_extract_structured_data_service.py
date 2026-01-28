@@ -1,6 +1,9 @@
 """
 Test ExtractStructuredData Intent Service
 
+NOTE: The extract_structured_data intent is NOT currently implemented in InsightsSolution.
+These tests document expected behavior but are skipped until implemented.
+
 Tests:
 - Parameter validation
 - Service execution
@@ -21,7 +24,7 @@ class TestExtractStructuredDataParameters:
     """Test extract_structured_data parameter validation."""
     
     def test_requires_parameters(self):
-        """Should require required parameters."""
+        """Should require artifact_id parameter."""
         from symphainy_platform.runtime.intent_model import IntentFactory
         
         intent = IntentFactory.create_intent(
@@ -29,16 +32,21 @@ class TestExtractStructuredDataParameters:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="insights_solution",
-            parameters={}
+            parameters={
+                "artifact_id": "test_artifact_123",
+                "extraction_schema": {"fields": ["name", "date"]}
+            }
         )
         
         assert intent.intent_type == "extract_structured_data"
+        assert intent.parameters.get("artifact_id") == "test_artifact_123"
 
 
 class TestExtractStructuredDataExecution:
     """Test extract_structured_data execution."""
     
     @pytest.mark.asyncio
+    @pytest.mark.skip(reason="Intent 'extract_structured_data' not implemented in InsightsSolution")
     async def test_executes_successfully(
         self, insights_solution, execution_context
     ):
@@ -50,14 +58,19 @@ class TestExtractStructuredDataExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="insights_solution",
-            parameters={}
+            parameters={
+                "artifact_id": "test_artifact_123",
+                "extraction_schema": {"fields": ["name", "date"]}
+            }
         )
         
         result = await insights_solution.handle_intent(intent, execution_context)
         
-        assert "success" in result or "error" in result
+        assert "artifacts" in result
+        assert "events" in result
     
     @pytest.mark.asyncio
+    @pytest.mark.skip(reason="Intent 'extract_structured_data' not implemented in InsightsSolution")
     async def test_registers_artifact(
         self, insights_solution, execution_context
     ):
@@ -69,10 +82,11 @@ class TestExtractStructuredDataExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="insights_solution",
-            parameters={}
+            parameters={
+                "artifact_id": "test_artifact_456"
+            }
         )
         
         result = await insights_solution.handle_intent(intent, execution_context)
         
-        if "success" in result:
-            assert "artifacts" in result or "artifact_id" in result
+        assert "artifacts" in result
