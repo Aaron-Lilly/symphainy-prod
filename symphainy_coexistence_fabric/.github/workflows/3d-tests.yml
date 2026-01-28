@@ -211,7 +211,7 @@ jobs:
             exit 1
           fi
           if [ "${{ needs.full-integration-tests.result }}" != "success" ]; then
-            echo "⚠️  Full integration tests failed (non-blocking for now)"
-            # Don't fail the build for Phase 4 yet - it's new
+            echo "❌ Full integration tests failed"
+            exit 1
           fi
-          echo "✅ Core tests passed!"
+          echo "✅ All tests passed!"
