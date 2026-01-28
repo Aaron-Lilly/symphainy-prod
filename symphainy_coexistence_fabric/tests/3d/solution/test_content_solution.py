@@ -128,16 +128,15 @@ class TestContentHandleIntent:
 class TestContentMCPServer:
     """Test ContentSolution MCP Server."""
     
-    @pytest.mark.asyncio
-    async def test_initialize_mcp_server(self, content_solution):
+    def test_initialize_mcp_server(self, content_solution):
         """Should be able to initialize MCP server."""
-        mcp_server = await content_solution.initialize_mcp_server()
+        mcp_server = content_solution.initialize_mcp_server()
         assert mcp_server is not None
     
     @pytest.mark.asyncio
     async def test_mcp_tools_use_content_prefix(self, content_solution):
         """MCP tools should use content_ prefix."""
-        mcp_server = await content_solution.initialize_mcp_server()
+        mcp_server = content_solution.initialize_mcp_server()
         
         if hasattr(mcp_server, 'tools'):
             for tool in mcp_server.tools:

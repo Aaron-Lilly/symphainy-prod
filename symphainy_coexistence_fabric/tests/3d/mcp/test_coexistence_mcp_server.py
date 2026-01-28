@@ -19,16 +19,14 @@ if str(project_root) not in sys.path:
 class TestCoexistenceMCPServer:
     """Test Coexistence MCP Server."""
     
-    @pytest.mark.asyncio
-    async def test_initialize_mcp_server(self, coexistence_solution):
+    def test_initialize_mcp_server(self, coexistence_solution):
         """Should initialize MCP server."""
-        mcp_server = await coexistence_solution.initialize_mcp_server()
+        mcp_server = coexistence_solution.initialize_mcp_server()
         assert mcp_server is not None
     
-    @pytest.mark.asyncio
-    async def test_mcp_server_has_tools(self, coexistence_solution):
+    def test_mcp_server_has_tools(self, coexistence_solution):
         """MCP server should have tools registered."""
-        mcp_server = await coexistence_solution.initialize_mcp_server()
+        mcp_server = coexistence_solution.initialize_mcp_server()
         
         if hasattr(mcp_server, 'tools'):
             assert mcp_server.tools is not None

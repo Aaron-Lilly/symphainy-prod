@@ -152,16 +152,14 @@ class TestCoexistenceHandleIntent:
 class TestCoexistenceMCPServer:
     """Test CoexistenceSolution MCP Server."""
     
-    @pytest.mark.asyncio
-    async def test_initialize_mcp_server(self, coexistence_solution):
+    def test_initialize_mcp_server(self, coexistence_solution):
         """Should be able to initialize MCP server."""
-        mcp_server = await coexistence_solution.initialize_mcp_server()
+        mcp_server = coexistence_solution.initialize_mcp_server()
         assert mcp_server is not None
     
-    @pytest.mark.asyncio
-    async def test_mcp_server_has_tools(self, coexistence_solution):
+    def test_mcp_server_has_tools(self, coexistence_solution):
         """MCP server should have registered tools."""
-        mcp_server = await coexistence_solution.initialize_mcp_server()
+        mcp_server = coexistence_solution.initialize_mcp_server()
         
         # Check tools are registered
         if hasattr(mcp_server, 'tools'):

@@ -100,16 +100,15 @@ class TestControlTowerHandleIntent:
 class TestControlTowerMCPServer:
     """Test ControlTower MCP Server."""
     
-    @pytest.mark.asyncio
-    async def test_initialize_mcp_server(self, control_tower):
+    def test_initialize_mcp_server(self, control_tower):
         """Should initialize MCP server."""
-        mcp_server = await control_tower.initialize_mcp_server()
+        mcp_server = control_tower.initialize_mcp_server()
         assert mcp_server is not None
     
     @pytest.mark.asyncio
     async def test_mcp_tools_use_tower_prefix(self, control_tower):
         """MCP tools should use tower_ prefix."""
-        mcp_server = await control_tower.initialize_mcp_server()
+        mcp_server = control_tower.initialize_mcp_server()
         
         if hasattr(mcp_server, 'tools'):
             for tool in mcp_server.tools:

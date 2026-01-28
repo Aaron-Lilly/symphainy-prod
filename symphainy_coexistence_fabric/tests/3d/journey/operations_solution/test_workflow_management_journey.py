@@ -21,12 +21,12 @@ class TestWorkflowManagementJourneyStructure:
     
     def test_journey_exists(self, operations_solution):
         """WorkflowManagementJourney should exist."""
-        journey = operations_solution.get_journey("workflow_management")
+        journey = operations_solution._journeys.get("workflow_management")
         assert journey is not None
     
     def test_has_compose_journey(self, operations_solution):
         """Should have compose_journey method."""
-        journey = operations_solution.get_journey("workflow_management")
+        journey = operations_solution._journeys.get("workflow_management")
         assert hasattr(journey, 'compose_journey')
 
 
@@ -38,9 +38,10 @@ class TestWorkflowManagementJourneyExecution:
         self, operations_solution, execution_context
     ):
         """Should execute journey successfully."""
-        journey = operations_solution.get_journey("workflow_management")
+        journey = operations_solution._journeys.get("workflow_management")
         
         result = await journey.compose_journey(
+            journey_id="workflow_management",
             context=execution_context,
             journey_params={
                 "source_file_id": "test_file_123",
@@ -55,9 +56,10 @@ class TestWorkflowManagementJourneyExecution:
         self, operations_solution, execution_context
     ):
         """Should return artifacts in result."""
-        journey = operations_solution.get_journey("workflow_management")
+        journey = operations_solution._journeys.get("workflow_management")
         
         result = await journey.compose_journey(
+            journey_id="workflow_management",
             context=execution_context,
             journey_params={
                 "source_file_id": "test_file_123",
@@ -73,7 +75,7 @@ class TestWorkflowManagementJourneySOAAPIs:
     
     def test_has_soa_apis(self, operations_solution):
         """Should expose SOA APIs."""
-        journey = operations_solution.get_journey("workflow_management")
+        journey = operations_solution._journeys.get("workflow_management")
         apis = journey.get_soa_apis()
         
         assert isinstance(apis, dict)

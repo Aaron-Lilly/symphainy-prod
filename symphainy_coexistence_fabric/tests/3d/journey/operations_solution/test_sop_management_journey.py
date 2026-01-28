@@ -21,12 +21,12 @@ class TestSOPManagementJourneyStructure:
     
     def test_journey_exists(self, operations_solution):
         """SOPManagementJourney should exist."""
-        journey = operations_solution.get_journey("sop_management")
+        journey = operations_solution._journeys.get("sop_management")
         assert journey is not None
     
     def test_has_compose_journey(self, operations_solution):
         """Should have compose_journey method."""
-        journey = operations_solution.get_journey("sop_management")
+        journey = operations_solution._journeys.get("sop_management")
         assert hasattr(journey, 'compose_journey')
 
 
@@ -38,9 +38,10 @@ class TestSOPManagementJourneyExecution:
         self, operations_solution, execution_context
     ):
         """Should execute journey successfully."""
-        journey = operations_solution.get_journey("sop_management")
+        journey = operations_solution._journeys.get("sop_management")
         
         result = await journey.compose_journey(
+            journey_id="sop_management",
             context=execution_context,
             journey_params={
                 "workflow_id": "test_workflow_123",
@@ -55,9 +56,10 @@ class TestSOPManagementJourneyExecution:
         self, operations_solution, execution_context
     ):
         """Should return artifacts in result."""
-        journey = operations_solution.get_journey("sop_management")
+        journey = operations_solution._journeys.get("sop_management")
         
         result = await journey.compose_journey(
+            journey_id="sop_management",
             context=execution_context,
             journey_params={
                 "workflow_id": "test_workflow_123"
@@ -72,7 +74,7 @@ class TestSOPManagementJourneySOAAPIs:
     
     def test_has_soa_apis(self, operations_solution):
         """Should expose SOA APIs."""
-        journey = operations_solution.get_journey("sop_management")
+        journey = operations_solution._journeys.get("sop_management")
         apis = journey.get_soa_apis()
         
         assert isinstance(apis, dict)

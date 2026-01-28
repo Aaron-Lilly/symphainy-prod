@@ -158,6 +158,7 @@ def execution_context(mock_state_surface):
         tenant_id="test_tenant",
         session_id="test_session_123",
         intent=None,
+        solution_id="test_solution",
         state_surface=mock_state_surface
     )
 
@@ -173,6 +174,7 @@ def tenant_a_context(mock_state_surface):
         tenant_id="tenant_a",
         session_id="session_tenant_a",
         intent=None,
+        solution_id="test_solution",
         state_surface=mock_state_surface
     )
 
@@ -188,6 +190,7 @@ def tenant_b_context(mock_state_surface):
         tenant_id="tenant_b",
         session_id="session_tenant_b",
         intent=None,
+        solution_id="test_solution",
         state_surface=mock_state_surface
     )
 

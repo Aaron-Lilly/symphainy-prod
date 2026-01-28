@@ -21,12 +21,12 @@ class TestRegistrationJourneyStructure:
     
     def test_journey_exists(self, security_solution):
         """RegistrationJourney should exist."""
-        journey = security_solution.get_journey("registration")
+        journey = security_solution._journeys.get("registration")
         assert journey is not None
     
     def test_has_compose_journey(self, security_solution):
         """Should have compose_journey method."""
-        journey = security_solution.get_journey("registration")
+        journey = security_solution._journeys.get("registration")
         assert hasattr(journey, 'compose_journey')
 
 
@@ -38,9 +38,10 @@ class TestRegistrationJourneyExecution:
         self, security_solution, execution_context
     ):
         """Should execute journey successfully."""
-        journey = security_solution.get_journey("registration")
+        journey = security_solution._journeys.get("registration")
         
         result = await journey.compose_journey(
+            journey_id="registration",
             context=execution_context,
             journey_params={}
         )
@@ -52,9 +53,10 @@ class TestRegistrationJourneyExecution:
         self, security_solution, execution_context
     ):
         """Should return artifacts in result."""
-        journey = security_solution.get_journey("registration")
+        journey = security_solution._journeys.get("registration")
         
         result = await journey.compose_journey(
+            journey_id="registration",
             context=execution_context,
             journey_params={}
         )
@@ -67,7 +69,7 @@ class TestRegistrationJourneySOAAPIs:
     
     def test_has_soa_apis(self, security_solution):
         """Should expose SOA APIs."""
-        journey = security_solution.get_journey("registration")
+        journey = security_solution._journeys.get("registration")
         apis = journey.get_soa_apis()
         
         assert isinstance(apis, dict)

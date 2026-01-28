@@ -21,12 +21,12 @@ class TestProcessOptimizationJourneyStructure:
     
     def test_journey_exists(self, operations_solution):
         """ProcessOptimizationJourney should exist."""
-        journey = operations_solution.get_journey("process_optimization")
+        journey = operations_solution._journeys.get("process_optimization")
         assert journey is not None
     
     def test_has_compose_journey(self, operations_solution):
         """Should have compose_journey method."""
-        journey = operations_solution.get_journey("process_optimization")
+        journey = operations_solution._journeys.get("process_optimization")
         assert hasattr(journey, 'compose_journey')
 
 
@@ -38,9 +38,10 @@ class TestProcessOptimizationJourneyExecution:
         self, operations_solution, execution_context
     ):
         """Should execute journey successfully."""
-        journey = operations_solution.get_journey("process_optimization")
+        journey = operations_solution._journeys.get("process_optimization")
         
         result = await journey.compose_journey(
+            journey_id="process_optimization",
             context=execution_context,
             journey_params={
                 "workflow_id": "test_workflow_123"
@@ -54,9 +55,10 @@ class TestProcessOptimizationJourneyExecution:
         self, operations_solution, execution_context
     ):
         """Should return artifacts in result."""
-        journey = operations_solution.get_journey("process_optimization")
+        journey = operations_solution._journeys.get("process_optimization")
         
         result = await journey.compose_journey(
+            journey_id="process_optimization",
             context=execution_context,
             journey_params={
                 "workflow_id": "test_workflow_123"
@@ -71,7 +73,7 @@ class TestProcessOptimizationJourneySOAAPIs:
     
     def test_has_soa_apis(self, operations_solution):
         """Should expose SOA APIs."""
-        journey = operations_solution.get_journey("process_optimization")
+        journey = operations_solution._journeys.get("process_optimization")
         apis = journey.get_soa_apis()
         
         assert isinstance(apis, dict)

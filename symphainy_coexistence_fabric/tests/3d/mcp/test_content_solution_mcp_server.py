@@ -19,16 +19,14 @@ if str(project_root) not in sys.path:
 class TestContentSolutionMCPServer:
     """Test ContentSolution MCP Server."""
     
-    @pytest.mark.asyncio
-    async def test_initialize_mcp_server(self, content_solution):
+    def test_initialize_mcp_server(self, content_solution):
         """Should initialize MCP server."""
-        mcp_server = await content_solution.initialize_mcp_server()
+        mcp_server = content_solution.initialize_mcp_server()
         assert mcp_server is not None
     
-    @pytest.mark.asyncio
-    async def test_mcp_server_has_tools(self, content_solution):
+    def test_mcp_server_has_tools(self, content_solution):
         """MCP server should have tools registered."""
-        mcp_server = await content_solution.initialize_mcp_server()
+        mcp_server = content_solution.initialize_mcp_server()
         
         if hasattr(mcp_server, 'tools'):
             assert mcp_server.tools is not None

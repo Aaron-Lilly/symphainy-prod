@@ -94,16 +94,15 @@ class TestInsightsHandleIntent:
 class TestInsightsMCPServer:
     """Test InsightsSolution MCP Server."""
     
-    @pytest.mark.asyncio
-    async def test_initialize_mcp_server(self, insights_solution):
+    def test_initialize_mcp_server(self, insights_solution):
         """Should initialize MCP server."""
-        mcp_server = await insights_solution.initialize_mcp_server()
+        mcp_server = insights_solution.initialize_mcp_server()
         assert mcp_server is not None
     
     @pytest.mark.asyncio
     async def test_mcp_tools_use_insights_prefix(self, insights_solution):
         """MCP tools should use insights_ prefix."""
-        mcp_server = await insights_solution.initialize_mcp_server()
+        mcp_server = insights_solution.initialize_mcp_server()
         
         if hasattr(mcp_server, 'tools'):
             for tool in mcp_server.tools:

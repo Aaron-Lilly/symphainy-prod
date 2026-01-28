@@ -21,12 +21,12 @@ class TestCoexistenceAnalysisJourneyStructure:
     
     def test_journey_exists(self, operations_solution):
         """CoexistenceAnalysisJourney should exist."""
-        journey = operations_solution.get_journey("coexistence_analysis")
+        journey = operations_solution._journeys.get("coexistence_analysis")
         assert journey is not None
     
     def test_has_compose_journey(self, operations_solution):
         """Should have compose_journey method."""
-        journey = operations_solution.get_journey("coexistence_analysis")
+        journey = operations_solution._journeys.get("coexistence_analysis")
         assert hasattr(journey, 'compose_journey')
 
 
@@ -38,9 +38,10 @@ class TestCoexistenceAnalysisJourneyExecution:
         self, operations_solution, execution_context
     ):
         """Should execute journey successfully."""
-        journey = operations_solution.get_journey("coexistence_analysis")
+        journey = operations_solution._journeys.get("coexistence_analysis")
         
         result = await journey.compose_journey(
+            journey_id="coexistence_analysis",
             context=execution_context,
             journey_params={
                 "sop_file_id": "test_sop_123",
@@ -55,9 +56,10 @@ class TestCoexistenceAnalysisJourneyExecution:
         self, operations_solution, execution_context
     ):
         """Should return artifacts in result."""
-        journey = operations_solution.get_journey("coexistence_analysis")
+        journey = operations_solution._journeys.get("coexistence_analysis")
         
         result = await journey.compose_journey(
+            journey_id="coexistence_analysis",
             context=execution_context,
             journey_params={
                 "sop_file_id": "test_sop_123",
@@ -73,7 +75,7 @@ class TestCoexistenceAnalysisJourneySOAAPIs:
     
     def test_has_soa_apis(self, operations_solution):
         """Should expose SOA APIs."""
-        journey = operations_solution.get_journey("coexistence_analysis")
+        journey = operations_solution._journeys.get("coexistence_analysis")
         apis = journey.get_soa_apis()
         
         assert isinstance(apis, dict)

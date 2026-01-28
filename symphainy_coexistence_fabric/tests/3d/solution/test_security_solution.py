@@ -36,27 +36,27 @@ class TestSecurityJourneys:
     
     def test_has_3_journeys(self, security_solution):
         """SecuritySolution should have 3 journeys."""
-        journeys = security_solution.get_journeys()
+        journeys = security_solution._journeys
         assert len(journeys) == 3
     
     def test_has_authentication_journey(self, security_solution):
         """Should have authentication journey."""
-        journeys = security_solution.get_journeys()
+        journeys = security_solution._journeys
         assert "authentication" in journeys
     
     def test_has_registration_journey(self, security_solution):
         """Should have registration journey."""
-        journeys = security_solution.get_journeys()
+        journeys = security_solution._journeys
         assert "registration" in journeys
     
     def test_has_session_management_journey(self, security_solution):
         """Should have session_management journey."""
-        journeys = security_solution.get_journeys()
+        journeys = security_solution._journeys
         assert "session_management" in journeys
     
     def test_each_journey_has_compose_journey(self, security_solution):
         """Each journey should have compose_journey method."""
-        for journey_id, journey in security_solution.get_journeys().items():
+        for journey_id, journey in security_solution._journeys.items():
             assert hasattr(journey, 'compose_journey')
 
 
@@ -104,16 +104,15 @@ class TestSecurityHandleIntent:
 class TestSecurityMCPServer:
     """Test SecuritySolution MCP Server."""
     
-    @pytest.mark.asyncio
-    async def test_initialize_mcp_server(self, security_solution):
+    def test_initialize_mcp_server(self, security_solution):
         """Should initialize MCP server."""
-        mcp_server = await security_solution.initialize_mcp_server()
+        mcp_server = security_solution.initialize_mcp_server()
         assert mcp_server is not None
     
     @pytest.mark.asyncio
     async def test_mcp_tools_use_security_prefix(self, security_solution):
         """MCP tools should use security_ prefix."""
-        mcp_server = await security_solution.initialize_mcp_server()
+        mcp_server = security_solution.initialize_mcp_server()
         
         if hasattr(mcp_server, 'tools'):
             for tool in mcp_server.tools:
@@ -130,7 +129,7 @@ class TestSecurityIsFoundational:
     
     def test_security_journeys_are_complete(self, security_solution):
         """All security journeys must be complete."""
-        journeys = security_solution.get_journeys()
+        journeys = security_solution._journeys
         
         for journey_id, journey in journeys.items():
             assert hasattr(journey, 'compose_journey'), \

@@ -91,10 +91,9 @@ class TestOutcomesHandleIntent:
 class TestOutcomesMCPServer:
     """Test OutcomesSolution MCP Server."""
     
-    @pytest.mark.asyncio
-    async def test_initialize_mcp_server(self, outcomes_solution):
+    def test_initialize_mcp_server(self, outcomes_solution):
         """Should initialize MCP server."""
-        mcp_server = await outcomes_solution.initialize_mcp_server()
+        mcp_server = outcomes_solution.initialize_mcp_server()
         assert mcp_server is not None
 
 

@@ -34,7 +34,7 @@ class TestOperationsJourneys:
     
     def test_has_expected_journeys(self, operations_solution):
         """OperationsSolution should have expected journeys."""
-        journeys = operations_solution.get_journeys()
+        journeys = operations_solution._journeys
         
         expected = [
             "workflow_management",
@@ -48,7 +48,7 @@ class TestOperationsJourneys:
     
     def test_each_journey_has_compose_journey(self, operations_solution):
         """Each journey should have compose_journey method."""
-        for journey_id, journey in operations_solution.get_journeys().items():
+        for journey_id, journey in operations_solution._journeys.items():
             assert hasattr(journey, 'compose_journey')
 
 
@@ -89,8 +89,7 @@ class TestOperationsHandleIntent:
 class TestOperationsMCPServer:
     """Test OperationsSolution MCP Server."""
     
-    @pytest.mark.asyncio
-    async def test_initialize_mcp_server(self, operations_solution):
+    def test_initialize_mcp_server(self, operations_solution):
         """Should initialize MCP server."""
-        mcp_server = await operations_solution.initialize_mcp_server()
+        mcp_server = operations_solution.initialize_mcp_server()
         assert mcp_server is not None

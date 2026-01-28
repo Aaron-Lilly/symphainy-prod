@@ -46,7 +46,7 @@ class TestMCPServerPattern:
                 f"{solution.SOLUTION_ID} missing initialize_mcp_server"
             
             try:
-                mcp_server = await solution.initialize_mcp_server()
+                mcp_server = solution.initialize_mcp_server()
                 assert mcp_server is not None, \
                     f"{solution.SOLUTION_ID} MCP server is None"
             except Exception as e:
@@ -99,7 +99,7 @@ class TestMCPToolNamingConventions:
     @pytest.mark.asyncio
     async def test_coexistence_tools_use_coexist_prefix(self, coexistence_solution):
         """Coexistence MCP tools should use coexist_ prefix."""
-        mcp_server = await coexistence_solution.initialize_mcp_server()
+        mcp_server = coexistence_solution.initialize_mcp_server()
         
         if hasattr(mcp_server, 'tools') and mcp_server.tools:
             for tool in mcp_server.tools:
@@ -110,7 +110,7 @@ class TestMCPToolNamingConventions:
     @pytest.mark.asyncio
     async def test_content_tools_use_content_prefix(self, content_solution):
         """Content MCP tools should use content_ prefix."""
-        mcp_server = await content_solution.initialize_mcp_server()
+        mcp_server = content_solution.initialize_mcp_server()
         
         if hasattr(mcp_server, 'tools') and mcp_server.tools:
             for tool in mcp_server.tools:
