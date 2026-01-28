@@ -125,7 +125,7 @@ export function DataMappingSection({
         
         if (status?.status === "completed") {
           // Extract mapping result from execution artifacts
-          const mappingArtifact = status.artifacts?.mapping || status.artifacts?.relationships;
+          const mappingArtifact = (status.artifacts?.mapping || status.artifacts?.relationships) as { semantic_payload?: unknown } | undefined;
           if (mappingArtifact?.semantic_payload) {
             mappingResult = mappingArtifact.semantic_payload;
           }

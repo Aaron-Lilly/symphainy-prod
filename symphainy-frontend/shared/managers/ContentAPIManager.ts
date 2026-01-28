@@ -229,7 +229,7 @@ export class ContentAPIManager {
         
         if (status?.status === "completed") {
           // Extract file_id and boundary_contract_id from execution artifacts
-          const fileArtifact = status.artifacts?.file;
+          const fileArtifact = status.artifacts?.file as { semantic_payload?: { file_id?: string; boundary_contract_id?: string; materialization_pending?: boolean } } | undefined;
           if (fileArtifact?.semantic_payload) {
             fileId = fileArtifact.semantic_payload.file_id;
             boundaryContractId = fileArtifact.semantic_payload.boundary_contract_id;
@@ -331,13 +331,14 @@ export class ContentAPIManager {
         
         if (status?.status === "completed") {
           // Extract materialization_id from execution artifacts
-          const materializationArtifact = status.artifacts?.materialization;
+          const materializationArtifact = status.artifacts?.materialization as { semantic_payload?: { materialization_id?: string; success?: boolean } } | undefined;
+          const fileArtifactFallback = status.artifacts?.file as { semantic_payload?: { materialization_id?: string; materialization_pending?: boolean } } | undefined;
           if (materializationArtifact?.semantic_payload) {
             materializationId = materializationArtifact.semantic_payload.materialization_id;
             success = materializationArtifact.semantic_payload.success === true;
-          } else if (status.artifacts?.file?.semantic_payload) {
+          } else if (fileArtifactFallback?.semantic_payload) {
             // Fallback: check if file artifact has materialization info
-            const filePayload = status.artifacts.file.semantic_payload;
+            const filePayload = fileArtifactFallback.semantic_payload;
             materializationId = filePayload.materialization_id;
             success = filePayload.materialization_pending === false;
           } else {
@@ -407,9 +408,9 @@ export class ContentAPIManager {
         
         if (status?.status === "completed") {
           // Extract files from execution artifacts
-          const fileListArtifact = status.artifacts?.file_list;
+          const fileListArtifact = status.artifacts?.file_list as { semantic_payload?: { files?: unknown[] } } | undefined;
           if (fileListArtifact?.semantic_payload?.files) {
-            const backendFiles = fileListArtifact.semantic_payload.files;
+            const backendFiles = fileListArtifact.semantic_payload.files as any[];
             
             // Map backend response to ContentFile format
             return backendFiles.map((file: any) => ({
@@ -508,7 +509,7 @@ export class ContentAPIManager {
         
         if (status?.status === "completed") {
           // Extract parsed_file_id from execution artifacts
-          const parsedFileArtifact = status.artifacts?.parsed_file;
+          const parsedFileArtifact = status.artifacts?.parsed_file as { semantic_payload?: { parsed_file_id?: string; parsed_file_reference?: string } } | undefined;
           if (parsedFileArtifact?.semantic_payload) {
             parsedFileId = parsedFileArtifact.semantic_payload.parsed_file_id || fileId;
             parsedFileReference = parsedFileArtifact.semantic_payload.parsed_file_reference;

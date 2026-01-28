@@ -161,7 +161,7 @@ export default function MetadataExtractor({
         
         if (status?.status === "completed") {
           // Extract file metadata from execution artifacts
-          const fileArtifact = status.artifacts?.file;
+          const fileArtifact = status.artifacts?.file as { semantic_payload?: unknown } | undefined;
           if (fileArtifact?.semantic_payload) {
             fileMetadata = fileArtifact.semantic_payload;
           }

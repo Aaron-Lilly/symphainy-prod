@@ -24,7 +24,7 @@ import { useCallback, useState } from 'react';
 import { usePlatformState } from '../state/PlatformStateProvider';
 import { useSessionBoundary, SessionStatus } from '../state/SessionBoundaryProvider';
 import type { 
-  ExecutionStatus,
+  ExecutionStatusResponse,
   FileArtifact,
   ParsedContentArtifact,
 } from '@/shared/types/runtime-contracts';
@@ -81,7 +81,7 @@ export function useFileOperations() {
     executionId: string,
     maxWaitMs: number = 30000,
     pollIntervalMs: number = 1000
-  ): Promise<ExecutionStatus | null> => {
+  ): Promise<ExecutionStatusResponse | null> => {
     const startTime = Date.now();
     
     while (Date.now() - startTime < maxWaitMs) {
@@ -93,7 +93,7 @@ export function useFileOperations() {
       }
       
       if (status.status === 'completed' || status.status === 'failed') {
-        return status as ExecutionStatus;
+        return status;
       }
       
       await new Promise(resolve => setTimeout(resolve, pollIntervalMs));

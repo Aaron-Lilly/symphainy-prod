@@ -23,7 +23,7 @@
 import { useCallback, useState } from 'react';
 import { usePlatformState } from '../state/PlatformStateProvider';
 import { useSessionBoundary, SessionStatus } from '../state/SessionBoundaryProvider';
-import type { ExecutionStatus } from '@/shared/types/runtime-contracts';
+import type { ExecutionStatusResponse } from '@/shared/types/runtime-contracts';
 
 // =============================================================================
 // TYPES
@@ -102,7 +102,7 @@ export function useInsightsOperations() {
     executionId: string,
     maxWaitMs: number = 60000, // Insights operations can take longer
     pollIntervalMs: number = 2000
-  ): Promise<ExecutionStatus | null> => {
+  ): Promise<ExecutionStatusResponse | null> => {
     const startTime = Date.now();
     
     while (Date.now() - startTime < maxWaitMs) {
@@ -114,7 +114,7 @@ export function useInsightsOperations() {
       }
       
       if (status.status === 'completed' || status.status === 'failed') {
-        return status as ExecutionStatus;
+        return status;
       }
       
       await new Promise(resolve => setTimeout(resolve, pollIntervalMs));
