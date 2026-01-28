@@ -7,8 +7,13 @@ Bootstrap agent definitions and postures into registries.
 import sys
 from pathlib import Path
 
-# Add project root to path
-project_root = Path(__file__).resolve().parents[5]
+# Add project root to path using robust root finder
+current = Path(__file__).resolve()
+project_root = current
+for _ in range(10):  # Max 10 levels up
+    if (project_root / "pyproject.toml").exists() or (project_root / "requirements.txt").exists():
+        break
+    project_root = project_root.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
