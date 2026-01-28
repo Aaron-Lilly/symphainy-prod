@@ -6,8 +6,7 @@ Provides intent services for:
 - Navigation: Solution routing, context management
 - Guide Agent: AI-powered assistance
 - Liaison Agents: Specialist handoffs
-- Chat Sessions: Conversation management
-- Context Sharing: Cross-agent context
+- MCP Tool Orchestration: Tool discovery and execution
 
 User-Facing Domain: Coexistence (Landing/Welcome)
 Pattern: Only intent_services/ - no orchestrators, agents, or MCP servers
@@ -20,60 +19,30 @@ from .intent_services import (
     # Introduction
     IntroducePlatformService,
     ShowSolutionCatalogService,
-    ExplainCoexistenceService,
     # Navigation
     NavigateToSolutionService,
-    GetSolutionContextService,
-    EstablishSolutionContextService,
     # Guide Agent
     InitiateGuideAgentService,
     ProcessGuideAgentMessageService,
-    RouteToLiaisonAgentService,
     # Liaison Agent
-    InitiateLiaisonAgentService,
-    ProcessLiaisonAgentMessageService,
-    GetPillarContextService,
-    ExecutePillarActionService,
-    # Chat Session
-    GetChatSessionService,
-    UpdateChatContextService,
-    # Context Sharing
-    ShareContextToAgentService,
-    GetSharedContextService,
-    MergeAgentContextsService,
+    RouteToLiaisonAgentService,
     # MCP Tool Orchestration
     ListAvailableMCPToolsService,
     CallOrchestratorMCPToolService,
-    ValidateMCPToolCallService,
 )
 
 __all__ = [
     # Introduction
     "IntroducePlatformService",
     "ShowSolutionCatalogService",
-    "ExplainCoexistenceService",
     # Navigation
     "NavigateToSolutionService",
-    "GetSolutionContextService",
-    "EstablishSolutionContextService",
     # Guide Agent
     "InitiateGuideAgentService",
     "ProcessGuideAgentMessageService",
-    "RouteToLiaisonAgentService",
     # Liaison Agent
-    "InitiateLiaisonAgentService",
-    "ProcessLiaisonAgentMessageService",
-    "GetPillarContextService",
-    "ExecutePillarActionService",
-    # Chat Session
-    "GetChatSessionService",
-    "UpdateChatContextService",
-    # Context Sharing
-    "ShareContextToAgentService",
-    "GetSharedContextService",
-    "MergeAgentContextsService",
+    "RouteToLiaisonAgentService",
     # MCP Tool Orchestration
     "ListAvailableMCPToolsService",
     "CallOrchestratorMCPToolService",
-    "ValidateMCPToolCallService",
 ]

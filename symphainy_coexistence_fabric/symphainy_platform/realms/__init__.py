@@ -77,10 +77,7 @@ from .control_tower import (
 from .coexistence import (
     IntroducePlatformService,
     ShowSolutionCatalogService,
-    ExplainCoexistenceService,
     NavigateToSolutionService,
-    GetSolutionContextService,
-    EstablishSolutionContextService,
     InitiateGuideAgentService,
     ProcessGuideAgentMessageService,
     RouteToLiaisonAgentService,
@@ -132,10 +129,7 @@ __all__ = [
     # Coexistence Realm
     "IntroducePlatformService",
     "ShowSolutionCatalogService",
-    "ExplainCoexistenceService",
     "NavigateToSolutionService",
-    "GetSolutionContextService",
-    "EstablishSolutionContextService",
     "InitiateGuideAgentService",
     "ProcessGuideAgentMessageService",
     "RouteToLiaisonAgentService",
