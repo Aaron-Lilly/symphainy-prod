@@ -1,6 +1,11 @@
 require("@testing-library/jest-dom");
 require("whatwg-fetch");
 
+// Set up test environment variables
+process.env.NEXT_PUBLIC_API_URL = 'http://localhost:8000';
+process.env.NEXT_PUBLIC_BACKEND_URL = 'http://localhost:8000';
+process.env.NODE_ENV = 'test';
+
 if (typeof global.TextEncoder === "undefined") {
   global.TextEncoder = require("util").TextEncoder;
 }
