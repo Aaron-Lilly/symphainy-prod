@@ -165,9 +165,9 @@ export async function createEmbeddings(
  */
 export async function listParsedFilesWithEmbeddings(
   token?: string
-): Promise<{ success: boolean; files?: any[]; error?: string }> {
+): Promise<{ success: boolean; parsed_files?: any[]; files?: any[]; error?: string }> {
   console.warn('[content API] listParsedFilesWithEmbeddings - stub implementation');
-  return { success: true, files: [] };
+  return { success: true, parsed_files: [], files: [] };
 }
 
 /**

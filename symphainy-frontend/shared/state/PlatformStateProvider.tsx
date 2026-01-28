@@ -202,7 +202,7 @@ export const usePlatformState = (): PlatformStateContextType => {
         getExecutionStatus: async () => null,
         trackExecution: () => {},
         untrackExecution: () => {},
-        setRealmState: () => {},
+        setRealmState: async () => {},
         getRealmState: () => ({}),
         clearRealmState: () => {},
         setCurrentPillar: () => {},

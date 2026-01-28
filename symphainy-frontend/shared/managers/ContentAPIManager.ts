@@ -1022,7 +1022,8 @@ export class ContentAPIManager {
 
       // Convert file to base64
       const fileBuffer = await file.arrayBuffer();
-      const fileContentBase64 = btoa(String.fromCharCode(...new Uint8Array(fileBuffer)));
+      const uint8Array = new Uint8Array(fileBuffer);
+      const fileContentBase64 = btoa(String.fromCharCode.apply(null, Array.from(uint8Array)));
 
       // Submit compose_journey intent for file_upload_materialization journey
       const executionId = await platformState.submitIntent(

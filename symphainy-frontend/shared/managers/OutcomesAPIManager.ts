@@ -197,13 +197,20 @@ export class OutcomesAPIManager {
 
       if (result.status === "completed" && result.artifacts?.roadmap) {
         // ✅ PHASE 5.3: Ensure artifact has lifecycle state (purpose, scope, owner)
-        const roadmapId = result.artifacts.roadmap.roadmap_id;
-        const roadmapWithLifecycle = ensureArtifactLifecycle(
-          result.artifacts.roadmap,
+        const rawRoadmap = result.artifacts.roadmap;
+        const roadmapId = rawRoadmap.roadmap_id;
+        const lifecycleInfo = ensureArtifactLifecycle(
+          rawRoadmap,
           'strategic_planning',
           'business_transformation',
           platformState.state.session.userId || 'system'
         );
+        
+        // Combine original roadmap properties with lifecycle info for state storage
+        const roadmapWithLifecycle = {
+          ...rawRoadmap,
+          ...lifecycleInfo
+        };
         
         // Update realm state
         platformState.setRealmState("outcomes", "roadmaps", {
@@ -211,9 +218,10 @@ export class OutcomesAPIManager {
           [roadmapId]: roadmapWithLifecycle
         });
 
+        // Return the roadmap with its original shape for API response
         return {
           success: true,
-          roadmap: roadmapWithLifecycle
+          roadmap: rawRoadmap as RoadmapGenerationResponse['roadmap']
         };
       } else {
         throw new Error(result.error || "Failed to generate roadmap");

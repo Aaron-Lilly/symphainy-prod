@@ -130,9 +130,17 @@ export async function wizardPublish(
 
 export async function getSessionElements(
   sessionId: string
-): Promise<{ success: boolean; elements?: any; error?: string }> {
+): Promise<{ 
+  success: boolean; 
+  elements?: any; 
+  session_state?: any; 
+  valid?: boolean; 
+  action?: string;
+  missing?: string;
+  error?: string;
+}> {
   console.warn('[operations API] getSessionElements - stub implementation');
-  return { success: true, elements: {} };
+  return { success: true, elements: {}, session_state: {}, valid: true, action: undefined, missing: undefined };
 }
 
 export async function clearSessionElements(
