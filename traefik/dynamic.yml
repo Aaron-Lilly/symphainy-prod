@@ -1,0 +1,85 @@
+# Traefik Dynamic Configuration
+#
+# This file defines routing rules for REST API and WebSocket traffic.
+# Traefik proxies requests from the frontend to the backend service.
+#
+# Routes:
+# - /api/* -> backend:8000 (REST API)
+# - /ws/*  -> backend:8000 (WebSocket with sticky sessions)
+
+http:
+  routers:
+    # REST API Router
+    api-router:
+      rule: "PathPrefix(`/api`)"
+      service: backend
+      entryPoints:
+        - web
+
+    # WebSocket Router
+    ws-router:
+      rule: "PathPrefix(`/ws`)"
+      service: backend-ws
+      entryPoints:
+        - web
+      middlewares:
+        - websocket-headers
+
+    # Runtime WebSocket Router (for /api/runtime/agent path)
+    runtime-ws-router:
+      rule: "PathPrefix(`/api/runtime/agent`)"
+      service: backend-ws
+      entryPoints:
+        - web
+      middlewares:
+        - websocket-headers
+      priority: 100  # Higher priority than api-router
+
+  middlewares:
+    websocket-headers:
+      headers:
+        customRequestHeaders:
+          Connection: "Upgrade"
+          Upgrade: "websocket"
+        customResponseHeaders:
+          Access-Control-Allow-Origin: "*"
+          Access-Control-Allow-Methods: "GET, POST, OPTIONS"
+          Access-Control-Allow-Headers: "Content-Type, Authorization, X-Session-Token"
+
+    # CORS middleware for API requests
+    cors-headers:
+      headers:
+        accessControlAllowOriginList:
+          - "*"
+        accessControlAllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        accessControlAllowHeaders:
+          - Content-Type
+          - Authorization
+          - X-Session-Token
+          - X-Tenant-Id
+        accessControlMaxAge: 86400
+
+  services:
+    backend:
+      loadBalancer:
+        servers:
+          - url: "http://backend:8000"
+        healthCheck:
+          path: /health
+          interval: 10s
+          timeout: 3s
+
+    backend-ws:
+      loadBalancer:
+        servers:
+          - url: "http://backend:8000"
+        sticky:
+          cookie:
+            name: ws_affinity
+            secure: false
+            httpOnly: true
