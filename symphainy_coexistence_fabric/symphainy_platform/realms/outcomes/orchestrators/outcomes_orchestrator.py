@@ -26,10 +26,10 @@ from utilities import get_logger
 from symphainy_platform.runtime.intent_model import Intent
 from symphainy_platform.runtime.execution_context import ExecutionContext
 from symphainy_platform.civic_systems.artifact_plane import ArtifactPlane
-from ..enabling_services.roadmap_generation_service import RoadmapGenerationService
-from ..enabling_services.poc_generation_service import POCGenerationService
-from ..enabling_services.solution_synthesis_service import SolutionSynthesisService
-from ..enabling_services.report_generator_service import ReportGeneratorService
+# Note: RoadmapGenerationService, POCGenerationService, SolutionSynthesisService were stubs
+# and have been deleted. Their functionality is now in intent services (generate_roadmap_service,
+# create_poc_service, create_solution_service). The orchestrator uses agents + intent services.
+from symphainy_platform.foundations.libraries.reporting.report_generator_service import ReportGeneratorService
 from symphainy_platform.foundations.libraries.visualization.outcome_visual_service import VisualGenerationService
 from symphainy_platform.foundations.libraries.export.export_service import ExportService
 from symphainy_platform.foundations.libraries.coexistence.coexistence_analysis_service import CoexistenceAnalysisService
@@ -95,9 +95,11 @@ class OutcomesOrchestrator:
             self.logger.warning("Public Works not available for Artifact Plane")
         
         # Initialize enabling services with Public Works
-        self.roadmap_generation_service = RoadmapGenerationService(public_works=public_works)
-        self.poc_generation_service = POCGenerationService(public_works=public_works)
-        self.solution_synthesis_service = SolutionSynthesisService(public_works=public_works)
+        # Note: Legacy roadmap/POC/solution services were stubs and deleted
+        # Use intent services (generate_roadmap, create_poc, create_solution) instead
+        self.roadmap_generation_service = None  # Deprecated - use intent services
+        self.poc_generation_service = None  # Deprecated - use intent services
+        self.solution_synthesis_service = None  # Deprecated - use intent services
         self.report_generator_service = ReportGeneratorService(public_works=public_works)
         self.visual_generation_service = VisualGenerationService(public_works=public_works)
         self.export_service = ExportService(public_works=public_works)
@@ -1152,7 +1154,7 @@ class OutcomesOrchestrator:
         context: ExecutionContext
     ) -> Dict[str, Any]:
         """Handle export_artifact intent."""
-        from ..enabling_services.export_service import ExportService
+        from symphainy_platform.foundations.libraries.export.export_service import ExportService
         
         export_service = ExportService(public_works=self.public_works)
         

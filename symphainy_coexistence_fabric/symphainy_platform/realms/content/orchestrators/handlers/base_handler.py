@@ -48,7 +48,7 @@ class BaseContentHandler(ABC):
     def file_parser_service(self):
         """Lazy initialization of FileParserService."""
         if self._file_parser_service is None:
-            from ..enabling_services.file_parser_service import FileParserService
+            from symphainy_platform.foundations.libraries.parsing.file_parser_service import FileParserService
             self._file_parser_service = FileParserService(public_works=self.public_works)
         return self._file_parser_service
     
@@ -56,7 +56,7 @@ class BaseContentHandler(ABC):
     def deterministic_embedding_service(self):
         """Lazy initialization of DeterministicEmbeddingService."""
         if self._deterministic_embedding_service is None:
-            from ..enabling_services.deterministic_embedding_service import DeterministicEmbeddingService
+            from symphainy_platform.foundations.libraries.embeddings.deterministic_embedding_service import DeterministicEmbeddingService
             self._deterministic_embedding_service = DeterministicEmbeddingService(public_works=self.public_works)
         return self._deterministic_embedding_service
     
@@ -64,7 +64,7 @@ class BaseContentHandler(ABC):
     def embedding_service(self):
         """Lazy initialization of EmbeddingService."""
         if self._embedding_service is None:
-            from ..enabling_services.embedding_service import EmbeddingService
+            from symphainy_platform.civic_systems.agentic.agents.embedding_agent import EmbeddingAgent as EmbeddingService
             self._embedding_service = EmbeddingService(public_works=self.public_works)
         return self._embedding_service
     

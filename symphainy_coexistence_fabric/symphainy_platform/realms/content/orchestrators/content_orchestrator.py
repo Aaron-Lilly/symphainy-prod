@@ -32,11 +32,11 @@ from symphainy_platform.runtime.artifact_registry import (
     Materialization,
     LifecycleState
 )
-from ..enabling_services.file_parser_service import FileParserService
-from ..enabling_services.deterministic_embedding_service import DeterministicEmbeddingService
-from ..enabling_services.embedding_service import EmbeddingService
-from ..enabling_services.deterministic_chunking_service import DeterministicChunkingService
-from ..enabling_services.semantic_signal_extractor import SemanticSignalExtractor
+from symphainy_platform.foundations.libraries.parsing.file_parser_service import FileParserService
+from symphainy_platform.foundations.libraries.embeddings.deterministic_embedding_service import DeterministicEmbeddingService
+from symphainy_platform.civic_systems.agentic.agents.embedding_agent import EmbeddingAgent as EmbeddingService
+from symphainy_platform.foundations.libraries.chunking.deterministic_chunking_service import DeterministicChunkingService
+from symphainy_platform.civic_systems.agentic.agents.semantic_signal_extractor import SemanticSignalExtractor
 from symphainy_platform.civic_systems.agentic.agents.content_liaison_agent import ContentLiaisonAgent
 from symphainy_platform.foundations.public_works.protocols.ingestion_protocol import (
     IngestionRequest,
@@ -76,8 +76,8 @@ class ContentOrchestrator:
         self.semantic_signal_extractor = SemanticSignalExtractor(public_works=public_works)
         
         # Initialize semantic profile registry and trigger boundary
-        from ..enabling_services.semantic_profile_registry import SemanticProfileRegistry
-        from ..enabling_services.semantic_trigger_boundary import SemanticTriggerBoundary
+        from symphainy_platform.foundations.libraries.registries.semantic_profile_registry import SemanticProfileRegistry
+        from symphainy_platform.foundations.libraries.governance.semantic_trigger_boundary import SemanticTriggerBoundary
         self.semantic_profile_registry = SemanticProfileRegistry(public_works=public_works)
         self.semantic_trigger_boundary = SemanticTriggerBoundary(public_works=public_works)
         
@@ -3087,7 +3087,7 @@ class ContentOrchestrator:
             raise ValueError("trigger_type is required for hydrate_semantic_profile intent")
         
         # Validate trigger type
-        from ..enabling_services.semantic_trigger_boundary import SemanticTriggerBoundary
+        from symphainy_platform.foundations.libraries.governance.semantic_trigger_boundary import SemanticTriggerBoundary
         if trigger_type not in SemanticTriggerBoundary.TRIGGER_TYPES:
             raise ValueError(f"Invalid trigger_type: {trigger_type}. Must be one of {SemanticTriggerBoundary.TRIGGER_TYPES}")
         

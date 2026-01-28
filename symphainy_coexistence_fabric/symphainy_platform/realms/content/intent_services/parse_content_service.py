@@ -69,7 +69,7 @@ class ParseContentService(BaseIntentService):
         if file_parser_service:
             self.file_parser_service = file_parser_service
         else:
-            from ..enabling_services.file_parser_service import FileParserService
+            from symphainy_platform.foundations.libraries.parsing.file_parser_service import FileParserService
             self.file_parser_service = FileParserService(public_works=public_works)
     
     async def execute(

@@ -30,15 +30,17 @@ if TYPE_CHECKING:
 from utilities import get_logger
 from symphainy_platform.runtime.intent_model import Intent
 from symphainy_platform.runtime.execution_context import ExecutionContext
+# Libraries from foundations
+from symphainy_platform.foundations.libraries.metrics.metrics_calculator_service import MetricsCalculatorService
+from symphainy_platform.foundations.libraries.quality.data_quality_service import DataQualityService
+from symphainy_platform.foundations.libraries.matching.guided_discovery_service import GuidedDiscoveryService
+from symphainy_platform.foundations.libraries.extraction.structured_extraction_service import StructuredExtractionService
+# Services that remain in realm enabling_services (have unique functionality used by orchestrator)
 from ..enabling_services.data_analyzer_service import DataAnalyzerService
-from ..enabling_services.metrics_calculator_service import MetricsCalculatorService
-from ..enabling_services.data_quality_service import DataQualityService
 from ..enabling_services.semantic_self_discovery_service import SemanticSelfDiscoveryService
-from ..enabling_services.guided_discovery_service import GuidedDiscoveryService
 from ..enabling_services.structured_analysis_service import StructuredAnalysisService
 from ..enabling_services.unstructured_analysis_service import UnstructuredAnalysisService
 from ..enabling_services.lineage_visualization_service import LineageVisualizationService
-from ..enabling_services.structured_extraction_service import StructuredExtractionService
 from ..agents.insights_liaison_agent import InsightsLiaisonAgent
 from ..agents.business_analysis_agent import BusinessAnalysisAgent
 from symphainy_platform.civic_systems.artifact_plane.artifact_plane import ArtifactPlane

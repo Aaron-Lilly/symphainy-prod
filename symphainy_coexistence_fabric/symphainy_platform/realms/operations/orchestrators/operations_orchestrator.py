@@ -24,8 +24,8 @@ from typing import Dict, Any, Optional
 from utilities import get_logger
 from symphainy_platform.runtime.intent_model import Intent
 from symphainy_platform.runtime.execution_context import ExecutionContext
-from ..enabling_services.workflow_conversion_service import WorkflowConversionService
-from ..enabling_services.coexistence_analysis_service import CoexistenceAnalysisService
+from symphainy_platform.foundations.libraries.workflow.workflow_conversion_service import WorkflowConversionService
+from symphainy_platform.foundations.libraries.coexistence.coexistence_analysis_service import CoexistenceAnalysisService
 
 
 class OperationsOrchestrator:

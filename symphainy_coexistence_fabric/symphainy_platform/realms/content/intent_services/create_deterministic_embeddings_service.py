@@ -58,14 +58,14 @@ class CreateDeterministicEmbeddingsService(BaseIntentService):
         if file_parser_service:
             self.file_parser_service = file_parser_service
         else:
-            from ..enabling_services.file_parser_service import FileParserService
+            from symphainy_platform.foundations.libraries.parsing.file_parser_service import FileParserService
             self.file_parser_service = FileParserService(public_works=public_works)
         
         # Initialize deterministic embedding service
         if deterministic_embedding_service:
             self.deterministic_embedding_service = deterministic_embedding_service
         else:
-            from ..enabling_services.deterministic_embedding_service import DeterministicEmbeddingService
+            from symphainy_platform.foundations.libraries.embeddings.deterministic_embedding_service import DeterministicEmbeddingService
             self.deterministic_embedding_service = DeterministicEmbeddingService(public_works=public_works)
     
     async def execute(

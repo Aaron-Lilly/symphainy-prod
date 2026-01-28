@@ -67,13 +67,13 @@ class ExtractEmbeddingsService(BaseIntentService):
         if deterministic_embedding_service:
             self.deterministic_embedding_service = deterministic_embedding_service
         else:
-            from ..enabling_services.deterministic_embedding_service import DeterministicEmbeddingService
+            from symphainy_platform.foundations.libraries.embeddings.deterministic_embedding_service import DeterministicEmbeddingService
             self.deterministic_embedding_service = DeterministicEmbeddingService(public_works=public_works)
         
         if embedding_service:
             self.embedding_service = embedding_service
         else:
-            from ..enabling_services.embedding_service import EmbeddingService
+            from symphainy_platform.civic_systems.agentic.agents.embedding_agent import EmbeddingAgent as EmbeddingService
             self.embedding_service = EmbeddingService(public_works=public_works)
     
     async def execute(
