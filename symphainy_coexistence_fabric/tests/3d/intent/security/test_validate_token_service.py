@@ -21,18 +21,22 @@ class TestValidateTokenParameters:
     """Test validate_token parameter validation."""
     
     def test_requires_parameters(self):
-        """Should require required parameters."""
+        """Should require token parameter."""
         from symphainy_platform.runtime.intent_model import IntentFactory
         
+        # Required: token
         intent = IntentFactory.create_intent(
             intent_type="validate_token",
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="security_solution",
-            parameters={}
+            parameters={
+                "token": "test_access_token_abc123"
+            }
         )
         
         assert intent.intent_type == "validate_token"
+        assert intent.parameters.get("token") == "test_access_token_abc123"
 
 
 class TestValidateTokenExecution:
@@ -50,12 +54,16 @@ class TestValidateTokenExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="security_solution",
-            parameters={}
+            parameters={
+                "token": "test_access_token_123"
+            }
         )
         
         result = await security_solution.handle_intent(intent, execution_context)
         
-        assert "success" in result or "error" in result
+        # Services return artifacts and events
+        assert "artifacts" in result
+        assert "events" in result
     
     @pytest.mark.asyncio
     async def test_registers_artifact(
@@ -69,10 +77,12 @@ class TestValidateTokenExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="security_solution",
-            parameters={}
+            parameters={
+                "token": "test_access_token_456"
+            }
         )
         
         result = await security_solution.handle_intent(intent, execution_context)
         
-        if "success" in result:
-            assert "artifacts" in result or "artifact_id" in result
+        # Services return artifacts containing validation result
+        assert "artifacts" in result

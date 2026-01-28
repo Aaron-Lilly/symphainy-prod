@@ -19,14 +19,14 @@ if str(project_root) not in sys.path:
 class TestPlatformMonitoringJourneyStructure:
     """Test PlatformMonitoringJourney structure."""
     
-    def test_journey_exists(self, control_tower_solution):
+    def test_journey_exists(self, control_tower):
         """PlatformMonitoringJourney should exist."""
-        journey = control_tower_solution.get_journey("platform_monitoring")
+        journey = control_tower.get_journey("platform_monitoring")
         assert journey is not None
     
-    def test_has_compose_journey(self, control_tower_solution):
+    def test_has_compose_journey(self, control_tower):
         """Should have compose_journey method."""
-        journey = control_tower_solution.get_journey("platform_monitoring")
+        journey = control_tower.get_journey("platform_monitoring")
         assert hasattr(journey, 'compose_journey')
 
 
@@ -35,10 +35,10 @@ class TestPlatformMonitoringJourneyExecution:
     
     @pytest.mark.asyncio
     async def test_execute_journey(
-        self, control_tower_solution, execution_context
+        self, control_tower, execution_context
     ):
         """Should execute journey successfully."""
-        journey = control_tower_solution.get_journey("platform_monitoring")
+        journey = control_tower.get_journey("platform_monitoring")
         
         result = await journey.compose_journey(
             context=execution_context,
@@ -49,10 +49,10 @@ class TestPlatformMonitoringJourneyExecution:
     
     @pytest.mark.asyncio
     async def test_returns_artifacts(
-        self, control_tower_solution, execution_context
+        self, control_tower, execution_context
     ):
         """Should return artifacts in result."""
-        journey = control_tower_solution.get_journey("platform_monitoring")
+        journey = control_tower.get_journey("platform_monitoring")
         
         result = await journey.compose_journey(
             context=execution_context,
@@ -65,9 +65,9 @@ class TestPlatformMonitoringJourneyExecution:
 class TestPlatformMonitoringJourneySOAAPIs:
     """Test PlatformMonitoringJourney SOA APIs."""
     
-    def test_has_soa_apis(self, control_tower_solution):
+    def test_has_soa_apis(self, control_tower):
         """Should expose SOA APIs."""
-        journey = control_tower_solution.get_journey("platform_monitoring")
+        journey = control_tower.get_journey("platform_monitoring")
         apis = journey.get_soa_apis()
         
         assert isinstance(apis, dict)

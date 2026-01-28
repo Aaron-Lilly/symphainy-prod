@@ -24,15 +24,19 @@ class TestOptimizeProcessParameters:
         """Should require required parameters."""
         from symphainy_platform.runtime.intent_model import IntentFactory
         
+        # Test that intent can be created with valid parameters
         intent = IntentFactory.create_intent(
             intent_type="optimize_process",
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="operations_solution",
-            parameters={}
+            parameters={
+                "workflow_id": "test_workflow_123"  # Required: workflow_id
+            }
         )
         
         assert intent.intent_type == "optimize_process"
+        assert intent.parameters.get("workflow_id") == "test_workflow_123"
 
 
 class TestOptimizeProcessExecution:
@@ -50,12 +54,16 @@ class TestOptimizeProcessExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="operations_solution",
-            parameters={}
+            parameters={
+                "workflow_id": "test_workflow_123"
+            }
         )
         
         result = await operations_solution.handle_intent(intent, execution_context)
         
-        assert "success" in result or "error" in result
+        # Services return artifacts and events, not success
+        assert "artifacts" in result
+        assert "events" in result
     
     @pytest.mark.asyncio
     async def test_registers_artifact(
@@ -69,10 +77,14 @@ class TestOptimizeProcessExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="operations_solution",
-            parameters={}
+            parameters={
+                "workflow_id": "test_workflow_123",
+                "optimization_focus": "efficiency"
+            }
         )
         
         result = await operations_solution.handle_intent(intent, execution_context)
         
-        if "success" in result:
-            assert "artifacts" in result or "artifact_id" in result
+        # Services return artifacts containing optimization results
+        assert "artifacts" in result
+        assert "optimization" in result["artifacts"]

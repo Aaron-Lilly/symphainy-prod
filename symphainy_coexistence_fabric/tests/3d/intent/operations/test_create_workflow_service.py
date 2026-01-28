@@ -24,15 +24,19 @@ class TestCreateWorkflowParameters:
         """Should require required parameters."""
         from symphainy_platform.runtime.intent_model import IntentFactory
         
+        # Test that intent can be created with valid parameters
         intent = IntentFactory.create_intent(
             intent_type="create_workflow",
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="operations_solution",
-            parameters={}
+            parameters={
+                "sop_id": "test_sop_123"  # Required: one of sop_id, bpmn_file_id, or workflow_spec
+            }
         )
         
         assert intent.intent_type == "create_workflow"
+        assert intent.parameters.get("sop_id") == "test_sop_123"
 
 
 class TestCreateWorkflowExecution:
@@ -50,12 +54,16 @@ class TestCreateWorkflowExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="operations_solution",
-            parameters={}
+            parameters={
+                "sop_id": "test_sop_123"  # Required: one of sop_id, bpmn_file_id, or workflow_spec
+            }
         )
         
         result = await operations_solution.handle_intent(intent, execution_context)
         
-        assert "success" in result or "error" in result
+        # Services return artifacts and events, not success
+        assert "artifacts" in result
+        assert "events" in result
     
     @pytest.mark.asyncio
     async def test_registers_artifact(
@@ -69,10 +77,19 @@ class TestCreateWorkflowExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="operations_solution",
-            parameters={}
+            parameters={
+                "workflow_spec": {
+                    "name": "Test Workflow",
+                    "steps": [
+                        {"step_id": "1", "name": "Step 1"},
+                        {"step_id": "2", "name": "Step 2"}
+                    ]
+                }
+            }
         )
         
         result = await operations_solution.handle_intent(intent, execution_context)
         
-        if "success" in result:
-            assert "artifacts" in result or "artifact_id" in result
+        # Services return artifacts containing the workflow
+        assert "artifacts" in result
+        assert "workflow" in result["artifacts"]

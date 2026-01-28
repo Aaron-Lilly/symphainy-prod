@@ -66,23 +66,23 @@ class TestAuthenticateUserExecution:
         """Valid credentials should succeed."""
         from symphainy_platform.runtime.intent_model import IntentFactory
         
+        # Test authenticate_user intent directly
         intent = IntentFactory.create_intent(
-            intent_type="compose_journey",
+            intent_type="authenticate_user",
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="security_solution",
             parameters={
-                "journey_id": "authentication",
-                "journey_params": {
-                    "email": "test@example.com",
-                    "password": "Password123!"
-                }
+                "email": "test@example.com",
+                "password": "Password123!"
             }
         )
         
         result = await security_solution.handle_intent(intent, execution_context)
         
-        assert "success" in result
+        # Services return artifacts and events
+        assert "artifacts" in result
+        assert "events" in result
     
     @pytest.mark.asyncio
     async def test_returns_session_info(
@@ -92,16 +92,13 @@ class TestAuthenticateUserExecution:
         from symphainy_platform.runtime.intent_model import IntentFactory
         
         intent = IntentFactory.create_intent(
-            intent_type="compose_journey",
+            intent_type="authenticate_user",
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="security_solution",
             parameters={
-                "journey_id": "authentication",
-                "journey_params": {
-                    "email": "test@example.com",
-                    "password": "Password123!"
-                }
+                "email": "test@example.com",
+                "password": "Password123!"
             }
         )
         
@@ -117,21 +114,18 @@ class TestAuthenticateUserErrorHandling:
     async def test_missing_email_handled(
         self, security_solution, execution_context
     ):
-        """Missing email should be handled gracefully."""
+        """Missing email should raise an error."""
         from symphainy_platform.runtime.intent_model import IntentFactory
+        import pytest
         
         intent = IntentFactory.create_intent(
-            intent_type="compose_journey",
+            intent_type="authenticate_user",
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="security_solution",
-            parameters={
-                "journey_id": "authentication",
-                "journey_params": {"password": "Password123!"}  # Missing email
-            }
+            parameters={"password": "Password123!"}  # Missing email
         )
         
-        result = await security_solution.handle_intent(intent, execution_context)
-        
-        # Should not crash
-        assert "success" in result or "error" in result
+        # Should raise ValueError for missing email
+        with pytest.raises(ValueError):
+            await security_solution.handle_intent(intent, execution_context)

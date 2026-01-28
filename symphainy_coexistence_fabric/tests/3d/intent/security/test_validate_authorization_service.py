@@ -21,18 +21,23 @@ class TestValidateAuthorizationParameters:
     """Test validate_authorization parameter validation."""
     
     def test_requires_parameters(self):
-        """Should require required parameters."""
+        """Should require action parameter."""
         from symphainy_platform.runtime.intent_model import IntentFactory
         
+        # Required: action
         intent = IntentFactory.create_intent(
             intent_type="validate_authorization",
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="security_solution",
-            parameters={}
+            parameters={
+                "action": "read",
+                "resource": "files"
+            }
         )
         
         assert intent.intent_type == "validate_authorization"
+        assert intent.parameters.get("action") == "read"
 
 
 class TestValidateAuthorizationExecution:
@@ -50,12 +55,17 @@ class TestValidateAuthorizationExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="security_solution",
-            parameters={}
+            parameters={
+                "action": "read",
+                "resource": "files"
+            }
         )
         
         result = await security_solution.handle_intent(intent, execution_context)
         
-        assert "success" in result or "error" in result
+        # Services return artifacts and events
+        assert "artifacts" in result
+        assert "events" in result
     
     @pytest.mark.asyncio
     async def test_registers_artifact(
@@ -69,10 +79,13 @@ class TestValidateAuthorizationExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="security_solution",
-            parameters={}
+            parameters={
+                "action": "write",
+                "resource": "workflows"
+            }
         )
         
         result = await security_solution.handle_intent(intent, execution_context)
         
-        if "success" in result:
-            assert "artifacts" in result or "artifact_id" in result
+        # Services return artifacts containing authorization result
+        assert "artifacts" in result

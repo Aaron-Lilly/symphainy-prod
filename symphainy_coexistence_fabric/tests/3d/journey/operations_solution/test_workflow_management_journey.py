@@ -40,16 +40,18 @@ class TestWorkflowManagementJourneyExecution:
         """Should execute journey successfully."""
         journey = operations_solution._journeys.get("workflow_management")
         
+        # Journey requires one of: sop_id, bpmn_file_id, or workflow_spec
         result = await journey.compose_journey(
             journey_id="workflow_management",
             context=execution_context,
             journey_params={
-                "source_file_id": "test_file_123",
-                "source_type": "sop"
+                "sop_id": "test_sop_123"
             }
         )
         
-        assert "success" in result or "error" in result
+        # Journey returns artifacts, events, and journey metadata
+        assert "artifacts" in result
+        assert "journey_execution_id" in result
     
     @pytest.mark.asyncio
     async def test_returns_artifacts(
@@ -58,16 +60,20 @@ class TestWorkflowManagementJourneyExecution:
         """Should return artifacts in result."""
         journey = operations_solution._journeys.get("workflow_management")
         
+        # Journey requires one of: sop_id, bpmn_file_id, or workflow_spec
         result = await journey.compose_journey(
             journey_id="workflow_management",
             context=execution_context,
             journey_params={
-                "source_file_id": "test_file_123",
-                "source_type": "sop"
+                "workflow_spec": {
+                    "name": "Test Workflow",
+                    "steps": [{"step_id": "1", "name": "Step 1"}]
+                }
             }
         )
         
         assert "artifacts" in result
+        assert "workflow" in result["artifacts"]
 
 
 class TestWorkflowManagementJourneySOAAPIs:

@@ -21,18 +21,22 @@ class TestCheckEmailAvailabilityParameters:
     """Test check_email_availability parameter validation."""
     
     def test_requires_parameters(self):
-        """Should require required parameters."""
+        """Should require email parameter."""
         from symphainy_platform.runtime.intent_model import IntentFactory
         
+        # Required: email
         intent = IntentFactory.create_intent(
             intent_type="check_email_availability",
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="security_solution",
-            parameters={}
+            parameters={
+                "email": "newuser@example.com"
+            }
         )
         
         assert intent.intent_type == "check_email_availability"
+        assert intent.parameters.get("email") == "newuser@example.com"
 
 
 class TestCheckEmailAvailabilityExecution:
@@ -50,12 +54,16 @@ class TestCheckEmailAvailabilityExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="security_solution",
-            parameters={}
+            parameters={
+                "email": "check@example.com"
+            }
         )
         
         result = await security_solution.handle_intent(intent, execution_context)
         
-        assert "success" in result or "error" in result
+        # Services return artifacts and events
+        assert "artifacts" in result
+        assert "events" in result
     
     @pytest.mark.asyncio
     async def test_registers_artifact(
@@ -69,10 +77,12 @@ class TestCheckEmailAvailabilityExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="security_solution",
-            parameters={}
+            parameters={
+                "email": "another@example.com"
+            }
         )
         
         result = await security_solution.handle_intent(intent, execution_context)
         
-        if "success" in result:
-            assert "artifacts" in result or "artifact_id" in result
+        # Services return artifacts containing availability result
+        assert "artifacts" in result

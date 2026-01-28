@@ -19,14 +19,14 @@ if str(project_root) not in sys.path:
 class TestSolutionManagementJourneyStructure:
     """Test SolutionManagementJourney structure."""
     
-    def test_journey_exists(self, control_tower_solution):
+    def test_journey_exists(self, control_tower):
         """SolutionManagementJourney should exist."""
-        journey = control_tower_solution.get_journey("solution_management")
+        journey = control_tower.get_journey("solution_management")
         assert journey is not None
     
-    def test_has_compose_journey(self, control_tower_solution):
+    def test_has_compose_journey(self, control_tower):
         """Should have compose_journey method."""
-        journey = control_tower_solution.get_journey("solution_management")
+        journey = control_tower.get_journey("solution_management")
         assert hasattr(journey, 'compose_journey')
 
 
@@ -35,10 +35,10 @@ class TestSolutionManagementJourneyExecution:
     
     @pytest.mark.asyncio
     async def test_execute_journey(
-        self, control_tower_solution, execution_context
+        self, control_tower, execution_context
     ):
         """Should execute journey successfully."""
-        journey = control_tower_solution.get_journey("solution_management")
+        journey = control_tower.get_journey("solution_management")
         
         result = await journey.compose_journey(
             context=execution_context,
@@ -49,10 +49,10 @@ class TestSolutionManagementJourneyExecution:
     
     @pytest.mark.asyncio
     async def test_returns_artifacts(
-        self, control_tower_solution, execution_context
+        self, control_tower, execution_context
     ):
         """Should return artifacts in result."""
-        journey = control_tower_solution.get_journey("solution_management")
+        journey = control_tower.get_journey("solution_management")
         
         result = await journey.compose_journey(
             context=execution_context,
@@ -65,9 +65,9 @@ class TestSolutionManagementJourneyExecution:
 class TestSolutionManagementJourneySOAAPIs:
     """Test SolutionManagementJourney SOA APIs."""
     
-    def test_has_soa_apis(self, control_tower_solution):
+    def test_has_soa_apis(self, control_tower):
         """Should expose SOA APIs."""
-        journey = control_tower_solution.get_journey("solution_management")
+        journey = control_tower.get_journey("solution_management")
         apis = journey.get_soa_apis()
         
         assert isinstance(apis, dict)

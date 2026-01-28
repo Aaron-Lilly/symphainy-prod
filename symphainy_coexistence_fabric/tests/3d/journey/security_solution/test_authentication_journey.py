@@ -40,13 +40,19 @@ class TestAuthenticationJourneyExecution:
         """Should execute journey successfully."""
         journey = security_solution._journeys.get("authentication")
         
+        # AuthenticateUserService requires email and password
         result = await journey.compose_journey(
             journey_id="authentication",
             context=execution_context,
-            journey_params={}
+            journey_params={
+                "email": "test@example.com",
+                "password": "Password123!"
+            }
         )
         
-        assert "success" in result or "error" in result
+        # Journey returns artifacts, events, and journey metadata
+        assert "artifacts" in result
+        assert "journey_execution_id" in result
     
     @pytest.mark.asyncio
     async def test_returns_artifacts(
@@ -55,10 +61,14 @@ class TestAuthenticationJourneyExecution:
         """Should return artifacts in result."""
         journey = security_solution._journeys.get("authentication")
         
+        # AuthenticateUserService requires email and password
         result = await journey.compose_journey(
             journey_id="authentication",
             context=execution_context,
-            journey_params={}
+            journey_params={
+                "email": "user@example.com",
+                "password": "SecurePass123!"
+            }
         )
         
         assert "artifacts" in result

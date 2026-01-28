@@ -19,21 +19,21 @@ if str(project_root) not in sys.path:
 class TestControlTowerMCPServer:
     """Test ControlTower MCP Server."""
     
-    def test_initialize_mcp_server(self, control_tower_solution):
+    def test_initialize_mcp_server(self, control_tower):
         """Should initialize MCP server."""
-        mcp_server = control_tower_solution.initialize_mcp_server()
+        mcp_server = control_tower.initialize_mcp_server()
         assert mcp_server is not None
     
-    def test_mcp_server_has_tools(self, control_tower_solution):
+    def test_mcp_server_has_tools(self, control_tower):
         """MCP server should have tools registered."""
-        mcp_server = control_tower_solution.initialize_mcp_server()
+        mcp_server = control_tower.initialize_mcp_server()
         
         if hasattr(mcp_server, 'tools'):
             assert mcp_server.tools is not None
             assert len(mcp_server.tools) > 0
     
-    def test_soa_apis_exposed(self, control_tower_solution):
+    def test_soa_apis_exposed(self, control_tower):
         """Solution should expose SOA APIs."""
-        apis = control_tower_solution.get_soa_apis()
+        apis = control_tower.get_soa_apis()
         assert isinstance(apis, dict)
         assert len(apis) > 0

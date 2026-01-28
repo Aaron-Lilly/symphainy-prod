@@ -21,18 +21,24 @@ class TestCreateUserAccountParameters:
     """Test create_user_account parameter validation."""
     
     def test_requires_parameters(self):
-        """Should require required parameters."""
+        """Should require email and password parameters."""
         from symphainy_platform.runtime.intent_model import IntentFactory
         
+        # Required: email and password
         intent = IntentFactory.create_intent(
             intent_type="create_user_account",
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="security_solution",
-            parameters={}
+            parameters={
+                "email": "newuser@example.com",
+                "password": "SecurePass123!",
+                "name": "Test User"
+            }
         )
         
         assert intent.intent_type == "create_user_account"
+        assert intent.parameters.get("email") == "newuser@example.com"
 
 
 class TestCreateUserAccountExecution:
@@ -50,12 +56,18 @@ class TestCreateUserAccountExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="security_solution",
-            parameters={}
+            parameters={
+                "email": "newuser@example.com",
+                "password": "SecurePass123!",
+                "name": "Test User"
+            }
         )
         
         result = await security_solution.handle_intent(intent, execution_context)
         
-        assert "success" in result or "error" in result
+        # Services return artifacts and events
+        assert "artifacts" in result
+        assert "events" in result
     
     @pytest.mark.asyncio
     async def test_registers_artifact(
@@ -69,10 +81,13 @@ class TestCreateUserAccountExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="security_solution",
-            parameters={}
+            parameters={
+                "email": "anotheruser@example.com",
+                "password": "SecurePass456!"
+            }
         )
         
         result = await security_solution.handle_intent(intent, execution_context)
         
-        if "success" in result:
-            assert "artifacts" in result or "artifact_id" in result
+        # Services return artifacts containing registration info
+        assert "artifacts" in result
