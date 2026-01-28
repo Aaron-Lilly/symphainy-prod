@@ -21,7 +21,7 @@ class TestNavigateToSolutionParameters:
     """Test navigate_to_solution parameter validation."""
     
     def test_requires_parameters(self):
-        """Should require required parameters."""
+        """Should require solution_id parameter."""
         from symphainy_platform.runtime.intent_model import IntentFactory
         
         intent = IntentFactory.create_intent(
@@ -30,19 +30,18 @@ class TestNavigateToSolutionParameters:
             session_id="test_session",
             solution_id="coexistence",
             parameters={
-                "target_solution": "content_solution"
+                "solution_id": "content_solution"
             }
         )
         
         assert intent.intent_type == "navigate_to_solution"
-        assert intent.parameters.get("target_solution") == "content_solution"
+        assert intent.parameters.get("solution_id") == "content_solution"
 
 
 class TestNavigateToSolutionExecution:
     """Test navigate_to_solution execution."""
     
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Journey returns different structure - needs investigation")
     async def test_executes_successfully(
         self, coexistence_solution, execution_context
     ):
@@ -55,7 +54,7 @@ class TestNavigateToSolutionExecution:
             session_id="test_session",
             solution_id="coexistence",
             parameters={
-                "target_solution": "content_solution"
+                "solution_id": "content_solution"
             }
         )
         
@@ -63,9 +62,9 @@ class TestNavigateToSolutionExecution:
         
         assert "artifacts" in result
         assert "events" in result
+        assert "journey_execution_id" in result
     
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Journey returns different structure - needs investigation")
     async def test_registers_artifact(
         self, coexistence_solution, execution_context
     ):
@@ -78,10 +77,11 @@ class TestNavigateToSolutionExecution:
             session_id="test_session",
             solution_id="coexistence",
             parameters={
-                "target_solution": "insights_solution"
+                "solution_id": "insights_solution"
             }
         )
         
         result = await coexistence_solution.handle_intent(intent, execution_context)
         
         assert "artifacts" in result
+        assert "navigation" in result["artifacts"]

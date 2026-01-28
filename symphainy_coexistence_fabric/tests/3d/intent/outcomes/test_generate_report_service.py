@@ -1,9 +1,6 @@
 """
 Test GenerateReport Intent Service
 
-NOTE: The generate_report intent is NOT currently implemented in OutcomesSolution.
-These tests document expected behavior but are skipped until implemented.
-
 Tests:
 - Parameter validation
 - Service execution
@@ -45,7 +42,6 @@ class TestGenerateReportExecution:
     """Test generate_report execution."""
     
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Intent 'generate_report' not implemented in OutcomesSolution")
     async def test_executes_successfully(
         self, outcomes_solution, execution_context
     ):
@@ -67,9 +63,9 @@ class TestGenerateReportExecution:
         
         assert "artifacts" in result
         assert "events" in result
+        assert "journey_execution_id" in result
     
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Intent 'generate_report' not implemented in OutcomesSolution")
     async def test_registers_artifact(
         self, outcomes_solution, execution_context
     ):

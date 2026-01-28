@@ -43,6 +43,7 @@ from .journeys.data_interpretation_journey import DataInterpretationJourney
 from .journeys.data_analysis_journey import DataAnalysisJourney
 from .journeys.lineage_visualization_journey import LineageVisualizationJourney
 from .journeys.relationship_mapping_journey import RelationshipMappingJourney
+from .journeys.business_analysis_journey import BusinessAnalysisJourney
 
 
 class InsightsSolution:
@@ -75,7 +76,8 @@ class InsightsSolution:
         "analyze_structured_data",
         "analyze_unstructured_data",
         "visualize_lineage",
-        "map_relationships"
+        "map_relationships",
+        "extract_structured_data"  # Extract structured data from unstructured content
     ]
     
     def __init__(
@@ -122,6 +124,11 @@ class InsightsSolution:
         )
         
         self._journeys["relationship_mapping"] = RelationshipMappingJourney(
+            public_works=self.public_works,
+            state_surface=self.state_surface
+        )
+        
+        self._journeys["business_analysis"] = BusinessAnalysisJourney(
             public_works=self.public_works,
             state_surface=self.state_surface
         )
@@ -221,6 +228,7 @@ class InsightsSolution:
             "analyze_unstructured_data": "data_analysis",
             "visualize_lineage": "lineage_visualization",
             "map_relationships": "relationship_mapping",
+            "extract_structured_data": "business_analysis",
         }
         
         journey_id = intent_to_journey.get(intent_type)

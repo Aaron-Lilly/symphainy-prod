@@ -75,7 +75,9 @@ class ContentSolution:
         "extract_embeddings",
         "list_artifacts",
         "retrieve_artifact_metadata",
-        "archive_file"
+        "archive_file",
+        "delete_file",  # Hard delete of file artifacts
+        "get_parsed_file"  # Retrieve parsed file content
     ]
     
     def __init__(
@@ -249,7 +251,12 @@ class ContentSolution:
         journey = self._find_journey_for_intent(intent_type)
         if journey:
             # For journey-level intents, use compose_journey
-            return await journey.compose_journey(context, intent.parameters)
+            # Map intent types to journey actions where needed
+            journey_params = dict(intent.parameters)
+            action = self._get_action_for_intent(intent_type)
+            if action:
+                journey_params["action"] = action
+            return await journey.compose_journey(context, journey_params)
         
         # Fallback to unknown intent
         raise ValueError(f"Unknown intent type: {intent_type} (Solution: {self.solution_id})")
@@ -274,11 +281,27 @@ class ContentSolution:
             "list_files": "file_management",
             "retrieve_artifact_metadata": "file_management",
             "archive_file": "file_management",
+            "delete_file": "file_management",  # Hard delete
         }
         
         journey_id = intent_to_journey.get(intent_type)
         if journey_id:
             return self._journeys.get(journey_id)
+    
+    def _get_action_for_intent(self, intent_type: str) -> Optional[str]:
+        """Get the journey action for a given intent type."""
+        intent_to_action = {
+            # File Management actions
+            "list_artifacts": "list",
+            "list_files": "list",
+            "retrieve_artifact_metadata": "get_metadata",
+            "archive_file": "archive",
+            "delete_file": "delete",
+            # File Parsing actions
+            "parse_content": "parse",
+            "get_parsed_file": "get_parsed",
+        }
+        return intent_to_action.get(intent_type)
         
         return None
     

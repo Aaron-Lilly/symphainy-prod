@@ -21,7 +21,7 @@ class TestRouteToLiaisonAgentParameters:
     """Test route_to_liaison_agent parameter validation."""
     
     def test_requires_parameters(self):
-        """Should require required parameters."""
+        """Should require target_pillar parameter."""
         from symphainy_platform.runtime.intent_model import IntentFactory
         
         intent = IntentFactory.create_intent(
@@ -30,19 +30,19 @@ class TestRouteToLiaisonAgentParameters:
             session_id="test_session",
             solution_id="coexistence",
             parameters={
-                "target_agent": "content_liaison",
-                "context": {"topic": "file_upload"}
+                "target_pillar": "content",
+                "routing_reason": "User needs file upload assistance"
             }
         )
         
         assert intent.intent_type == "route_to_liaison_agent"
+        assert intent.parameters.get("target_pillar") == "content"
 
 
 class TestRouteToLiaisonAgentExecution:
     """Test route_to_liaison_agent execution."""
     
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Journey returns different structure - needs investigation")
     async def test_executes_successfully(
         self, coexistence_solution, execution_context
     ):
@@ -55,8 +55,8 @@ class TestRouteToLiaisonAgentExecution:
             session_id="test_session",
             solution_id="coexistence",
             parameters={
-                "target_agent": "content_liaison",
-                "context": {"topic": "file_upload"}
+                "target_pillar": "content",
+                "routing_reason": "User needs file upload assistance"
             }
         )
         
@@ -64,9 +64,9 @@ class TestRouteToLiaisonAgentExecution:
         
         assert "artifacts" in result
         assert "events" in result
+        assert "journey_execution_id" in result
     
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Journey returns different structure - needs investigation")
     async def test_registers_artifact(
         self, coexistence_solution, execution_context
     ):
@@ -79,11 +79,12 @@ class TestRouteToLiaisonAgentExecution:
             session_id="test_session",
             solution_id="coexistence",
             parameters={
-                "target_agent": "insights_liaison",
-                "context": {"topic": "data_analysis"}
+                "target_pillar": "insights",
+                "routing_reason": "User needs data analysis help"
             }
         )
         
         result = await coexistence_solution.handle_intent(intent, execution_context)
         
         assert "artifacts" in result
+        assert "liaison_agent_activation" in result["artifacts"]

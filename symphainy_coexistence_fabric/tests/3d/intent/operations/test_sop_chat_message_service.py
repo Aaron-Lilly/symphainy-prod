@@ -45,7 +45,7 @@ class TestSOPChatMessageExecution:
     """Test sop_chat_message execution."""
     
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="sop_chat_message requires actual state storage that mocks don't provide")
+    @pytest.mark.skip(reason="Phase 5 - requires real infrastructure (state_surface persistence)")
     async def test_executes_successfully(
         self, operations_solution, execution_context
     ):
@@ -53,7 +53,8 @@ class TestSOPChatMessageExecution:
         
         NOTE: This test is skipped because sop_chat_message requires the session
         to be persisted in state_surface, which the mock doesn't support.
-        The generate_sop_from_chat + sop_chat_message flow works in integration tests.
+        The generate_sop_from_chat + sop_chat_message flow will be tested in Phase 5
+        integration tests with real infrastructure.
         """
         from symphainy_platform.runtime.intent_model import IntentFactory
         

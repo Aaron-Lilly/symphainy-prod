@@ -82,7 +82,9 @@ class OutcomesSolution:
         "create_poc",
         "create_blueprint",
         "create_solution",
-        "export_artifact"
+        "export_artifact",
+        "generate_report",   # Generate reports from analysis
+        "generate_visual"    # Generate visualizations
     ]
     
     def __init__(
@@ -284,6 +286,8 @@ class OutcomesSolution:
             "create_blueprint": "blueprint_creation",
             "create_solution": "solution_creation",
             "export_artifact": "artifact_export",
+            "generate_report": "outcome_synthesis",  # Reports as outcome synthesis
+            "generate_visual": "outcome_synthesis",  # Visuals as outcome synthesis
         }
         
         journey_id = intent_to_journey.get(intent_type)

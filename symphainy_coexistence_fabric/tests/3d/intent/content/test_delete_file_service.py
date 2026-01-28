@@ -1,9 +1,6 @@
 """
 Test DeleteFile Intent Service
 
-NOTE: The delete_file intent is NOT currently implemented in ContentSolution.
-These tests document expected behavior but are skipped until implemented.
-
 Tests:
 - Parameter validation
 - Service execution
@@ -45,7 +42,6 @@ class TestDeleteFileExecution:
     """Test delete_file execution."""
     
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Intent 'delete_file' not implemented in ContentSolution")
     async def test_executes_successfully(
         self, content_solution, execution_context
     ):
@@ -58,7 +54,7 @@ class TestDeleteFileExecution:
             session_id="test_session",
             solution_id="content_solution",
             parameters={
-                "file_id": "test_file_123"
+                "artifact_id": "test_artifact_123"
             }
         )
         
@@ -66,9 +62,9 @@ class TestDeleteFileExecution:
         
         assert "artifacts" in result
         assert "events" in result
+        assert "journey_execution_id" in result
     
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Intent 'delete_file' not implemented in ContentSolution")
     async def test_registers_artifact(
         self, content_solution, execution_context
     ):
@@ -81,10 +77,11 @@ class TestDeleteFileExecution:
             session_id="test_session",
             solution_id="content_solution",
             parameters={
-                "file_id": "test_file_456"
+                "artifact_id": "test_artifact_456"
             }
         )
         
         result = await content_solution.handle_intent(intent, execution_context)
         
         assert "artifacts" in result
+        assert "delete_result" in result["artifacts"]

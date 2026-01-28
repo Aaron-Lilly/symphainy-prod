@@ -1,9 +1,6 @@
 """
 Test GenerateVisual Intent Service
 
-NOTE: The generate_visual intent is NOT currently implemented in OutcomesSolution.
-These tests document expected behavior but are skipped until implemented.
-
 Tests:
 - Parameter validation
 - Service execution
@@ -45,7 +42,6 @@ class TestGenerateVisualExecution:
     """Test generate_visual execution."""
     
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Intent 'generate_visual' not implemented in OutcomesSolution")
     async def test_executes_successfully(
         self, outcomes_solution, execution_context
     ):
@@ -67,9 +63,9 @@ class TestGenerateVisualExecution:
         
         assert "artifacts" in result
         assert "events" in result
+        assert "journey_execution_id" in result
     
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Intent 'generate_visual' not implemented in OutcomesSolution")
     async def test_registers_artifact(
         self, outcomes_solution, execution_context
     ):

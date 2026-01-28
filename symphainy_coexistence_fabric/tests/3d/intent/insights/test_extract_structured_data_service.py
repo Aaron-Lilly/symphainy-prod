@@ -1,9 +1,6 @@
 """
 Test ExtractStructuredData Intent Service
 
-NOTE: The extract_structured_data intent is NOT currently implemented in InsightsSolution.
-These tests document expected behavior but are skipped until implemented.
-
 Tests:
 - Parameter validation
 - Service execution
@@ -46,7 +43,6 @@ class TestExtractStructuredDataExecution:
     """Test extract_structured_data execution."""
     
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Intent 'extract_structured_data' not implemented in InsightsSolution")
     async def test_executes_successfully(
         self, insights_solution, execution_context
     ):
@@ -60,7 +56,7 @@ class TestExtractStructuredDataExecution:
             solution_id="insights_solution",
             parameters={
                 "artifact_id": "test_artifact_123",
-                "extraction_schema": {"fields": ["name", "date"]}
+                "analysis_type": "structured_extraction"
             }
         )
         
@@ -68,9 +64,9 @@ class TestExtractStructuredDataExecution:
         
         assert "artifacts" in result
         assert "events" in result
+        assert "journey_execution_id" in result
     
     @pytest.mark.asyncio
-    @pytest.mark.skip(reason="Intent 'extract_structured_data' not implemented in InsightsSolution")
     async def test_registers_artifact(
         self, insights_solution, execution_context
     ):
@@ -83,10 +79,12 @@ class TestExtractStructuredDataExecution:
             session_id="test_session",
             solution_id="insights_solution",
             parameters={
-                "artifact_id": "test_artifact_456"
+                "artifact_id": "test_artifact_456",
+                "analysis_type": "general"
             }
         )
         
         result = await insights_solution.handle_intent(intent, execution_context)
         
         assert "artifacts" in result
+        assert "analysis" in result["artifacts"]
