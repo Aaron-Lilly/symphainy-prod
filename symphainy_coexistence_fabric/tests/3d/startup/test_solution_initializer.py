@@ -192,7 +192,7 @@ class TestIntentRegistration:
         )
         
         # Verify compose_journey is registered
-        handlers = intent_registry.get_handlers_for_intent("compose_journey")
+        handlers = intent_registry.get_intent_handlers("compose_journey")
         assert len(handlers) >= 8, "compose_journey should be registered for all solutions"
 
 
