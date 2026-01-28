@@ -89,136 +89,177 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
     logger.info("  → Creating IntentRegistry...")
     intent_registry = IntentRegistry()
     
-    # Register intent handlers from realms (explicit registration, no magic imports)
-    logger.info("  → Registering intent handlers...")
+    # Register intent handlers from realm intent services
+    # PATTERN: Each intent maps to an IntentService.execute() method
+    # No orchestrators - Runtime handles orchestration via Sagas
+    logger.info("  → Registering intent handlers from intent services...")
     
-    # Content Realm handlers
-    from ..realms.content.orchestrators.content_orchestrator import ContentOrchestrator
-    content_orchestrator = ContentOrchestrator(public_works=public_works)
+    # Helper function to register intent service
+    def register_intent_service(intent_type: str, service_class, realm: str):
+        """Register an intent service with the registry."""
+        try:
+            service = service_class(public_works=public_works, state_surface=state_surface)
+            intent_registry.register_intent(
+                intent_type=intent_type,
+                handler_name=f"{realm}_{intent_type}_service",
+                handler_function=service.execute,
+                metadata={"realm": realm, "service": service_class.__name__}
+            )
+            logger.info(f"    ✅ Registered: {intent_type} → {service_class.__name__}")
+            return True
+        except Exception as e:
+            logger.warning(f"    ⚠️ Failed to register {intent_type}: {e}")
+            return False
     
-    # Register content realm intents
-    content_intents = [
-        "ingest_file",
-        "bulk_ingest_files",
-        "parse_content",
-        "bulk_parse_files",
-        "create_deterministic_embeddings",  # Required before extract_embeddings
-        "extract_embeddings",
-        "bulk_extract_embeddings",
-        "save_materialization",
-        "get_parsed_file",
-        "get_semantic_interpretation",
-        "register_artifact",  # Artifact-centric (register_file is legacy alias)
-        "register_file",  # Legacy alias for register_artifact
-        "retrieve_artifact_metadata",  # Artifact-centric (retrieve_file_metadata is legacy alias)
-        "retrieve_file_metadata",  # Legacy alias for retrieve_artifact_metadata
-        "retrieve_artifact",  # Artifact-centric (retrieve_file is legacy alias)
-        "retrieve_file",  # Legacy alias for retrieve_artifact
-        "list_files",
-        "bulk_interpret_data",
-        "get_operation_status",
-        "archive_artifact",  # Artifact-centric (archive_file is legacy alias)
-        "archive_file",  # Legacy alias for archive_artifact
-        "delete_artifact",  # Artifact-centric (purge_file is legacy alias)
-        "delete_file",  # Direct file deletion intent
-        "purge_file",  # Legacy alias for delete_artifact
-        "list_artifacts"  # List artifacts in scope
-    ]
-    
-    for intent_type in content_intents:
-        intent_registry.register_intent(
-            intent_type=intent_type,
-            handler_name="content_orchestrator",
-            handler_function=content_orchestrator.handle_intent,
-            metadata={"realm": "content", "orchestrator": "ContentOrchestrator"}
+    # Content Realm intent services
+    logger.info("  → Registering Content Realm intent services...")
+    try:
+        from ..realms.content.intent_services import (
+            IngestFileService,
+            ParseContentService,
+            CreateDeterministicEmbeddingsService,
+            ExtractEmbeddingsService,
+            SaveMaterializationService,
+            GetParsedFileService,
+            RetrieveArtifactMetadataService,
+            ListArtifactsService,
+            ArchiveFileService,
+            DeleteFileService
         )
-        logger.info(f"    ✅ Registered: {intent_type} → content_orchestrator")
+        
+        content_services = [
+            ("ingest_file", IngestFileService),
+            ("parse_content", ParseContentService),
+            ("create_deterministic_embeddings", CreateDeterministicEmbeddingsService),
+            ("extract_embeddings", ExtractEmbeddingsService),
+            ("save_materialization", SaveMaterializationService),
+            ("get_parsed_file", GetParsedFileService),
+            ("retrieve_artifact_metadata", RetrieveArtifactMetadataService),
+            ("list_artifacts", ListArtifactsService),
+            ("archive_file", ArchiveFileService),
+            ("delete_file", DeleteFileService),
+        ]
+        
+        content_count = sum(1 for intent, svc in content_services if register_intent_service(intent, svc, "content"))
+        logger.info(f"  ✅ Content Realm: {content_count} intent services registered")
+    except ImportError as e:
+        logger.warning(f"  ⚠️ Content Realm import error: {e}")
+        content_count = 0
     
-    # Register insights realm handlers
-    logger.info("  → Registering insights realm handlers...")
-    from ..realms.insights.orchestrators.insights_orchestrator import InsightsOrchestrator
-    insights_orchestrator = InsightsOrchestrator(public_works=public_works)
-    
-    insights_intents = [
-        "analyze_content",
-        "interpret_data",
-        "map_relationships",
-        "query_data",
-        "calculate_metrics",
-        "assess_data_quality",
-        "interpret_data_self_discovery",
-        "interpret_data_guided",
-        "analyze_structured_data",
-        "analyze_unstructured_data",
-        "visualize_lineage",
-        "extract_structured_data",
-        "discover_extraction_pattern",
-        "create_extraction_config",
-        "match_source_to_target"
-    ]
-    
-    for intent_type in insights_intents:
-        intent_registry.register_intent(
-            intent_type=intent_type,
-            handler_name="insights_orchestrator",
-            handler_function=insights_orchestrator.handle_intent,
-            metadata={"realm": "insights", "orchestrator": "InsightsOrchestrator"}
+    # Insights Realm intent services
+    logger.info("  → Registering Insights Realm intent services...")
+    try:
+        from ..realms.insights.intent_services import (
+            AssessDataQualityService,
+            InterpretDataSelfDiscoveryService,
+            InterpretDataGuidedService,
+            AnalyzeStructuredDataService,
+            AnalyzeUnstructuredDataService,
+            VisualizeLineageService,
+            MapRelationshipsService
         )
-        logger.info(f"    ✅ Registered: {intent_type} → insights_orchestrator")
+        
+        insights_services = [
+            ("assess_data_quality", AssessDataQualityService),
+            ("interpret_data_self_discovery", InterpretDataSelfDiscoveryService),
+            ("interpret_data_guided", InterpretDataGuidedService),
+            ("analyze_structured_data", AnalyzeStructuredDataService),
+            ("analyze_unstructured_data", AnalyzeUnstructuredDataService),
+            ("visualize_lineage", VisualizeLineageService),
+            ("map_relationships", MapRelationshipsService),
+        ]
+        
+        insights_count = sum(1 for intent, svc in insights_services if register_intent_service(intent, svc, "insights"))
+        logger.info(f"  ✅ Insights Realm: {insights_count} intent services registered")
+    except ImportError as e:
+        logger.warning(f"  ⚠️ Insights Realm import error: {e}")
+        insights_count = 0
     
-    # Register outcomes realm handlers
-    logger.info("  → Registering outcomes realm handlers...")
-    from ..realms.outcomes.orchestrators.outcomes_orchestrator import OutcomesOrchestrator
-    outcomes_orchestrator = OutcomesOrchestrator(public_works=public_works)
-    
-    outcomes_intents = [
-        "synthesize_outcome",
-        "generate_roadmap",
-        "create_poc",
-        "create_blueprint",
-        "create_solution",
-        "export_to_migration_engine",
-        "export_artifact"
-    ]
-    
-    for intent_type in outcomes_intents:
-        intent_registry.register_intent(
-            intent_type=intent_type,
-            handler_name="outcomes_orchestrator",
-            handler_function=outcomes_orchestrator.handle_intent,
-            metadata={"realm": "outcomes", "orchestrator": "OutcomesOrchestrator"}
+    # Operations Realm intent services
+    logger.info("  → Registering Operations Realm intent services...")
+    try:
+        from ..realms.operations.intent_services import (
+            OptimizeProcessService,
+            GenerateSOPService,
+            CreateWorkflowService,
+            AnalyzeCoexistenceService,
+            GenerateSOPFromChatService,
+            SOPChatMessageService
         )
-        logger.info(f"    ✅ Registered: {intent_type} → outcomes_orchestrator")
+        
+        operations_services = [
+            ("optimize_process", OptimizeProcessService),
+            ("generate_sop", GenerateSOPService),
+            ("create_workflow", CreateWorkflowService),
+            ("analyze_coexistence", AnalyzeCoexistenceService),
+            ("generate_sop_from_chat", GenerateSOPFromChatService),
+            ("sop_chat_message", SOPChatMessageService),
+        ]
+        
+        operations_count = sum(1 for intent, svc in operations_services if register_intent_service(intent, svc, "operations"))
+        logger.info(f"  ✅ Operations Realm: {operations_count} intent services registered")
+    except ImportError as e:
+        logger.warning(f"  ⚠️ Operations Realm import error: {e}")
+        operations_count = 0
     
-    # Register operations realm handlers
-    # NOTE: Operations Realm consolidates all SOP, workflow, and coexistence capabilities
-    # The old "journey realm" has been merged into Operations Realm.
-    # "Journey" is now reserved for platform journeys (intent sequences in solutions)
-    logger.info("  → Registering operations realm handlers...")
-    from ..realms.operations.orchestrators.operations_orchestrator import OperationsOrchestrator
-    operations_orchestrator = OperationsOrchestrator(public_works=public_works)
-    
-    operations_intents = [
-        "optimize_process",
-        "generate_sop",
-        "create_workflow",
-        "analyze_coexistence",
-        "create_blueprint",
-        "generate_sop_from_chat",
-        "sop_chat_message"
-    ]
-    
-    for intent_type in operations_intents:
-        intent_registry.register_intent(
-            intent_type=intent_type,
-            handler_name="operations_orchestrator",
-            handler_function=operations_orchestrator.handle_intent,
-            metadata={"realm": "operations", "orchestrator": "OperationsOrchestrator"}
+    # Outcomes Realm intent services
+    logger.info("  → Registering Outcomes Realm intent services...")
+    try:
+        from ..realms.outcomes.intent_services import (
+            SynthesizeOutcomeService,
+            GenerateRoadmapService,
+            CreatePOCService,
+            CreateBlueprintService,
+            CreateSolutionService,
+            ExportArtifactService
         )
-        logger.info(f"    ✅ Registered: {intent_type} → operations_orchestrator")
+        
+        outcomes_services = [
+            ("synthesize_outcome", SynthesizeOutcomeService),
+            ("generate_roadmap", GenerateRoadmapService),
+            ("create_poc", CreatePOCService),
+            ("create_blueprint", CreateBlueprintService),
+            ("create_solution", CreateSolutionService),
+            ("export_artifact", ExportArtifactService),
+        ]
+        
+        outcomes_count = sum(1 for intent, svc in outcomes_services if register_intent_service(intent, svc, "outcomes"))
+        logger.info(f"  ✅ Outcomes Realm: {outcomes_count} intent services registered")
+    except ImportError as e:
+        logger.warning(f"  ⚠️ Outcomes Realm import error: {e}")
+        outcomes_count = 0
     
-    total_handlers = len(content_intents) + len(insights_intents) + len(outcomes_intents) + len(operations_intents)
-    logger.info(f"  ✅ IntentRegistry created with {total_handlers} intent handlers across all realms")
+    # Security Realm intent services
+    logger.info("  → Registering Security Realm intent services...")
+    try:
+        from ..realms.security.intent_services import (
+            AuthenticateUserService,
+            CreateUserAccountService,
+            CreateSessionService,
+            ValidateAuthorizationService,
+            TerminateSessionService,
+            CheckEmailAvailabilityService,
+            ValidateTokenService
+        )
+        
+        security_services = [
+            ("authenticate_user", AuthenticateUserService),
+            ("create_user_account", CreateUserAccountService),
+            ("create_session", CreateSessionService),
+            ("validate_authorization", ValidateAuthorizationService),
+            ("terminate_session", TerminateSessionService),
+            ("check_email_availability", CheckEmailAvailabilityService),
+            ("validate_token", ValidateTokenService),
+        ]
+        
+        security_count = sum(1 for intent, svc in security_services if register_intent_service(intent, svc, "security"))
+        logger.info(f"  ✅ Security Realm: {security_count} intent services registered")
+    except ImportError as e:
+        logger.warning(f"  ⚠️ Security Realm import error: {e}")
+        security_count = 0
+    
+    total_handlers = content_count + insights_count + operations_count + outcomes_count + security_count
+    logger.info(f"  ✅ IntentRegistry created with {total_handlers} intent services across all realms")
     
     # Step 4.5: Initialize Platform Solutions
     logger.info("  → Initializing Platform Solutions...")
