@@ -141,6 +141,98 @@ services:
     restart: unless-stopped
     networks:
       - symphainy_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.runtime.rule=PathPrefix(`/api/runtime`) && !PathPrefix(`/api/runtime/agent`) || PathPrefix(`/api/intent`) || PathPrefix(`/api/session`) || PathPrefix(`/api/execution`) || PathPrefix(`/api/realms`)"
+      - "traefik.http.routers.runtime.entrypoints=web"
+      - "traefik.http.routers.runtime.service=runtime"
+      - "traefik.http.services.runtime.loadbalancer.server.port=8000"
+      - "traefik.http.routers.runtime.priority=10"
+      - "traefik.http.routers.runtime-health.rule=Path(`/health`) || Path(`/api/health`)"
+      - "traefik.http.routers.runtime-health.entrypoints=web"
+      - "traefik.http.routers.runtime-health.service=runtime"
+      - "traefik.http.routers.runtime-health.priority=99"
+
+  # Experience Service - NEW BACKEND CONTAINER
+  experience:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime  # Can use same Dockerfile or create separate one
+    container_name: symphainy-experience
+    ports:
+      - ${EXPERIENCE_PORT:-8001}:8001
+    env_file:
+      - .env.secrets
+    environment:
+      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
+      - ARANGO_URL=${ARANGO_URL:-http://arango:8529}
+      - ARANGO_ROOT_PASSWORD=${ARANGO_ROOT_PASSWORD:-test_password}
+      - ARANGO_USERNAME=${ARANGO_USERNAME:-root}
+      - ARANGO_DATABASE=${ARANGO_DATABASE:-symphainy_platform}
+      - CONSUL_HOST=consul
+      - CONSUL_PORT=8500
+      - RUNTIME_URL=http://runtime:8000
+      - EXPERIENCE_PORT=8001
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS:-http://35.215.64.103,http://35.215.64.103:3000,http://localhost:3000}
+    depends_on:
+      runtime:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      arango:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/127.0.0.1/8001' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      - symphainy_net
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.experience.rule=PathPrefix(`/api/sessions`) || PathPrefix(`/api/session`) || PathPrefix(`/api/intent`) || PathPrefix(`/api/ws`) || PathPrefix(`/api/admin`) || PathPrefix(`/api/auth`)"
+      - "traefik.http.routers.experience.entrypoints=web"
+      - "traefik.http.routers.experience.service=experience"
+      - "traefik.http.services.experience.loadbalancer.server.port=8001"
+      - "traefik.http.routers.experience.priority=10"
+      - "traefik.http.routers.experience-websocket.rule=PathPrefix(`/api/runtime/agent`)"
+      - "traefik.http.routers.experience-websocket.entrypoints=web"
+      - "traefik.http.routers.experience-websocket.service=experience"
+      - "traefik.http.routers.experience-websocket.priority=20"
+      - "traefik.http.routers.experience-health.rule=Path(`/health`)"
+      - "traefik.http.routers.experience-health.entrypoints=web"
+      - "traefik.http.routers.experience-health.service=experience"
+      - "traefik.http.routers.experience-health.priority=99"
+
+  # Traefik Reverse Proxy
+  traefik:
+    image: traefik:v2.10
+    container_name: symphainy-traefik
+    command:
+      - --api.insecure=true
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.transport.respondingTimeouts.readTimeout=0s
+      - --entrypoints.web.transport.respondingTimeouts.writeTimeout=0s
+      - --entrypoints.web.transport.respondingTimeouts.idleTimeout=3600s
+      - --entrypoints.web.http2.maxConcurrentStreams=100
+    ports:
+      - ${TRAEFIK_HTTP_PORT:-80}:80
+      - ${TRAEFIK_DASHBOARD_PORT:-8080}:8080
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - runtime
+      - experience
+    restart: unless-stopped
+    networks:
+      - symphainy_net
 
 volumes:
   redis_data:
