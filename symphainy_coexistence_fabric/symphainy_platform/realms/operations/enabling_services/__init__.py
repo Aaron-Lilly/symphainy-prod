@@ -1,18 +1,18 @@
 """
-Operations Enabling Services - Pure Data Processing
+Operations Enabling Services - DEPRECATED
 
-Services for Operations Realm:
-- Workflow conversion (BPMN parsing, workflow generation)
-- Coexistence analysis (friction identification, optimization)
-- Visual generation (workflow diagrams, charts)
+All operations enabling services have been moved to foundations/libraries:
+- WorkflowConversionService -> foundations/libraries/workflow/
+- CoexistenceAnalysisService -> foundations/libraries/coexistence/
+- VisualGenerationService -> foundations/libraries/visualization/workflow_visual_service.py
+
+Import from foundations.libraries instead:
+  from symphainy_platform.foundations.libraries.workflow import WorkflowConversionService
+  from symphainy_platform.foundations.libraries.coexistence import CoexistenceAnalysisService
+  from symphainy_platform.foundations.libraries.visualization import VisualGenerationService
 """
 
-from .workflow_conversion_service import WorkflowConversionService
-from .coexistence_analysis_service import CoexistenceAnalysisService
-from .visual_generation_service import VisualGenerationService
+# This directory is kept for backward compatibility but should not be used.
+# All services have been moved to their canonical locations.
 
-__all__ = [
-    "WorkflowConversionService", 
-    "CoexistenceAnalysisService",
-    "VisualGenerationService"
-]
+__all__ = []

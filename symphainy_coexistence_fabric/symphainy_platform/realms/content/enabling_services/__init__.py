@@ -1,22 +1,22 @@
 """
-Content Enabling Services - Execution Logic for Content Operations
+Content Enabling Services - DEPRECATED
 
-Note: EmbeddingService and SemanticSignalExtractor have been moved to 
-civic_systems/agentic/agents/ as they contain agent reasoning logic.
+All content enabling services have been moved to foundations/libraries or civic_systems/agentic:
+- FileParserService -> foundations/libraries/parsing/
+- DeterministicEmbeddingService -> foundations/libraries/embeddings/
+- DeterministicChunkingService -> foundations/libraries/chunking/
+- SemanticProfileRegistry -> foundations/libraries/registries/
+- SemanticTriggerBoundary -> foundations/libraries/governance/
+- EmbeddingService -> civic_systems/agentic/agents/embedding_agent.py
+- SemanticSignalExtractor -> civic_systems/agentic/agents/semantic_signal_extractor.py
+
+Import from foundations.libraries instead:
+  from symphainy_platform.foundations.libraries.parsing import FileParserService
+  from symphainy_platform.foundations.libraries.embeddings import DeterministicEmbeddingService
+  etc.
 """
 
-from .file_parser_service import FileParserService
-from .deterministic_embedding_service import DeterministicEmbeddingService
-from .deterministic_chunking_service import DeterministicChunkingService, DeterministicChunk
-from .semantic_profile_registry import SemanticProfileRegistry, SemanticProfile
-from .semantic_trigger_boundary import SemanticTriggerBoundary
+# This directory is kept for backward compatibility but should not be used.
+# All services have been moved to their canonical locations.
 
-__all__ = [
-    "FileParserService",
-    "DeterministicEmbeddingService",
-    "DeterministicChunkingService",
-    "DeterministicChunk",
-    "SemanticProfileRegistry",
-    "SemanticProfile",
-    "SemanticTriggerBoundary"
-]
+__all__ = []
