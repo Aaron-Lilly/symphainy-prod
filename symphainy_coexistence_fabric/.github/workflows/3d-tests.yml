@@ -105,7 +105,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          pip install pytest pytest-asyncio
+          pip install pytest pytest-asyncio redis requests
           pip install -r requirements-as2.txt || true
       
       - name: Run E2E Demo Path Tests
@@ -113,11 +113,87 @@ jobs:
           REDIS_URL: redis://localhost:6379
         run: pytest tests/e2e/demo_paths/ -v --tb=short
 
+  # Phase 4: Full Integration Tests (all services)
+  full-integration-tests:
+    name: Full Integration Tests
+    runs-on: ubuntu-latest
+    needs: e2e-tests
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      arangodb:
+        image: arangodb:3.11
+        env:
+          ARANGO_ROOT_PASSWORD: test_password
+        ports:
+          - 8529:8529
+        options: >-
+          --health-cmd "curl -f -u root:test_password http://localhost:8529/_api/version"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      consul:
+        image: hashicorp/consul:1.15
+        ports:
+          - 8500:8500
+        options: >-
+          --health-cmd "consul members"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-asyncio redis requests
+          pip install -r requirements-as2.txt || true
+      
+      - name: Wait for services
+        run: |
+          cd tests/infrastructure
+          python3 wait_for_services.py || echo "Some services may not be available"
+      
+      - name: Run Integration Tests
+        env:
+          REDIS_URL: redis://localhost:6379
+          ARANGO_URL: http://localhost:8529
+          ARANGO_ROOT_PASSWORD: test_password
+          CONSUL_HOST: localhost
+          CONSUL_PORT: 8500
+        run: |
+          pytest tests/3d/integration/ -v --tb=short -m integration
+      
+      - name: Run Service Integration Tests
+        env:
+          REDIS_URL: redis://localhost:6379
+          ARANGO_URL: http://localhost:8529
+          ARANGO_ROOT_PASSWORD: test_password
+          CONSUL_HOST: localhost
+          CONSUL_PORT: 8500
+        run: |
+          pytest tests/3d/integration/test_platform_services.py -v --tb=short -m integration
+
   # Summary Job
   test-summary:
     name: Test Summary
     runs-on: ubuntu-latest
-    needs: [unit-tests, journey-tests, e2e-tests]
+    needs: [unit-tests, journey-tests, e2e-tests, full-integration-tests]
     if: always()
     steps:
       - name: Check test results
@@ -134,4 +210,8 @@ jobs:
             echo "❌ E2E tests failed"
             exit 1
           fi
-          echo "✅ All tests passed!"
+          if [ "${{ needs.full-integration-tests.result }}" != "success" ]; then
+            echo "⚠️  Full integration tests failed (non-blocking for now)"
+            # Don't fail the build for Phase 4 yet - it's new
+          fi
+          echo "✅ Core tests passed!"

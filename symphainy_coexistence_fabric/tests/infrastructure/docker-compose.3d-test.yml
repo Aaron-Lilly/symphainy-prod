@@ -1,7 +1,6 @@
-version: '3.8'
-
 # Docker Compose for 3D Test Environment
 # Spins up all services needed for integration and E2E tests
+# Note: version is obsolete in newer docker-compose, removed
 
 services:
   # Redis for state management
