@@ -54,7 +54,9 @@ export interface SaveMaterializationResponse {
 export interface ParseResponse {
   success: boolean;
   parsed_file_id?: string;
+  parsed_file_reference?: string;
   parsed_content?: any;
+  parsed_file?: any;
   preview?: any;
   error?: string;
 }

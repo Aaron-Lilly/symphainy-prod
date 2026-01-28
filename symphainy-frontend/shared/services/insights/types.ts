@@ -153,6 +153,8 @@ export interface DataMappingResponse {
   };
   workflow_id?: string;
   error?: string;
+  // Extended field for runtime result
+  mapping_result?: any;
 }
 
 // Alias for backward compatibility

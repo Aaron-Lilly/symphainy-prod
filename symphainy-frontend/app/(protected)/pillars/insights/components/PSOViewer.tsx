@@ -27,6 +27,7 @@ import { InsightsService } from '@/shared/services/insights/core';
 import { PermitSemanticObject, Obligation } from '@/shared/services/insights/types';
 // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
 import { useSessionBoundary } from '@/shared/state/SessionBoundaryProvider';
+import { usePlatformState } from '@/shared/state/PlatformStateProvider';
 import { toast } from 'sonner';
 
 interface PSOViewerProps {

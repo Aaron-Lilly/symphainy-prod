@@ -51,15 +51,23 @@ interface Categorization {
 interface MetadataExtractionResult {
   success: boolean;
   file_id: string;
-  extraction_type: string;
-  data_summary: DataSummary;
-  semantic_summary: SemanticSummary;
-  categorization: Categorization;
-  metadata: ExtractedFileMetadata;
-  extraction_timestamp: string;
-  api_version: string;
-  endpoint: string;
+  extraction_type?: string;
+  data_summary?: DataSummary;
+  semantic_summary?: SemanticSummary;
+  categorization?: Categorization;
+  metadata?: ExtractedFileMetadata;
+  extraction_timestamp?: string;
+  api_version?: string;
+  endpoint?: string;
   error?: string;
+  // Extended metadata fields
+  extracted_metadata?: {
+    file_id: string;
+    file_name: string;
+    file_type: string;
+    file_size: number;
+    creation_date: string;
+  };
 }
 
 interface MetadataExtractionProps {

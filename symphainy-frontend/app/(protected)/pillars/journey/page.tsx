@@ -518,8 +518,8 @@ export default function JourneyPillar() {
                   </CardDescription>
                 </div>
                 <div className="flex gap-2">
-                  <Badge variant="outline" className="bg-white">SOP: {selected.SOP.name}</Badge>
-                  <Badge variant="outline" className="bg-white">Workflow: {selected.workflow.name}</Badge>
+                  <Badge variant="outline" className="bg-white">SOP: {selected.SOP?.ui_name}</Badge>
+                  <Badge variant="outline" className="bg-white">Workflow: {selected.workflow?.ui_name}</Badge>
                 </div>
               </div>
             </CardHeader>

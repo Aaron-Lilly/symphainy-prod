@@ -18,12 +18,14 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Sparkles, AlertCircle, ArrowRight, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { InsightsFileSelector } from './InsightsFileSelector';
 import { MappingResultsDisplay } from './MappingResultsDisplay';
 // ✅ PHASE 4: Removed InsightsService import - using intent-based API
 import { DataMappingResponse, DataMappingResultsResponse, DataMappingOptions } from '@/shared/services/insights/types';
 // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
 import { useSessionBoundary } from '@/shared/state/SessionBoundaryProvider';
+import { usePlatformState } from '@/shared/state/PlatformStateProvider';
 
 interface DataMappingSectionProps {
   onMappingComplete?: (mapping: DataMappingResultsResponse) => void;
@@ -110,7 +112,6 @@ export function DataMappingSection({
           include_citations: includeCitations
         }
       );
-      */
 
       // Wait for execution to complete
       const maxAttempts = 30;
@@ -141,9 +142,18 @@ export function DataMappingSection({
       }
 
       // Transform to DataMappingResponse format
+      // Use mappingResult if it contains full response, otherwise construct minimal response
       const response: DataMappingResponse = {
         success: true,
         mapping_id: mappingResult.mapping_id || executionId,
+        mapping_type: mappingResult.mapping_type || mappingType,
+        mapping_rules: mappingResult.mapping_rules || [],
+        mapped_data: mappingResult.mapped_data || { success: true },
+        metadata: mappingResult.metadata || {
+          source_file_id: sourceFileId,
+          target_file_id: targetFileId,
+          mapping_timestamp: new Date().toISOString()
+        },
         mapping_result: mappingResult
       };
 
@@ -358,7 +368,7 @@ export function DataMappingSection({
               /* Future implementation:
               const exportUrl = await getArtifactExportUrl(mappingId, format);
               // Download file
-              */
+              fetch(exportUrl)
                 .then(blob => {
                   const url = window.URL.createObjectURL(blob);
                   const a = document.createElement('a');
@@ -371,6 +381,7 @@ export function DataMappingSection({
                   console.error('Export error:', err);
                   setError('Failed to export mapping results');
                 });
+              */
             }
           }}
         />

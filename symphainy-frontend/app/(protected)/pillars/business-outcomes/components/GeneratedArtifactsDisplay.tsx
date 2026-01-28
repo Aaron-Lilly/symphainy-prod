@@ -26,6 +26,12 @@ interface Artifact {
   id: string;
   data: any;
   type: 'blueprint' | 'poc' | 'roadmap';
+  // Lifecycle metadata (Phase 5.3)
+  status?: 'draft' | 'active' | 'archived';
+  createdAt?: string;
+  purpose?: string;
+  scope?: string;
+  owner?: string;
 }
 
 interface SolutionCreationResult {
