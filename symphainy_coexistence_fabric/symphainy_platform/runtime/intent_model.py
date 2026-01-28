@@ -34,6 +34,13 @@ class IntentType(str, Enum):
     ANALYZE_CONTENT = "analyze_content"
     INTERPRET_DATA = "interpret_data"
     MAP_RELATIONSHIPS = "map_relationships"
+    ASSESS_DATA_QUALITY = "assess_data_quality"
+    EXTRACT_STRUCTURED_DATA = "extract_structured_data"
+    INTERPRET_DATA_GUIDED = "interpret_data_guided"
+    INTERPRET_DATA_SELF_DISCOVERY = "interpret_data_self_discovery"
+    ANALYZE_STRUCTURED_DATA = "analyze_structured_data"
+    ANALYZE_UNSTRUCTURED_DATA = "analyze_unstructured_data"
+    VISUALIZE_LINEAGE = "visualize_lineage"
     
     # Journey domain intents (renamed from Operations)
     OPTIMIZE_PROCESS = "optimize_process"
@@ -47,6 +54,9 @@ class IntentType(str, Enum):
     GENERATE_ROADMAP = "generate_roadmap"
     CREATE_POC = "create_poc"
     CREATE_SOLUTION = "create_solution"
+    GENERATE_VISUAL = "generate_visual"
+    GENERATE_REPORT = "generate_report"
+    EXPORT_ARTIFACT = "export_artifact"
     
     # Control Tower intents (Solution-level)
     COMPOSE_JOURNEY = "compose_journey"

@@ -18,6 +18,7 @@ Services:
 - AnalyzeUnstructuredDataService: Analyze unstructured data for business insights
 - VisualizeLineageService: Visualize data lineage ("Your Data Mash")
 - MapRelationshipsService: Map entity relationships
+- ExtractStructuredDataService: Extract structured data using configurable patterns
 
 Naming Convention:
 - Realm name: Insights Realm
@@ -32,6 +33,7 @@ from .analyze_structured_data_service import AnalyzeStructuredDataService
 from .analyze_unstructured_data_service import AnalyzeUnstructuredDataService
 from .visualize_lineage_service import VisualizeLineageService
 from .map_relationships_service import MapRelationshipsService
+from .extract_structured_data_service import ExtractStructuredDataService
 
 __all__ = [
     "AssessDataQualityService",
@@ -40,5 +42,6 @@ __all__ = [
     "AnalyzeStructuredDataService",
     "AnalyzeUnstructuredDataService",
     "VisualizeLineageService",
-    "MapRelationshipsService"
+    "MapRelationshipsService",
+    "ExtractStructuredDataService"
 ]

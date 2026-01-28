@@ -17,6 +17,8 @@ Services:
 - CreateBlueprintService: Create coexistence blueprint from workflow
 - CreateSolutionService: Create platform solution from artifact
 - ExportArtifactService: Export artifact in various formats
+- GenerateVisualService: Generate visualizations for platform outputs
+- GenerateReportService: Generate reports and summaries from platform outputs
 
 Naming Convention:
 - Realm name: Outcomes Realm
@@ -30,6 +32,8 @@ from .create_poc_service import CreatePOCService
 from .create_blueprint_service import CreateBlueprintService
 from .create_solution_service import CreateSolutionService
 from .export_artifact_service import ExportArtifactService
+from .generate_visual_service import GenerateVisualService
+from .generate_report_service import GenerateReportService
 
 __all__ = [
     "SynthesizeOutcomeService",
@@ -37,5 +41,7 @@ __all__ = [
     "CreatePOCService",
     "CreateBlueprintService",
     "CreateSolutionService",
-    "ExportArtifactService"
+    "ExportArtifactService",
+    "GenerateVisualService",
+    "GenerateReportService"
 ]
