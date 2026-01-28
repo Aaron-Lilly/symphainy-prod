@@ -1,12 +1,22 @@
 """
 Realms Package - Domain Services for SymphAIny Platform
 
-Realms contain domain-specific services organized by business capability:
+Realms contain domain-specific services organized by business capability.
+
+CORRECT PATTERN (Security Realm model):
+- Realms contain ONLY intent_services/
+- No orchestrators/ (Runtime handles orchestration via Sagas)
+- No mcp_server/ (MCP Servers belong to Solutions)
+- No agents/ (Agents belong in civic_systems/agentic/agents/)
+
+User-Facing Domains (Realms):
 - Content Realm: File ingestion, parsing, and content management
 - Insights Realm: Analysis, extraction, and intelligence generation
 - Operations Realm: Workflow/SOP management, coexistence analysis
-- Outcomes Realm: Outcomes synthesis, roadmaps, POCs, blueprints, and strategic deliverables
-- Security Realm: Authentication, authorization, and session management (foundational)
+- Outcomes Realm: Outcomes synthesis, roadmaps, POCs, blueprints
+- Security Realm: Authentication, authorization, session management (foundational)
+- Control Tower Realm: Platform administration, monitoring, developer docs
+- Coexistence Realm: Platform entry, navigation, agent interactions
 
 Naming Conventions:
 - "Realm" = domain area (user-facing business capability)
@@ -52,6 +62,32 @@ from .security import (
     ValidateTokenService
 )
 
+from .control_tower import (
+    GetPlatformStatisticsService,
+    GetSystemHealthService,
+    GetRealmHealthService,
+    ListSolutionsService,
+    GetPatternsService,
+    GetCodeExamplesService,
+    GetSolutionTemplatesService,
+    ComposeSolutionService,
+    ValidateSolutionService
+)
+
+from .coexistence import (
+    IntroducePlatformService,
+    ShowSolutionCatalogService,
+    ExplainCoexistenceService,
+    NavigateToSolutionService,
+    GetSolutionContextService,
+    EstablishSolutionContextService,
+    InitiateGuideAgentService,
+    ProcessGuideAgentMessageService,
+    RouteToLiaisonAgentService,
+    ListAvailableMCPToolsService,
+    CallOrchestratorMCPToolService
+)
+
 __all__ = [
     # Outcomes Realm
     "SynthesizeOutcomeService",
@@ -82,5 +118,27 @@ __all__ = [
     "ValidateAuthorizationService",
     "TerminateSessionService",
     "CheckEmailAvailabilityService",
-    "ValidateTokenService"
+    "ValidateTokenService",
+    # Control Tower Realm
+    "GetPlatformStatisticsService",
+    "GetSystemHealthService",
+    "GetRealmHealthService",
+    "ListSolutionsService",
+    "GetPatternsService",
+    "GetCodeExamplesService",
+    "GetSolutionTemplatesService",
+    "ComposeSolutionService",
+    "ValidateSolutionService",
+    # Coexistence Realm
+    "IntroducePlatformService",
+    "ShowSolutionCatalogService",
+    "ExplainCoexistenceService",
+    "NavigateToSolutionService",
+    "GetSolutionContextService",
+    "EstablishSolutionContextService",
+    "InitiateGuideAgentService",
+    "ProcessGuideAgentMessageService",
+    "RouteToLiaisonAgentService",
+    "ListAvailableMCPToolsService",
+    "CallOrchestratorMCPToolService"
 ]
