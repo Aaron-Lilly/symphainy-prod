@@ -1,11 +1,14 @@
 /**
  * Test Utilities - Standard wrapper with all providers
+ * 
+ * NOTE: Provider mocks are in jest.setup.js - do NOT add jest.mock() here
+ * as it won't work (jest.mock must be at module top level before imports)
  */
 import React from 'react';
 import { render, RenderOptions } from '@testing-library/react';
 
-// Mock session boundary context value
-const mockSessionBoundaryValue = {
+// Mock session boundary context value (for reference - actual mock in jest.setup.js)
+export const mockSessionBoundaryValue = {
   sessionStatus: 'active' as const,
   sessionToken: 'test-session-token',
   tenantId: 'test-tenant',
@@ -19,8 +22,8 @@ const mockSessionBoundaryValue = {
   refreshSession: jest.fn().mockResolvedValue('test-session-token'),
 };
 
-// Mock platform state context value
-const mockPlatformStateValue = {
+// Mock platform state context value (for reference - actual mock in jest.setup.js)
+export const mockPlatformStateValue = {
   state: {
     session: {
       sessionId: 'test-session-id',
@@ -66,7 +69,12 @@ const mockPlatformStateValue = {
     },
   },
   submitIntent: jest.fn().mockResolvedValue('test-execution-id'),
-  getExecutionStatus: jest.fn().mockResolvedValue(null),
+  getExecutionStatus: jest.fn().mockResolvedValue({
+    execution_id: 'test-execution-id',
+    status: 'completed',
+    intent_id: 'test-intent-id',
+    artifacts: {},
+  }),
   trackExecution: jest.fn(),
   untrackExecution: jest.fn(),
   setRealmState: jest.fn().mockResolvedValue(undefined),
@@ -89,25 +97,9 @@ const mockPlatformStateValue = {
   syncWithRuntime: jest.fn().mockResolvedValue(undefined),
 };
 
-// Create mock context providers
-const MockSessionBoundaryContext = React.createContext(mockSessionBoundaryValue);
-const MockPlatformStateContext = React.createContext(mockPlatformStateValue);
-
-// Patch the actual contexts with mocks
-jest.mock('@/shared/state/SessionBoundaryProvider', () => ({
-  ...jest.requireActual('@/shared/state/SessionBoundaryProvider'),
-  useSessionBoundary: () => mockSessionBoundaryValue,
-  SessionBoundaryProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-}));
-
-jest.mock('@/shared/state/PlatformStateProvider', () => ({
-  ...jest.requireActual('@/shared/state/PlatformStateProvider'),
-  usePlatformState: () => mockPlatformStateValue,
-  PlatformStateProvider: ({ children }: { children: React.ReactNode }) => <>{children}</>,
-}));
-
 /**
  * Standard wrapper for all tests
+ * Uses mocked providers from jest.setup.js
  */
 export const AllTheProviders: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return <>{children}</>;
@@ -126,6 +118,3 @@ export function renderWithProviders(
 // Re-export everything from testing-library
 export * from '@testing-library/react';
 export { renderWithProviders as render };
-
-// Export mock values for tests that need to customize them
-export { mockSessionBoundaryValue, mockPlatformStateValue };

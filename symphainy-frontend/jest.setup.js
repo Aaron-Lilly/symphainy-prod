@@ -43,9 +43,34 @@ jest.mock('@/shared/state/SessionBoundaryProvider', () => ({
   SessionBoundaryProvider: ({ children }) => children,
 }));
 
-// Mock PlatformStateProvider globally  
-jest.mock('@/shared/state/PlatformStateProvider', () => ({
-  usePlatformState: () => ({
+// Mock PlatformStateProvider globally with functional state tracking
+jest.mock('@/shared/state/PlatformStateProvider', () => {
+  const React = require('react');
+  
+  // Create a shared state store that persists across calls
+  let realmStateStore = {
+    content: {},
+    insights: {},
+    journey: {},
+    outcomes: {},
+  };
+  
+  // Reset store before each test
+  const resetStore = () => {
+    realmStateStore = {
+      content: {},
+      insights: {},
+      journey: {},
+      outcomes: {},
+    };
+  };
+  
+  // Make reset function available globally for tests
+  if (typeof global !== 'undefined') {
+    global.__resetPlatformStateStore = resetStore;
+  }
+  
+  const usePlatformState = () => ({
     state: {
       session: {
         sessionId: 'test-session-id',
@@ -61,12 +86,7 @@ jest.mock('@/shared/state/PlatformStateProvider', () => ({
         isLoading: false,
         error: null,
       },
-      realm: {
-        content: {},
-        insights: {},
-        journey: {},
-        outcomes: {},
-      },
+      realm: realmStateStore,
       ui: {
         currentPillar: null,
         sidebarOpen: false,
@@ -81,12 +101,32 @@ jest.mock('@/shared/state/PlatformStateProvider', () => ({
       },
     },
     submitIntent: jest.fn().mockResolvedValue('test-execution-id'),
-    getExecutionStatus: jest.fn().mockResolvedValue(null),
+    getExecutionStatus: jest.fn().mockResolvedValue({
+      execution_id: 'test-execution-id',
+      status: 'completed',
+      intent_id: 'test-intent-id',
+      artifacts: {},
+    }),
     trackExecution: jest.fn(),
     untrackExecution: jest.fn(),
-    setRealmState: jest.fn().mockResolvedValue(undefined),
-    getRealmState: jest.fn().mockReturnValue({}),
-    clearRealmState: jest.fn(),
+    setRealmState: jest.fn((realm, key, value) => {
+      // Actually store the value
+      if (!realmStateStore[realm]) {
+        realmStateStore[realm] = {};
+      }
+      realmStateStore[realm][key] = value;
+      return Promise.resolve();
+    }),
+    getRealmState: jest.fn((realm, key) => {
+      // Actually retrieve the value
+      if (realmStateStore[realm] && key in realmStateStore[realm]) {
+        return realmStateStore[realm][key];
+      }
+      return undefined;
+    }),
+    clearRealmState: jest.fn((realm) => {
+      realmStateStore[realm] = {};
+    }),
     setCurrentPillar: jest.fn(),
     setSidebarOpen: jest.fn(),
     addNotification: jest.fn(),
@@ -102,6 +142,13 @@ jest.mock('@/shared/state/PlatformStateProvider', () => ({
     getSecondaryChatbotPosition: jest.fn().mockReturnValue('translate-x-full opacity-0'),
     getPrimaryChatbotTransform: jest.fn().mockReturnValue('translate-y-0'),
     syncWithRuntime: jest.fn().mockResolvedValue(undefined),
-  }),
-  PlatformStateProvider: ({ children }) => children,
-}));
+  });
+  
+  const PlatformStateProvider = ({ children }) => children;
+  
+  return {
+    usePlatformState,
+    PlatformStateProvider,
+    __resetStore: resetStore,
+  };
+});
