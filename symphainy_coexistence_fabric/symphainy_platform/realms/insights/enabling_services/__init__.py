@@ -1,12 +1,13 @@
 """
-Insights Enabling Services - Pure Data Processing
+Insights Enabling Services - DEPRECATED
 
-Services that remain in realm (have unique orchestrator functionality):
-- DataAnalyzerService: Aggregator service for insights orchestrator
-- SemanticSelfDiscoveryService: Self-discovery interpretation
-- StructuredAnalysisService: Structured data analysis
-- UnstructuredAnalysisService: Unstructured data analysis
-- LineageVisualizationService: Data lineage visualization
+All Insights enabling services have been replaced by Intent Services:
+
+- DataAnalyzerService: Use AnalyzeStructuredDataService or AnalyzeUnstructuredDataService
+- SemanticSelfDiscoveryService: Use InterpretDataSelfDiscoveryService  
+- StructuredAnalysisService: Use AnalyzeStructuredDataService
+- UnstructuredAnalysisService: Use AnalyzeUnstructuredDataService
+- LineageVisualizationService: Use VisualizeLineageService
 
 Services moved to foundations/libraries:
 - DataQualityService -> foundations/libraries/quality/
@@ -16,18 +17,10 @@ Services moved to foundations/libraries:
 - SchemaMatchingService -> foundations/libraries/matching/
 - SemanticMatchingService -> foundations/libraries/matching/
 - StructuredExtractionService -> foundations/libraries/extraction/
+
+Use Intent Services from ..intent_services/ for all operations.
 """
 
-from .data_analyzer_service import DataAnalyzerService
-from .semantic_self_discovery_service import SemanticSelfDiscoveryService
-from .structured_analysis_service import StructuredAnalysisService
-from .unstructured_analysis_service import UnstructuredAnalysisService
-from .lineage_visualization_service import LineageVisualizationService
+# This directory is deprecated. All functionality moved to intent_services/.
 
-__all__ = [
-    "DataAnalyzerService",
-    "SemanticSelfDiscoveryService",
-    "StructuredAnalysisService",
-    "UnstructuredAnalysisService",
-    "LineageVisualizationService"
-]
+__all__ = []
