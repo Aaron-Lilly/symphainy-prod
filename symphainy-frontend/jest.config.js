@@ -10,6 +10,14 @@ const customJestConfig = {
   setupFilesAfterEnv: ["<rootDir>/jest.setup.js"],
   testEnvironment: "jsdom",
   moduleNameMapper: {
+    // Mock old session providers that have been replaced
+    "^@/shared/agui/GlobalSessionProvider$": "<rootDir>/__mocks__/providers.js",
+    "^@/shared/agui/SessionProvider$": "<rootDir>/__mocks__/providers.js",
+    "^@/shared/components/SessionProvider$": "<rootDir>/__mocks__/providers.js",
+    "^\\.\\./shared/components/SessionProvider$": "<rootDir>/__mocks__/providers.js",
+    "^\\.\\./shared/agui/GlobalSessionProvider$": "<rootDir>/__mocks__/providers.js",
+    "^\\.\\./shared/agui/SessionProvider$": "<rootDir>/__mocks__/providers.js",
+    // Main path mapping
     "^@/(.*)$": "<rootDir>/$1",
     "^shared/types/file$": "<rootDir>/../shared/types/file.ts",
     "^shared/(.*)$": "<rootDir>/../shared/$1",
