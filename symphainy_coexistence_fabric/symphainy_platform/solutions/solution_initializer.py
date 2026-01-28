@@ -182,7 +182,7 @@ async def initialize_solutions(
             try:
                 # Create Solution model for registry
                 from symphainy_platform.civic_systems.platform_sdk.solution_model import (
-                    Solution, DomainServiceBinding
+                    Solution, SolutionContext, DomainServiceBinding
                 )
                 
                 # Get journeys from solution
@@ -193,12 +193,23 @@ async def initialize_solutions(
                 # Get supported intents
                 supported_intents = getattr(solution, 'SUPPORTED_INTENTS', [])
                 
+                # Create solution context
+                solution_name = getattr(solution, 'SOLUTION_NAME', solution_id)
+                solution_context = SolutionContext(
+                    goals=[f"Provide {solution_name} capabilities"],
+                    constraints=[],
+                    risk="Low",
+                    metadata={
+                        "name": solution_name,
+                        "description": f"Platform solution: {solution_id}",
+                        "version": "1.0.0",
+                        "owner": "platform"
+                    }
+                )
+                
                 solution_model = Solution(
                     solution_id=solution_id,
-                    name=getattr(solution, 'SOLUTION_NAME', solution_id),
-                    description=f"Platform solution: {solution_id}",
-                    version="1.0.0",
-                    owner="platform",
+                    solution_context=solution_context,
                     domain_service_bindings=[],
                     supported_intents=supported_intents,
                     metadata={

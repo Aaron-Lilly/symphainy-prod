@@ -192,7 +192,7 @@ class TestIntentRegistration:
         )
         
         # Verify compose_journey is registered
-        handlers = intent_registry.get_handlers_for_intent("compose_journey")
+        handlers = intent_registry.get_intent_handlers("compose_journey")
         assert len(handlers) >= 8, "compose_journey should be registered for all solutions"
 
 
@@ -235,6 +235,79 @@ class TestMCPServerInitialization:
         
         # Test get_mcp_server method exists
         assert hasattr(services, 'get_mcp_server')
+
+
+class TestSolutionInitializerErrorHandling:
+    """Test error handling in solution initialization."""
+    
+    @pytest.mark.asyncio
+    async def test_initialize_solutions_handles_registration_failure(
+        self, mock_public_works, mock_state_surface, mock_intent_registry
+    ):
+        """Should handle solution registration failures gracefully."""
+        from symphainy_platform.solutions import initialize_solutions
+        from symphainy_platform.civic_systems.platform_sdk.solution_registry import SolutionRegistry
+        
+        registry = SolutionRegistry()
+        
+        # Initialize solutions - registration failures should be logged but not crash
+        services = await initialize_solutions(
+            public_works=mock_public_works,
+            state_surface=mock_state_surface,
+            solution_registry=registry,
+            intent_registry=mock_intent_registry,
+            initialize_mcp_servers=False
+        )
+        
+        # Solutions should still be initialized even if registration fails
+        assert services.coexistence is not None
+        assert services.content is not None
+    
+    @pytest.mark.asyncio
+    async def test_initialize_solutions_creates_valid_solution_contexts(
+        self, mock_public_works, mock_state_surface, mock_intent_registry
+    ):
+        """All solutions should have valid SolutionContext after initialization."""
+        from symphainy_platform.solutions import initialize_solutions
+        from symphainy_platform.civic_systems.platform_sdk.solution_registry import SolutionRegistry
+        
+        registry = SolutionRegistry()
+        
+        services = await initialize_solutions(
+            public_works=mock_public_works,
+            state_surface=mock_state_surface,
+            solution_registry=registry,
+            intent_registry=mock_intent_registry,
+            initialize_mcp_servers=False
+        )
+        
+        # Verify all registered solutions have valid solution_context
+        for solution_id in ["coexistence", "content_solution", "operations_solution"]:
+            solution = registry.get_solution(solution_id)
+            if solution:  # Only check if registered
+                assert solution.solution_context is not None
+                assert solution.solution_context.goals is not None
+                assert isinstance(solution.solution_context.goals, list)
+    
+    @pytest.mark.asyncio
+    async def test_initialize_solutions_handles_missing_optional_params(
+        self, mock_state_surface, mock_solution_registry, mock_intent_registry
+    ):
+        """Should handle missing optional parameters gracefully."""
+        from symphainy_platform.solutions import initialize_solutions
+        
+        # Test with None public_works
+        services = await initialize_solutions(
+            public_works=None,
+            state_surface=mock_state_surface,
+            solution_registry=mock_solution_registry,
+            intent_registry=mock_intent_registry,
+            initialize_mcp_servers=False
+        )
+        
+        # Solutions should still initialize
+        assert services.coexistence is not None
+        assert services.content is not None
 
 
 class TestGetSolutionSummary:

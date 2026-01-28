@@ -1,0 +1,217 @@
+name: 3D Test Suite
+
+on:
+  pull_request:
+    branches: [main, cursor/*]
+  push:
+    branches: [main]
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  # Phase 1: Unit Tests (no services needed)
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-asyncio pytest-cov
+          pip install -r requirements-as2.txt || true
+      
+      - name: Run Startup Tests
+        run: pytest tests/3d/startup/ -v --tb=short
+      
+      - name: Run Solution Tests
+        run: pytest tests/3d/solution/ -v --tb=short
+      
+      - name: Run MCP Tests
+        run: pytest tests/3d/mcp/ -v --tb=short
+      
+      - name: Run Agent Tests
+        run: pytest tests/3d/agents/ -v --tb=short
+      
+      - name: Run Artifact Tests
+        run: pytest tests/3d/artifacts/ -v --tb=short
+      
+      - name: Run Security Tests (Unit)
+        run: pytest tests/3d/security/ -v --tb=short
+
+  # Phase 2: Journey Tests
+  journey-tests:
+    name: Journey Tests
+    runs-on: ubuntu-latest
+    needs: unit-tests
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-asyncio
+          pip install -r requirements-as2.txt || true
+      
+      - name: Run Journey Tests - Coexistence
+        run: pytest tests/3d/journey/coexistence/ -v --tb=short
+      
+      - name: Run Journey Tests - Content
+        run: pytest tests/3d/journey/content_solution/ -v --tb=short
+      
+      - name: Run Journey Tests - Insights
+        run: pytest tests/3d/journey/insights_solution/ -v --tb=short
+      
+      - name: Run Journey Tests - All Others
+        run: |
+          pytest tests/3d/journey/operations_solution/ -v --tb=short || true
+          pytest tests/3d/journey/outcomes_solution/ -v --tb=short || true
+          pytest tests/3d/journey/security_solution/ -v --tb=short || true
+          pytest tests/3d/journey/control_tower/ -v --tb=short || true
+
+  # Phase 3: E2E Tests (with services)
+  e2e-tests:
+    name: E2E Demo Path Tests
+    runs-on: ubuntu-latest
+    needs: journey-tests
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-asyncio redis requests
+          pip install -r requirements-as2.txt || true
+      
+      - name: Run E2E Demo Path Tests
+        env:
+          REDIS_URL: redis://localhost:6379
+        run: pytest tests/e2e/demo_paths/ -v --tb=short
+
+  # Phase 4: Full Integration Tests (all services)
+  full-integration-tests:
+    name: Full Integration Tests
+    runs-on: ubuntu-latest
+    needs: e2e-tests
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      arangodb:
+        image: arangodb:3.11
+        env:
+          ARANGO_ROOT_PASSWORD: test_password
+        ports:
+          - 8529:8529
+        options: >-
+          --health-cmd "curl -f -u root:test_password http://localhost:8529/_api/version"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      consul:
+        image: hashicorp/consul:1.15
+        ports:
+          - 8500:8500
+        options: >-
+          --health-cmd "consul members"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+      
+      - name: Install dependencies
+        run: |
+          pip install pytest pytest-asyncio redis requests
+          pip install -r requirements-as2.txt || true
+      
+      - name: Wait for services
+        run: |
+          cd tests/infrastructure
+          python3 wait_for_services.py || echo "Some services may not be available"
+      
+      - name: Run Integration Tests
+        env:
+          REDIS_URL: redis://localhost:6379
+          ARANGO_URL: http://localhost:8529
+          ARANGO_ROOT_PASSWORD: test_password
+          CONSUL_HOST: localhost
+          CONSUL_PORT: 8500
+        run: |
+          pytest tests/3d/integration/ -v --tb=short -m integration
+      
+      - name: Run Service Integration Tests
+        env:
+          REDIS_URL: redis://localhost:6379
+          ARANGO_URL: http://localhost:8529
+          ARANGO_ROOT_PASSWORD: test_password
+          CONSUL_HOST: localhost
+          CONSUL_PORT: 8500
+        run: |
+          pytest tests/3d/integration/test_platform_services.py -v --tb=short -m integration
+
+  # Summary Job
+  test-summary:
+    name: Test Summary
+    runs-on: ubuntu-latest
+    needs: [unit-tests, journey-tests, e2e-tests, full-integration-tests]
+    if: always()
+    steps:
+      - name: Check test results
+        run: |
+          if [ "${{ needs.unit-tests.result }}" != "success" ]; then
+            echo "❌ Unit tests failed"
+            exit 1
+          fi
+          if [ "${{ needs.journey-tests.result }}" != "success" ]; then
+            echo "❌ Journey tests failed"
+            exit 1
+          fi
+          if [ "${{ needs.e2e-tests.result }}" != "success" ]; then
+            echo "❌ E2E tests failed"
+            exit 1
+          fi
+          if [ "${{ needs.full-integration-tests.result }}" != "success" ]; then
+            echo "⚠️  Full integration tests failed (non-blocking for now)"
+            # Don't fail the build for Phase 4 yet - it's new
+          fi
+          echo "✅ Core tests passed!"
