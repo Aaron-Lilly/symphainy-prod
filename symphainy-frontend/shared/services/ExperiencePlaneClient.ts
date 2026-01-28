@@ -11,79 +11,62 @@
  * - WebSocket Streaming → UnifiedWebSocketClient
  */
 
-import { UnifiedWebSocketClient, WebSocketChannel, WebSocketIntent } from './UnifiedWebSocketClient';
+import { UnifiedWebSocketClient, WebSocketChannel } from './UnifiedWebSocketClient';
 import { getApiUrl, getApiEndpointUrl } from '@/shared/config/api-config';
+import type {
+  SessionCreateRequest,
+  SessionCreateResponse,
+  Session,
+  IntentSubmitRequest,
+  IntentSubmitResponse,
+  ExecutionStatusResponse,
+  ExecutionStatus,
+} from '@/shared/types/runtime-contracts';
 
-export interface SessionCreateRequest {
-  tenant_id: string;
-  user_id: string;
+// Re-export types for consumers
+export type {
+  SessionCreateRequest,
+  SessionCreateResponse,
+  Session,
+  IntentSubmitRequest,
+  IntentSubmitResponse,
+  ExecutionStatusResponse,
+  ExecutionStatus,
+};
+
+/**
+ * Extended execution status with additional fields for streaming
+ */
+export interface StreamingExecutionStatus extends ExecutionStatusResponse {
+  tenant_id?: string;
   session_id?: string;
-  execution_contract?: Record<string, any>;
-  metadata?: Record<string, any>;
-}
-
-export interface SessionCreateResponse {
-  session_id: string;
-  tenant_id: string;
-  user_id: string;
-  created_at: string;
-  metadata?: Record<string, any>;
-}
-
-export interface Session {
-  session_id: string;
-  tenant_id: string | null;  // null for anonymous sessions
-  user_id: string | null;     // null for anonymous sessions
-  created_at: string;
-  metadata?: Record<string, any>;
-  state?: Record<string, any>;
-}
-
-export interface IntentSubmitRequest {
-  intent_type: string;
-  tenant_id: string;
-  session_id: string;
-  solution_id?: string;
-  parameters?: Record<string, any>;
-  metadata?: Record<string, any>;
-}
-
-export interface IntentSubmitResponse {
-  execution_id: string;
-  intent_id: string;
-  status: "accepted" | "rejected";
-  tenant_id: string;
-  session_id: string;
-  created_at: string;
-  metadata?: Record<string, any>;
-}
-
-export interface ExecutionStatus {
-  execution_id: string;
-  status: "pending" | "running" | "completed" | "failed" | "cancelled";
-  intent_id: string;
-  tenant_id: string;
-  session_id: string;
   started_at?: string;
   completed_at?: string;
-  error?: string;
-  artifacts?: Record<string, any>;
-  events?: Array<Record<string, any>>;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
 }
 
-export interface ExecutionStatusResponse {
-  execution_id: string;
-  status: "pending" | "running" | "completed" | "failed" | "cancelled";
-  intent_id: string;
-  tenant_id: string;
-  session_id: string;
-  started_at?: string;
-  completed_at?: string;
-  error?: string;
-  artifacts?: Record<string, any>;
-  events?: Array<Record<string, any>>;
-  metadata?: Record<string, any>;
+/**
+ * Custom error for session not found
+ */
+export class SessionNotFoundError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'SessionNotFoundError';
+    this.status = status;
+  }
+}
+
+/**
+ * Custom error for API requests
+ */
+export class ApiRequestError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = 'ApiRequestError';
+    this.status = status;
+  }
 }
 
 export class ExperiencePlaneClient {
@@ -159,7 +142,7 @@ export class ExperiencePlaneClient {
    */
   async upgradeSession(
     sessionId: string,
-    userData: { user_id: string; tenant_id: string; access_token: string; metadata?: Record<string, any> }
+    userData: { user_id: string; tenant_id: string; access_token: string; metadata?: Record<string, unknown> }
   ): Promise<Session> {
     const url = getApiEndpointUrl(`/api/session/${sessionId}/upgrade`);
     
@@ -225,13 +208,14 @@ export class ExperiencePlaneClient {
     if (!response.ok) {
       if (response.status === 404) {
         // Session doesn't exist - return a structured error that can be caught
-        const error = new Error(`Session ${sessionId} not found`);
-        (error as any).status = 404;
+        const error = new SessionNotFoundError(`Session ${sessionId} not found`, 404);
         throw error;
       }
       const errorData = await response.json().catch(() => ({ detail: 'Failed to get session' }));
-      const error = new Error(errorData.detail || `Failed to get session: ${response.statusText}`);
-      (error as any).status = response.status;
+      const error = new ApiRequestError(
+        errorData.detail || `Failed to get session: ${response.statusText}`,
+        response.status
+      );
       throw error;
     }
 
@@ -354,7 +338,7 @@ export class ExperiencePlaneClient {
     channel: WebSocketChannel,
     message: string,
     conversationId?: string,
-    metadata?: Record<string, any>
+    metadata?: Record<string, unknown>
   ): Promise<void> {
     const wsClient = this.getWebSocketClient();
     
