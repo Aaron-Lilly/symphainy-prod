@@ -138,7 +138,7 @@ class EmbeddingService:
         self.logger.info(f"Creating semantic embeddings from deterministic_embedding_id: {deterministic_embedding_id}")
         
         # 1. Get deterministic embedding from ArangoDB
-        from ..enabling_services.deterministic_embedding_service import DeterministicEmbeddingService
+        from symphainy_platform.foundations.libraries.embeddings.deterministic_embedding_service import DeterministicEmbeddingService
         deterministic_service = DeterministicEmbeddingService(public_works=self.public_works)
         
         deterministic_embedding = await deterministic_service.get_deterministic_embedding(
@@ -154,7 +154,7 @@ class EmbeddingService:
         pattern_signature = deterministic_embedding.get("pattern_signature", {})
         
         # 3. Get parsed content (for sampling)
-        from ..enabling_services.file_parser_service import FileParserService
+        from symphainy_platform.foundations.libraries.parsing.file_parser_service import FileParserService
         file_parser_service = FileParserService(public_works=self.public_works)
         
         parsed_content = await file_parser_service.get_parsed_file(
