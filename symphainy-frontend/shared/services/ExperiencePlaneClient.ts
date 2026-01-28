@@ -281,7 +281,7 @@ export class ExperiencePlaneClient {
    */
   streamExecution(
     executionId: string,
-    onUpdate: (status: ExecutionStatus) => void,
+    onUpdate: (status: ExecutionStatusResponse) => void,
     onError?: (error: Error) => void
   ): () => void {
     const wsClient = this.getWebSocketClient();
@@ -301,18 +301,12 @@ export class ExperiencePlaneClient {
     const unsubscribe = wsClient.onMessage((response) => {
       // Filter for execution-related messages
       if (response.data?.execution_id === executionId) {
-        const status: ExecutionStatus = {
+        const status: ExecutionStatusResponse = {
           execution_id: executionId,
           status: response.data.status || 'running',
           intent_id: response.data.intent_id || '',
-          tenant_id: response.data.tenant_id || '',
-          session_id: response.data.session_id || '',
-          started_at: response.data.started_at,
-          completed_at: response.data.completed_at,
           error: response.data.error,
           artifacts: response.data.artifacts,
-          events: response.data.events,
-          metadata: response.data.metadata,
         };
         onUpdate(status);
       }

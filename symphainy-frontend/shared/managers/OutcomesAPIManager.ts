@@ -13,7 +13,7 @@
  * Note: Frontend uses "Business Outcomes" naming, backend uses "outcomes" realm.
  */
 
-import { ExperiencePlaneClient, getGlobalExperiencePlaneClient, ExecutionStatus } from "@/shared/services/ExperiencePlaneClient";
+import { ExperiencePlaneClient, getGlobalExperiencePlaneClient, ExecutionStatusResponse } from "@/shared/services/ExperiencePlaneClient";
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { ensureArtifactLifecycle } from "@/shared/services/artifactLifecycle";
 import { validateSession } from "@/shared/utils/sessionValidation";
@@ -140,15 +140,17 @@ export class OutcomesAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.synthesis_summary) {
+        const synthesisSummary = result.artifacts.synthesis_summary as { synthesis_id?: string; [key: string]: unknown };
+        
         // Update realm state
         platformState.setRealmState("outcomes", "syntheses", {
           ...platformState.getRealmState("outcomes", "syntheses") || {},
-          [result.artifacts.synthesis_summary.synthesis_id || "latest"]: result.artifacts.synthesis_summary
+          [synthesisSummary.synthesis_id || "latest"]: synthesisSummary
         });
 
         return {
           success: true,
-          synthesis: result.artifacts.synthesis_summary
+          synthesis: synthesisSummary as OutcomeSynthesisResponse["synthesis"]
         };
       } else {
         throw new Error(result.error || "Failed to synthesize outcome");
@@ -197,7 +199,7 @@ export class OutcomesAPIManager {
 
       if (result.status === "completed" && result.artifacts?.roadmap) {
         // ✅ PHASE 5.3: Ensure artifact has lifecycle state (purpose, scope, owner)
-        const rawRoadmap = result.artifacts.roadmap;
+        const rawRoadmap = result.artifacts.roadmap as { roadmap_id: string; [key: string]: unknown };
         const roadmapId = rawRoadmap.roadmap_id;
         const lifecycleInfo = ensureArtifactLifecycle(
           rawRoadmap,
@@ -268,9 +270,9 @@ export class OutcomesAPIManager {
 
       if (result.status === "completed" && result.artifacts?.poc_proposal) {
         // ✅ PHASE 5.3: Ensure artifact has lifecycle state (purpose, scope, owner)
-        const pocId = result.artifacts.poc_proposal.poc_id;
+        const pocProposal = result.artifacts.poc_proposal as { poc_id: string; [key: string]: unknown };
         const pocWithLifecycle = ensureArtifactLifecycle(
-          result.artifacts.poc_proposal,
+          pocProposal,
           'proof_of_concept',
           'validation',
           platformState.state.session.userId || 'system'
@@ -279,12 +281,12 @@ export class OutcomesAPIManager {
         // Update realm state
         platformState.setRealmState("outcomes", "pocProposals", {
           ...platformState.getRealmState("outcomes", "pocProposals") || {},
-          [pocId]: pocWithLifecycle
+          [pocProposal.poc_id]: pocWithLifecycle
         });
 
         return {
           success: true,
-          poc_proposal: result.artifacts.poc_proposal
+          poc_proposal: pocProposal as POCCreationResponse["poc_proposal"]
         };
       } else {
         throw new Error(result.error || "Failed to create POC");
@@ -336,9 +338,10 @@ export class OutcomesAPIManager {
 
       if (result.status === "completed" && result.artifacts?.blueprint) {
         // ✅ PHASE 5.3: Ensure artifact has lifecycle state (purpose, scope, owner)
-        const blueprintId = result.artifacts.blueprint.blueprint_id || result.artifacts.blueprint_id;
+        const blueprint = result.artifacts.blueprint as { blueprint_id?: string; [key: string]: unknown };
+        const blueprintId = blueprint.blueprint_id || (result.artifacts.blueprint_id as string | undefined) || "unknown";
         const blueprintWithLifecycle = ensureArtifactLifecycle(
-          result.artifacts.blueprint,
+          blueprint,
           'coexistence_planning',
           'workflow_optimization',
           platformState.state.session.userId || 'system'
@@ -402,7 +405,7 @@ export class OutcomesAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.export) {
-        const exportResult = result.artifacts.export;
+        const exportResult = result.artifacts.export as { download_url?: string; filename?: string };
         
         return {
           success: true,
@@ -453,15 +456,15 @@ export class OutcomesAPIManager {
 
       if (result.status === "completed" && result.artifacts?.platform_solution) {
         // Update realm state
-        const solutionId = result.artifacts.platform_solution.solution_id;
+        const platformSolution = result.artifacts.platform_solution as { solution_id: string; [key: string]: unknown };
         platformState.setRealmState("outcomes", "solutions", {
           ...platformState.getRealmState("outcomes", "solutions") || {},
-          [solutionId]: result.artifacts.platform_solution
+          [platformSolution.solution_id]: platformSolution
         });
 
         return {
           success: true,
-          platform_solution: result.artifacts.platform_solution
+          platform_solution: platformSolution as SolutionCreationResponse["platform_solution"]
         };
       } else {
         throw new Error(result.error || "Failed to create solution");
@@ -485,7 +488,7 @@ export class OutcomesAPIManager {
     platformState: ReturnType<typeof usePlatformState>,
     maxWaitTime: number = 60000, // 60 seconds
     pollInterval: number = 1000 // 1 second
-  ): Promise<ExecutionStatus> {
+  ): Promise<ExecutionStatusResponse> {
     const startTime = Date.now();
     
     while (Date.now() - startTime < maxWaitTime) {

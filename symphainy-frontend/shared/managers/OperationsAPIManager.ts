@@ -381,7 +381,11 @@ export class OperationsAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.optimized_coexistence) {
-        const optimizedData = result.artifacts.optimized_coexistence;
+        const optimizedData = result.artifacts.optimized_coexistence as {
+          optimized_sop?: unknown;
+          optimized_workflow?: unknown;
+          blueprint?: unknown;
+        };
         
         // Update realm state
         platformState.setRealmState(OperationsAPIManager.REALM_STATE_KEY, "operations", {
@@ -439,16 +443,20 @@ export class OperationsAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.coexistence_analysis) {
+        const coexistenceAnalysis = result.artifacts.coexistence_analysis as {
+          analysis_id: string;
+          [key: string]: unknown;
+        };
+        
         // Update realm state
-        const analysisId = result.artifacts.coexistence_analysis.analysis_id;
         platformState.setRealmState(OperationsAPIManager.REALM_STATE_KEY, "coexistenceAnalyses", {
           ...platformState.getRealmState(OperationsAPIManager.REALM_STATE_KEY, "coexistenceAnalyses") || {},
-          [analysisId]: result.artifacts.coexistence_analysis
+          [coexistenceAnalysis.analysis_id]: coexistenceAnalysis
         });
 
         return {
           success: true,
-          coexistence_analysis: result.artifacts.coexistence_analysis
+          coexistence_analysis: coexistenceAnalysis as CoexistenceAnalysisResponse["coexistence_analysis"]
         };
       } else {
         throw new Error(result.error || "Failed to analyze coexistence");
@@ -504,16 +512,20 @@ export class OperationsAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.blueprint) {
+        const blueprint = result.artifacts.blueprint as {
+          blueprint_id: string;
+          [key: string]: unknown;
+        };
+        
         // Update realm state
-        const blueprintId = result.artifacts.blueprint.blueprint_id;
         platformState.setRealmState(OperationsAPIManager.REALM_STATE_KEY, "blueprints", {
           ...platformState.getRealmState(OperationsAPIManager.REALM_STATE_KEY, "blueprints") || {},
-          [blueprintId]: result.artifacts.blueprint
+          [blueprint.blueprint_id]: blueprint
         });
 
         return {
           success: true,
-          blueprint: result.artifacts.blueprint
+          blueprint: blueprint as BlueprintCreationResponse["blueprint"]
         };
       } else {
         throw new Error(result.error || "Failed to create blueprint");
@@ -563,9 +575,10 @@ export class OperationsAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.conversation_response) {
+        const conversationResponse = result.artifacts.conversation_response as { message?: string };
         return {
           success: true,
-          message: result.artifacts.conversation_response.message
+          message: conversationResponse.message
         };
       } else {
         throw new Error(result.error || "Failed to process operations conversation");
@@ -615,10 +628,11 @@ export class OperationsAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.wizard_response) {
+        const wizardResponse = result.artifacts.wizard_response as { agent_response?: string; draft_sop?: unknown };
         return {
           success: true,
-          agent_response: result.artifacts.wizard_response.agent_response,
-          draft_sop: result.artifacts.wizard_response.draft_sop
+          agent_response: wizardResponse.agent_response,
+          draft_sop: wizardResponse.draft_sop
         };
       } else {
         throw new Error(result.error || "Failed to process wizard conversation");
@@ -668,10 +682,11 @@ export class OperationsAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.query_response) {
+        const queryResponse = result.artifacts.query_response as { sop?: unknown; workflow?: unknown };
         return {
           success: true,
-          sop: result.artifacts.query_response.sop,
-          workflow: result.artifacts.query_response.workflow
+          sop: queryResponse.sop,
+          workflow: queryResponse.workflow
         };
       } else {
         throw new Error(result.error || "Failed to process operations query");
@@ -718,7 +733,7 @@ export class OperationsAPIManager {
       if (result.status === "completed" && result.artifacts?.intent_analysis) {
         return {
           success: true,
-          intent_analysis: result.artifacts.intent_analysis
+          intent_analysis: result.artifacts.intent_analysis as unknown
         };
       } else {
         throw new Error(result.error || "Failed to analyze user intent");
@@ -767,10 +782,11 @@ export class OperationsAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.journey_guidance) {
+        const journeyGuidance = result.artifacts.journey_guidance as { guidance?: unknown; next_steps?: string[] };
         return {
           success: true,
-          guidance: result.artifacts.journey_guidance.guidance,
-          next_steps: result.artifacts.journey_guidance.next_steps
+          guidance: journeyGuidance.guidance,
+          next_steps: journeyGuidance.next_steps
         };
       } else {
         throw new Error(result.error || "Failed to get journey guidance");
@@ -815,7 +831,7 @@ export class OperationsAPIManager {
       if (result.status === "completed" && result.artifacts?.conversation_history) {
         return {
           success: true,
-          conversation_history: result.artifacts.conversation_history
+          conversation_history: result.artifacts.conversation_history as unknown[]
         };
       } else {
         throw new Error(result.error || "Failed to get conversation history");
