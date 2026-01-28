@@ -8,88 +8,28 @@ Intent services for platform administration:
 - Solution Composition: Templates, compose, validate
 """
 
-# Placeholder imports - services to be implemented
-# These will be created as individual files following the Security realm pattern
-
-class GetPlatformStatisticsService:
-    """Get platform-wide statistics."""
-    pass
-
-class GetSystemHealthService:
-    """Get system health status."""
-    pass
-
-class GetRealmHealthService:
-    """Get health status for a specific realm."""
-    pass
-
-class GetExecutionMetricsService:
-    """Get execution metrics."""
-    pass
-
-class GetSolutionRegistryStatusService:
-    """Get solution registry status."""
-    pass
-
-class ListSolutionsService:
-    """List all registered solutions."""
-    pass
-
-class GetSolutionStatusService:
-    """Get status of a specific solution."""
-    pass
-
-class ManageSolutionService:
-    """Manage solution lifecycle (activate, deactivate, etc.)."""
-    pass
-
-class GetSolutionMetricsService:
-    """Get metrics for a specific solution."""
-    pass
-
-class GetPatternsService:
-    """Get platform architectural patterns."""
-    pass
-
-class GetCodeExamplesService:
-    """Get code examples for development."""
-    pass
-
-class GetDocumentationService:
-    """Get platform documentation."""
-    pass
-
-class GetSolutionTemplatesService:
-    """Get available solution templates."""
-    pass
-
-class ComposeSolutionService:
-    """Compose a new solution from template."""
-    pass
-
-class ValidateSolutionService:
-    """Validate solution configuration."""
-    pass
-
-class GetCompositionGuideService:
-    """Get guided solution composition help."""
-    pass
+from .get_platform_statistics_service import GetPlatformStatisticsService
+from .get_system_health_service import GetSystemHealthService
+from .get_realm_health_service import GetRealmHealthService
+from .list_solutions_service import ListSolutionsService
+from .get_solution_status_service import GetSolutionStatusService
+from .get_patterns_service import GetPatternsService
+from .get_code_examples_service import GetCodeExamplesService
+from .get_documentation_service import GetDocumentationService
+from .validate_solution_service import ValidateSolutionService
 
 __all__ = [
+    # Platform Monitoring
     "GetPlatformStatisticsService",
     "GetSystemHealthService",
     "GetRealmHealthService",
-    "GetExecutionMetricsService",
-    "GetSolutionRegistryStatusService",
+    # Solution Management
     "ListSolutionsService",
     "GetSolutionStatusService",
-    "ManageSolutionService",
-    "GetSolutionMetricsService",
+    # Developer Docs
     "GetPatternsService",
     "GetCodeExamplesService",
     "GetDocumentationService",
-    "GetSolutionTemplatesService",
-    "ComposeSolutionService",
+    # Solution Composition
     "ValidateSolutionService",
-    "GetCompositionGuideService",
 ]

@@ -67,10 +67,10 @@ from .control_tower import (
     GetSystemHealthService,
     GetRealmHealthService,
     ListSolutionsService,
+    GetSolutionStatusService,
     GetPatternsService,
     GetCodeExamplesService,
-    GetSolutionTemplatesService,
-    ComposeSolutionService,
+    GetDocumentationService,
     ValidateSolutionService
 )
 
@@ -124,10 +124,10 @@ __all__ = [
     "GetSystemHealthService",
     "GetRealmHealthService",
     "ListSolutionsService",
+    "GetSolutionStatusService",
     "GetPatternsService",
     "GetCodeExamplesService",
-    "GetSolutionTemplatesService",
-    "ComposeSolutionService",
+    "GetDocumentationService",
     "ValidateSolutionService",
     # Coexistence Realm
     "IntroducePlatformService",

@@ -20,22 +20,15 @@ from .intent_services import (
     GetPlatformStatisticsService,
     GetSystemHealthService,
     GetRealmHealthService,
-    GetExecutionMetricsService,
-    GetSolutionRegistryStatusService,
     # Solution Management
     ListSolutionsService,
     GetSolutionStatusService,
-    ManageSolutionService,
-    GetSolutionMetricsService,
     # Developer Docs
     GetPatternsService,
     GetCodeExamplesService,
     GetDocumentationService,
     # Solution Composition
-    GetSolutionTemplatesService,
-    ComposeSolutionService,
     ValidateSolutionService,
-    GetCompositionGuideService,
 )
 
 __all__ = [
@@ -43,20 +36,13 @@ __all__ = [
     "GetPlatformStatisticsService",
     "GetSystemHealthService",
     "GetRealmHealthService",
-    "GetExecutionMetricsService",
-    "GetSolutionRegistryStatusService",
     # Solution Management
     "ListSolutionsService",
     "GetSolutionStatusService",
-    "ManageSolutionService",
-    "GetSolutionMetricsService",
     # Developer Docs
     "GetPatternsService",
     "GetCodeExamplesService",
     "GetDocumentationService",
     # Solution Composition
-    "GetSolutionTemplatesService",
-    "ComposeSolutionService",
     "ValidateSolutionService",
-    "GetCompositionGuideService",
 ]
