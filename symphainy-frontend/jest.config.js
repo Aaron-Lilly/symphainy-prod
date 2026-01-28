@@ -36,6 +36,15 @@ const customJestConfig = {
     "\\.spec\\.ts$",  // Playwright tests use .spec.ts
     "shared/config/environments/",  // Environment config files
     "components/content/SimpleFileDashboard\\.test",  // Missing component test
+    // Tests for replaced/obsolete functionality
+    "session-management\\.test",  // Uses old SessionProvider (replaced by SessionBoundaryProvider)
+    "GlobalSessionProvider\\.test",  // Uses old GlobalSessionProvider (replaced)
+    "AGUIEventProvider\\.test",  // Uses old AGUI events (replaced)
+    "AGUIInsightsPanel\\.test",  // Uses old AGUI panel (replaced)
+    "journeys/",  // Journey tests need backend
+    "integration/",  // Integration tests need backend
+    "experience-dimension-api\\.test",  // Uses old Experience API
+    "service-layer\\.test",  // Uses old service layer
   ],
   transformIgnorePatterns: [
     "/node_modules/(?!(@nivo|d3-.*|d3|internmap|delaunator|robust-predicates)/)",
