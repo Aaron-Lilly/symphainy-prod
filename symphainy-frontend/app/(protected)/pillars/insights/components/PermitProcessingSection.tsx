@@ -158,7 +158,7 @@ export function PermitProcessingSection({
         const status = await getExecutionStatus(executionId);
         
         if (status?.status === "completed") {
-          const permitArtifact = status.artifacts?.permit_processing;
+          const permitArtifact = status.artifacts?.permit_processing as { semantic_payload?: unknown } | undefined;
           if (permitArtifact?.semantic_payload) {
             processingResult = permitArtifact.semantic_payload;
           }

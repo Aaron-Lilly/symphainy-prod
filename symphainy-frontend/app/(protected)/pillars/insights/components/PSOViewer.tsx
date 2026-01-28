@@ -85,7 +85,7 @@ export function PSOViewer({ psoId, onClose }: PSOViewerProps) {
         
         if (status?.status === "completed") {
           // Extract PSO from execution artifacts
-          const psoArtifact = status.artifacts?.pso;
+          const psoArtifact = status.artifacts?.pso as { semantic_payload?: unknown } | undefined;
           if (psoArtifact?.semantic_payload) {
             psoData = psoArtifact.semantic_payload;
           }

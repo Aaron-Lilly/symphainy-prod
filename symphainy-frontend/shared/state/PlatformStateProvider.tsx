@@ -29,7 +29,7 @@ import React, {
   useCallback,
   useRef,
 } from "react";
-import { ExperiencePlaneClient, ExecutionStatus } from "@/shared/services/ExperiencePlaneClient";
+import { ExperiencePlaneClient, ExecutionStatusResponse } from "@/shared/services/ExperiencePlaneClient";
 import { getGlobalExperiencePlaneClient } from "@/shared/services/ExperiencePlaneClient";
 import { useSessionBoundary, SessionStatus } from "./SessionBoundaryProvider";
 
@@ -44,7 +44,7 @@ export interface SessionState {
 }
 
 export interface ExecutionState {
-  executions: Map<string, ExecutionStatus>;
+  executions: Map<string, ExecutionStatusResponse>;
   activeExecutions: string[];
   isLoading: boolean;
   error: string | null;
@@ -108,7 +108,7 @@ interface PlatformStateContextType {
     parameters?: Record<string, any>,
     metadata?: Record<string, any>
   ) => Promise<string>;
-  getExecutionStatus: (executionId: string) => Promise<ExecutionStatus | null>;
+  getExecutionStatus: (executionId: string) => Promise<ExecutionStatusResponse | null>;
   trackExecution: (executionId: string) => void;
   untrackExecution: (executionId: string) => void;
   
@@ -380,13 +380,10 @@ export const PlatformStateProvider: React.FC<PlatformStateProviderProps> = ({
           metadata,
         });
 
-        const executionStatus: ExecutionStatus = {
+        const executionStatus: ExecutionStatusResponse = {
           execution_id: response.execution_id,
           status: "pending",
           intent_id: response.intent_id,
-          tenant_id: sessionState.tenantId!,
-          session_id: sessionState.sessionId,
-          started_at: response.created_at,
         };
 
         setState((prev) => {
@@ -421,7 +418,7 @@ export const PlatformStateProvider: React.FC<PlatformStateProviderProps> = ({
   );
 
   const getExecutionStatus = useCallback(
-    async (executionId: string): Promise<ExecutionStatus | null> => {
+    async (executionId: string): Promise<ExecutionStatusResponse | null> => {
       // ✅ SESSION BOUNDARY PATTERN: Use session state from SessionBoundaryProvider
       if (!sessionState.tenantId) {
         throw new Error("Active session required to get execution status");

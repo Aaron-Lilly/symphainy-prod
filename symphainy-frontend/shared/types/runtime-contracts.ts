@@ -61,7 +61,7 @@ export interface IntentSubmitRequest {
   intent_type: string;
   tenant_id: string;
   session_id: string;
-  solution_id: string;
+  solution_id?: string;
   parameters?: Record<string, unknown>;
   metadata?: Record<string, unknown>;
 }
