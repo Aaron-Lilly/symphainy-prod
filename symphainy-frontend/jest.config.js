@@ -1,4 +1,6 @@
-const nextJest = require("next/jest")({
+const nextJest = require("next/jest");
+
+const createJestConfig = nextJest({
   // Provide the path to your Next.js app to load next.config.js and .env files in your test environment
   dir: "./",
 });
@@ -12,10 +14,15 @@ const customJestConfig = {
     "^shared/types/file$": "<rootDir>/../shared/types/file.ts",
     "^shared/(.*)$": "<rootDir>/../shared/$1",
     "\\.(css|less|scss|sass)$": "identity-obj-proxy",
+    // Mock nivo and d3 modules that use ESM syntax
+    "@nivo/(.*)": "<rootDir>/__mocks__/nivo.js",
+    "d3-(.*)": "<rootDir>/__mocks__/d3.js",
   },
-  testPathIgnorePatterns: ["/node_modules/", "/tests/", "/tests-examples/"],
-  transformIgnorePatterns: ["/node_modules/(?!(d3-interpolate|other-es-lib))"],
+  testPathIgnorePatterns: ["/node_modules/", "/tests/", "/tests-examples/", "/__tests__/utils/"],
+  transformIgnorePatterns: [
+    "/node_modules/(?!(@nivo|d3-.*|d3|internmap|delaunator|robust-predicates)/)",
+  ],
 };
 
 // createJestConfig is exported this way to ensure that next/jest can load the Next.js config which is async
-module.exports = nextJest(customJestConfig);
+module.exports = createJestConfig(customJestConfig);

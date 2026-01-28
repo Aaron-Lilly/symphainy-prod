@@ -8,4 +8,19 @@ if (typeof global.TextDecoder === "undefined") {
   global.TextDecoder = require("util").TextDecoder;
 }
 
-global.fetch = jest.fn(() => Promise.reject(new Error("Mock fetch failure")));
+// Default fetch mock - returns a reasonable default response
+// Tests can override this with jest.spyOn or mockImplementation
+global.fetch = jest.fn(() => 
+  Promise.resolve({
+    ok: true,
+    status: 200,
+    json: () => Promise.resolve({ success: true, data: null }),
+    text: () => Promise.resolve(''),
+    headers: new Headers(),
+  })
+);
+
+// Reset fetch mock before each test
+beforeEach(() => {
+  global.fetch.mockClear();
+});
