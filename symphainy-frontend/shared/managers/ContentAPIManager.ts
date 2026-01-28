@@ -11,7 +11,7 @@
  * Replaces direct API calls with Runtime-based intent flow.
  */
 
-import { ExperiencePlaneClient, getGlobalExperiencePlaneClient, ExecutionStatus } from "@/shared/services/ExperiencePlaneClient";
+import { ExperiencePlaneClient, getGlobalExperiencePlaneClient, ExecutionStatusResponse } from "@/shared/services/ExperiencePlaneClient";
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { validateSession } from "@/shared/utils/sessionValidation";
 import { getApiEndpointUrl } from "@/shared/config/api-config";
@@ -595,7 +595,7 @@ export class ContentAPIManager {
         
         if (status?.status === "completed") {
           // Extract embedding_id from execution artifacts
-          const embeddingArtifact = status.artifacts?.embeddings;
+          const embeddingArtifact = status.artifacts?.embeddings as { semantic_payload?: { embeddings_id?: string; embedding_reference?: string } } | undefined;
           if (embeddingArtifact?.semantic_payload) {
             embeddingId = embeddingArtifact.semantic_payload.embeddings_id;
             embeddingReference = embeddingArtifact.semantic_payload.embedding_reference || parsedFileReference;
@@ -774,7 +774,7 @@ export class ContentAPIManager {
     platformState: ReturnType<typeof usePlatformState>,
     maxWaitTime: number = 60000, // 60 seconds
     pollInterval: number = 1000 // 1 second
-  ): Promise<ExecutionStatus> {
+  ): Promise<ExecutionStatusResponse> {
     const startTime = Date.now();
     
     while (Date.now() - startTime < maxWaitTime) {
@@ -1053,16 +1053,16 @@ export class ContentAPIManager {
         const status = await platformState.getExecutionStatus(executionId);
 
         if (status?.status === "completed") {
-          const fileArtifact = status.artifacts?.file;
-          const semanticPayload = fileArtifact?.semantic_payload || {};
+          const fileArtifact = status.artifacts?.file as { semantic_payload?: Record<string, unknown> } | undefined;
+          const semanticPayload = (fileArtifact?.semantic_payload || {}) as Record<string, unknown>;
 
           return {
             success: true,
-            file_id: semanticPayload.artifact_id,
-            boundary_contract_id: semanticPayload.boundary_contract_id,
+            file_id: semanticPayload.artifact_id as string | undefined,
+            boundary_contract_id: semanticPayload.boundary_contract_id as string | undefined,
             materialization_pending: false,
             file: {
-              id: semanticPayload.artifact_id || "",
+              id: (semanticPayload.artifact_id as string | undefined) || "",
               name: file.name,
               type: file.type,
               size: file.size,
@@ -1121,7 +1121,7 @@ export class ContentAPIManager {
         const status = await platformState.getExecutionStatus(executionId);
 
         if (status?.status === "completed") {
-          const parsedArtifact = status.artifacts?.parsed_content;
+          const parsedArtifact = status.artifacts?.parsed_content as { semantic_payload?: { parsed_artifact_id?: string } } | undefined;
           return {
             success: true,
             parsed_file_id: parsedArtifact?.semantic_payload?.parsed_artifact_id,

@@ -20,7 +20,7 @@
  * Replaces direct API calls with Runtime-based intent flow.
  */
 
-import { ExperiencePlaneClient, getGlobalExperiencePlaneClient, ExecutionStatus } from "@/shared/services/ExperiencePlaneClient";
+import { ExperiencePlaneClient, getGlobalExperiencePlaneClient, ExecutionStatusResponse } from "@/shared/services/ExperiencePlaneClient";
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { validateSession } from "@/shared/utils/sessionValidation";
 
@@ -184,15 +184,30 @@ export class OperationsAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.optimized_process) {
+        const optimizedProcess = result.artifacts.optimized_process as {
+          process_id: string;
+          optimizations: Array<{
+            type: string;
+            description: string;
+            impact: "low" | "medium" | "high";
+            recommendation: string;
+          }>;
+          metrics?: {
+            efficiency_gain?: number;
+            time_savings?: number;
+            cost_reduction?: number;
+          };
+        };
+        
         // Update realm state (using internal key "journey" for Operations Realm data)
         platformState.setRealmState(OperationsAPIManager.REALM_STATE_KEY, "optimizedProcesses", {
           ...platformState.getRealmState(OperationsAPIManager.REALM_STATE_KEY, "optimizedProcesses") || {},
-          [workflowId]: result.artifacts.optimized_process
+          [workflowId]: optimizedProcess
         });
 
         return {
           success: true,
-          optimized_process: result.artifacts.optimized_process
+          optimized_process: optimizedProcess
         };
       } else {
         throw new Error(result.error || "Failed to optimize process");
@@ -239,15 +254,23 @@ export class OperationsAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.sop) {
+        const sop = result.artifacts.sop as {
+          sop_id: string;
+          title: string;
+          content: string;
+          sections: { title: string; content: string; }[];
+          metadata?: Record<string, unknown>;
+        };
+        
         // Update realm state
         platformState.setRealmState(OperationsAPIManager.REALM_STATE_KEY, "sops", {
           ...platformState.getRealmState(OperationsAPIManager.REALM_STATE_KEY, "sops") || {},
-          [workflowId]: result.artifacts.sop
+          [workflowId]: sop
         });
 
         return {
           success: true,
-          sop: result.artifacts.sop
+          sop
         };
       } else {
         throw new Error(result.error || "Failed to generate SOP");
@@ -292,15 +315,22 @@ export class OperationsAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.workflow) {
+        const workflow = result.artifacts.workflow as {
+          workflow_id: string;
+          name: string;
+          steps: { id: string; name: string; type: string; dependencies?: string[]; }[];
+          metadata?: Record<string, unknown>;
+        };
+        
         // Update realm state
         platformState.setRealmState(OperationsAPIManager.REALM_STATE_KEY, "workflows", {
           ...platformState.getRealmState(OperationsAPIManager.REALM_STATE_KEY, "workflows") || {},
-          [sopId]: result.artifacts.workflow
+          [sopId]: workflow
         });
 
         return {
           success: true,
-          workflow: result.artifacts.workflow
+          workflow
         };
       } else {
         throw new Error(result.error || "Failed to create workflow");
@@ -913,7 +943,7 @@ export class OperationsAPIManager {
     platformState: ReturnType<typeof usePlatformState>,
     maxWaitTime: number = 60000, // 60 seconds
     pollInterval: number = 1000 // 1 second
-  ): Promise<ExecutionStatus> {
+  ): Promise<ExecutionStatusResponse> {
     const startTime = Date.now();
     
     while (Date.now() - startTime < maxWaitTime) {
