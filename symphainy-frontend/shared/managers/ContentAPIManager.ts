@@ -20,6 +20,21 @@ import { getApiEndpointUrl } from "@/shared/config/api-config";
 // Content API Manager Types
 // ============================================
 
+/**
+ * Content file metadata structure
+ */
+export interface ContentFileMetadata {
+  file_id?: string;
+  file_reference?: string;
+  execution_id?: string;
+  boundary_contract_id?: string;
+  materialization_pending?: boolean;
+  file_type?: string;
+  mime_type?: string;
+  parsed_path?: string;
+  [key: string]: unknown;
+}
+
 export interface ContentFile {
   id: string;
   name: string;
@@ -27,7 +42,7 @@ export interface ContentFile {
   size: number;
   uploadDate: string;
   status?: string; // File status: "uploaded", "parsed", "embedded", "pending"
-  metadata?: any;
+  metadata?: ContentFileMetadata;
   boundary_contract_id?: string;  // NEW: Boundary contract ID
   materialization_pending?: boolean;  // NEW: Whether materialization is pending
 }
@@ -51,13 +66,35 @@ export interface SaveMaterializationResponse {
   error?: string;
 }
 
+/**
+ * Parsed content structure
+ */
+export interface ParsedContent {
+  parsed_file_reference?: string;
+  content_type?: string;
+  row_count?: number;
+  column_count?: number;
+  columns?: Array<{ name: string; type: string }>;
+  sample_data?: unknown[][];
+}
+
+/**
+ * File preview structure
+ */
+export interface FilePreview {
+  preview_type: 'text' | 'table' | 'binary';
+  content: string | string[][];
+  truncated: boolean;
+  total_rows?: number;
+}
+
 export interface ParseResponse {
   success: boolean;
   parsed_file_id?: string;
   parsed_file_reference?: string;
-  parsed_content?: any;
-  parsed_file?: any;
-  preview?: any;
+  parsed_content?: ParsedContent;
+  parsed_file?: Record<string, unknown>;
+  preview?: FilePreview;
   error?: string;
 }
 
@@ -68,10 +105,37 @@ export interface EmbeddingResponse {
   error?: string;
 }
 
+/**
+ * Semantic interpretation result
+ */
+export interface SemanticInterpretation {
+  summary?: string;
+  entities?: Array<{ name: string; type: string; confidence: number }>;
+  relationships?: Array<{ source: string; target: string; type: string }>;
+  metadata?: Record<string, unknown>;
+}
+
 export interface SemanticInterpretationResponse {
   success: boolean;
-  interpretation?: any;
+  interpretation?: SemanticInterpretation;
   error?: string;
+}
+
+/**
+ * Backend file record structure from list_files response
+ */
+export interface BackendFileRecord {
+  file_id?: string;
+  uuid?: string;
+  file_name?: string;
+  ui_name?: string;
+  file_type?: string;
+  mime_type?: string;
+  file_size?: number;
+  created_at?: string;
+  status?: string;
+  boundary_contract_id?: string;
+  materialization_pending?: boolean;
 }
 
 // ============================================
@@ -410,10 +474,10 @@ export class ContentAPIManager {
           // Extract files from execution artifacts
           const fileListArtifact = status.artifacts?.file_list as { semantic_payload?: { files?: unknown[] } } | undefined;
           if (fileListArtifact?.semantic_payload?.files) {
-            const backendFiles = fileListArtifact.semantic_payload.files as any[];
+            const backendFiles = fileListArtifact.semantic_payload.files as BackendFileRecord[];
             
             // Map backend response to ContentFile format
-            return backendFiles.map((file: any) => ({
+            return backendFiles.map((file: BackendFileRecord) => ({
               id: file.file_id || file.uuid || '',
               name: file.file_name || file.ui_name || 'Unnamed File',
               type: file.file_type || file.mime_type || '',
@@ -423,7 +487,6 @@ export class ContentAPIManager {
               boundary_contract_id: file.boundary_contract_id,
               materialization_pending: file.materialization_pending === true,
               metadata: {
-                ...file,
                 file_type: file.file_type,
                 mime_type: file.mime_type,
                 boundary_contract_id: file.boundary_contract_id,
@@ -474,7 +537,9 @@ export class ContentAPIManager {
 
       // Check if file has content_type === DATA_MODEL and set parsing_type accordingly
       const files = platformState.state.realm.content.files || [];
-      const file = files.find((f: any) => (f.uuid === fileId || f.file_id === fileId));
+      const file = files.find((f: { uuid?: string; file_id?: string; content_type?: string }) => 
+        (f.uuid === fileId || f.file_id === fileId)
+      );
       const finalParseOptions = { ...parseOptions };
       
       if (file?.content_type === "data_model") {
@@ -951,13 +1016,16 @@ export class ContentAPIManager {
    * 
    * The ingestion_profile is stored in the intent context, not on the artifact.
    */
+  /**
+   * Pending intent context structure
+   */
   async createPendingIntent(
     intentType: string,
     targetArtifactId: string,
     context: {
       ingestion_profile?: string;
-      parse_options?: Record<string, any>;
-      [key: string]: any;
+      parse_options?: Record<string, unknown>;
+      [key: string]: unknown;
     },
     tenantId: string,
     userId?: string,
