@@ -258,7 +258,71 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
         logger.warning(f"  ⚠️ Security Realm import error: {e}")
         security_count = 0
     
-    total_handlers = content_count + insights_count + operations_count + outcomes_count + security_count
+    # Control Tower Realm intent services
+    logger.info("  → Registering Control Tower Realm intent services...")
+    try:
+        from ..realms.control_tower.intent_services import (
+            GetPlatformStatisticsService,
+            GetSystemHealthService,
+            GetRealmHealthService,
+            ListSolutionsService,
+            GetSolutionStatusService,
+            GetPatternsService,
+            GetCodeExamplesService,
+            GetDocumentationService,
+            ValidateSolutionService
+        )
+        
+        control_tower_services = [
+            ("get_platform_statistics", GetPlatformStatisticsService),
+            ("get_system_health", GetSystemHealthService),
+            ("get_realm_health", GetRealmHealthService),
+            ("list_solutions", ListSolutionsService),
+            ("get_solution_status", GetSolutionStatusService),
+            ("get_patterns", GetPatternsService),
+            ("get_code_examples", GetCodeExamplesService),
+            ("get_documentation", GetDocumentationService),
+            ("validate_solution", ValidateSolutionService),
+        ]
+        
+        control_tower_count = sum(1 for intent, svc in control_tower_services if register_intent_service(intent, svc, "control_tower"))
+        logger.info(f"  ✅ Control Tower Realm: {control_tower_count} intent services registered")
+    except ImportError as e:
+        logger.warning(f"  ⚠️ Control Tower Realm import error: {e}")
+        control_tower_count = 0
+    
+    # Coexistence Realm intent services
+    logger.info("  → Registering Coexistence Realm intent services...")
+    try:
+        from ..realms.coexistence.intent_services import (
+            IntroducePlatformService,
+            ShowSolutionCatalogService,
+            NavigateToSolutionService,
+            InitiateGuideAgentService,
+            ProcessGuideAgentMessageService,
+            RouteToLiaisonAgentService,
+            ListAvailableMCPToolsService,
+            CallOrchestratorMCPToolService
+        )
+        
+        coexistence_services = [
+            ("introduce_platform", IntroducePlatformService),
+            ("show_solution_catalog", ShowSolutionCatalogService),
+            ("navigate_to_solution", NavigateToSolutionService),
+            ("initiate_guide_agent", InitiateGuideAgentService),
+            ("process_guide_agent_message", ProcessGuideAgentMessageService),
+            ("route_to_liaison_agent", RouteToLiaisonAgentService),
+            ("list_available_mcp_tools", ListAvailableMCPToolsService),
+            ("call_orchestrator_mcp_tool", CallOrchestratorMCPToolService),
+        ]
+        
+        coexistence_count = sum(1 for intent, svc in coexistence_services if register_intent_service(intent, svc, "coexistence"))
+        logger.info(f"  ✅ Coexistence Realm: {coexistence_count} intent services registered")
+    except ImportError as e:
+        logger.warning(f"  ⚠️ Coexistence Realm import error: {e}")
+        coexistence_count = 0
+    
+    total_handlers = content_count + insights_count + operations_count + outcomes_count + security_count + control_tower_count + coexistence_count
     logger.info(f"  ✅ IntentRegistry created with {total_handlers} intent services across all realms")
     
     # Step 4.5: Initialize Platform Solutions
