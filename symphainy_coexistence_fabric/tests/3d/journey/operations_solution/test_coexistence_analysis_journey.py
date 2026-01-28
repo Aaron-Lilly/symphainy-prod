@@ -40,16 +40,18 @@ class TestCoexistenceAnalysisJourneyExecution:
         """Should execute journey successfully."""
         journey = operations_solution._journeys.get("coexistence_analysis")
         
+        # AnalyzeCoexistenceService requires workflow_id or sop_id
         result = await journey.compose_journey(
             journey_id="coexistence_analysis",
             context=execution_context,
             journey_params={
-                "sop_file_id": "test_sop_123",
-                "workflow_file_id": "test_workflow_123"
+                "workflow_id": "test_workflow_123"
             }
         )
         
-        assert "success" in result or "error" in result
+        # Journey returns artifacts, events, and journey metadata
+        assert "artifacts" in result
+        assert "journey_execution_id" in result
     
     @pytest.mark.asyncio
     async def test_returns_artifacts(
@@ -58,16 +60,17 @@ class TestCoexistenceAnalysisJourneyExecution:
         """Should return artifacts in result."""
         journey = operations_solution._journeys.get("coexistence_analysis")
         
+        # AnalyzeCoexistenceService requires workflow_id or sop_id
         result = await journey.compose_journey(
             journey_id="coexistence_analysis",
             context=execution_context,
             journey_params={
-                "sop_file_id": "test_sop_123",
-                "workflow_file_id": "test_workflow_123"
+                "sop_id": "test_sop_123"
             }
         )
         
         assert "artifacts" in result
+        assert "coexistence_analysis" in result["artifacts"]
 
 
 class TestCoexistenceAnalysisJourneySOAAPIs:

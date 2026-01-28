@@ -21,7 +21,7 @@ class TestRouteToLiaisonAgentParameters:
     """Test route_to_liaison_agent parameter validation."""
     
     def test_requires_parameters(self):
-        """Should require required parameters."""
+        """Should require target_pillar parameter."""
         from symphainy_platform.runtime.intent_model import IntentFactory
         
         intent = IntentFactory.create_intent(
@@ -29,10 +29,14 @@ class TestRouteToLiaisonAgentParameters:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="coexistence",
-            parameters={}
+            parameters={
+                "target_pillar": "content",
+                "routing_reason": "User needs file upload assistance"
+            }
         )
         
         assert intent.intent_type == "route_to_liaison_agent"
+        assert intent.parameters.get("target_pillar") == "content"
 
 
 class TestRouteToLiaisonAgentExecution:
@@ -50,12 +54,17 @@ class TestRouteToLiaisonAgentExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="coexistence",
-            parameters={}
+            parameters={
+                "target_pillar": "content",
+                "routing_reason": "User needs file upload assistance"
+            }
         )
         
         result = await coexistence_solution.handle_intent(intent, execution_context)
         
-        assert "success" in result or "error" in result
+        assert "artifacts" in result
+        assert "events" in result
+        assert "journey_execution_id" in result
     
     @pytest.mark.asyncio
     async def test_registers_artifact(
@@ -69,10 +78,13 @@ class TestRouteToLiaisonAgentExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="coexistence",
-            parameters={}
+            parameters={
+                "target_pillar": "insights",
+                "routing_reason": "User needs data analysis help"
+            }
         )
         
         result = await coexistence_solution.handle_intent(intent, execution_context)
         
-        if "success" in result:
-            assert "artifacts" in result or "artifact_id" in result
+        assert "artifacts" in result
+        assert "liaison_agent_activation" in result["artifacts"]

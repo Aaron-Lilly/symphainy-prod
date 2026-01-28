@@ -21,7 +21,7 @@ class TestNavigateToSolutionParameters:
     """Test navigate_to_solution parameter validation."""
     
     def test_requires_parameters(self):
-        """Should require required parameters."""
+        """Should require solution_id parameter."""
         from symphainy_platform.runtime.intent_model import IntentFactory
         
         intent = IntentFactory.create_intent(
@@ -29,10 +29,13 @@ class TestNavigateToSolutionParameters:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="coexistence",
-            parameters={}
+            parameters={
+                "solution_id": "content_solution"
+            }
         )
         
         assert intent.intent_type == "navigate_to_solution"
+        assert intent.parameters.get("solution_id") == "content_solution"
 
 
 class TestNavigateToSolutionExecution:
@@ -50,12 +53,16 @@ class TestNavigateToSolutionExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="coexistence",
-            parameters={}
+            parameters={
+                "solution_id": "content_solution"
+            }
         )
         
         result = await coexistence_solution.handle_intent(intent, execution_context)
         
-        assert "success" in result or "error" in result
+        assert "artifacts" in result
+        assert "events" in result
+        assert "journey_execution_id" in result
     
     @pytest.mark.asyncio
     async def test_registers_artifact(
@@ -69,10 +76,12 @@ class TestNavigateToSolutionExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="coexistence",
-            parameters={}
+            parameters={
+                "solution_id": "insights_solution"
+            }
         )
         
         result = await coexistence_solution.handle_intent(intent, execution_context)
         
-        if "success" in result:
-            assert "artifacts" in result or "artifact_id" in result
+        assert "artifacts" in result
+        assert "navigation" in result["artifacts"]

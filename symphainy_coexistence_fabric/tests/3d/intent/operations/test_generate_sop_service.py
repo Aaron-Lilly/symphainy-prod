@@ -44,17 +44,19 @@ class TestGenerateSOPExecution:
         """Should return SOP document."""
         from symphainy_platform.runtime.intent_model import IntentFactory
         
+        # Test the generate_sop intent directly
         intent = IntentFactory.create_intent(
-            intent_type="compose_journey",
+            intent_type="generate_sop",
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="operations_solution",
             parameters={
-                "journey_id": "sop_management",
-                "journey_params": {"workflow_id": "workflow_123"}
+                "workflow_id": "test_workflow_123"  # Required: workflow_id
             }
         )
         
         result = await operations_solution.handle_intent(intent, execution_context)
         
-        assert "success" in result or "error" in result
+        # Services return artifacts and events, not success
+        assert "artifacts" in result
+        assert "events" in result

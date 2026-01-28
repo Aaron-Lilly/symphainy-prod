@@ -1,9 +1,11 @@
 """
-Test Business Analysis Journey
+Test Data Analysis Journey (Business Analysis)
 
 Tests:
-- Business data analysis
-- Report generation
+- Data analysis execution
+- Analysis artifact generation
+
+Note: The business_analysis journey was renamed to data_analysis in the platform overhaul.
 """
 
 import pytest
@@ -16,31 +18,33 @@ if str(project_root) not in sys.path:
 
 
 class TestBusinessAnalysisJourneyStructure:
-    """Test BusinessAnalysisJourney structure."""
+    """Test DataAnalysisJourney structure (formerly BusinessAnalysis)."""
     
     def test_journey_exists(self, insights_solution):
-        """BusinessAnalysisJourney should exist."""
-        journey = insights_solution.get_journey("business_analysis")
+        """DataAnalysisJourney should exist."""
+        # Journey was renamed from business_analysis to data_analysis
+        journey = insights_solution._journeys.get("data_analysis")
         assert journey is not None
     
     def test_has_compose_journey(self, insights_solution):
         """Should have compose_journey method."""
-        journey = insights_solution.get_journey("business_analysis")
+        journey = insights_solution._journeys.get("data_analysis")
         assert hasattr(journey, 'compose_journey')
 
 
 class TestBusinessAnalysisJourneyExecution:
-    """Test BusinessAnalysisJourney execution."""
+    """Test DataAnalysisJourney execution."""
     
     @pytest.mark.asyncio
     async def test_analyze_data(self, insights_solution, execution_context):
-        """Should analyze business data."""
-        journey = insights_solution.get_journey("business_analysis")
+        """Should analyze data."""
+        journey = insights_solution._journeys.get("data_analysis")
         
         result = await journey.compose_journey(
             context=execution_context,
             journey_params={"artifact_id": "test_artifact_123"}
         )
         
-        assert "success" in result or "error" in result
+        # Journey returns artifacts and journey metadata
         assert "artifacts" in result
+        assert "journey_execution_id" in result

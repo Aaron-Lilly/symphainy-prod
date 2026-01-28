@@ -24,7 +24,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          pip install pytest pytest-asyncio pytest-cov
+          pip install pytest pytest-asyncio pytest-cov pytest-timeout
           pip install -r requirements-as2.txt || true
       
       - name: Run Startup Tests
@@ -60,7 +60,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          pip install pytest pytest-asyncio
+          pip install pytest pytest-asyncio pytest-timeout
           pip install -r requirements-as2.txt || true
       
       - name: Run Journey Tests - Coexistence
@@ -105,7 +105,7 @@ jobs:
       
       - name: Install dependencies
         run: |
-          pip install pytest pytest-asyncio
+          pip install pytest pytest-asyncio pytest-timeout
           pip install -r requirements-as2.txt || true
       
       - name: Run E2E Demo Path Tests

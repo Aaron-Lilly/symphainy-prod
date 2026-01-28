@@ -29,7 +29,10 @@ class TestGenerateReportParameters:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="outcomes_solution",
-            parameters={}
+            parameters={
+                "report_type": "summary",
+                "source_artifact_id": "test_artifact_123"
+            }
         )
         
         assert intent.intent_type == "generate_report"
@@ -50,12 +53,17 @@ class TestGenerateReportExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="outcomes_solution",
-            parameters={}
+            parameters={
+                "report_type": "summary",
+                "source_artifact_id": "test_artifact_123"
+            }
         )
         
         result = await outcomes_solution.handle_intent(intent, execution_context)
         
-        assert "success" in result or "error" in result
+        assert "artifacts" in result
+        assert "events" in result
+        assert "journey_execution_id" in result
     
     @pytest.mark.asyncio
     async def test_registers_artifact(
@@ -69,10 +77,12 @@ class TestGenerateReportExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="outcomes_solution",
-            parameters={}
+            parameters={
+                "report_type": "detailed",
+                "source_artifact_id": "test_artifact_456"
+            }
         )
         
         result = await outcomes_solution.handle_intent(intent, execution_context)
         
-        if "success" in result:
-            assert "artifacts" in result or "artifact_id" in result
+        assert "artifacts" in result

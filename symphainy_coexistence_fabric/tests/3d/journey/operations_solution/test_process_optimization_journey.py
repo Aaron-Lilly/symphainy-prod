@@ -40,6 +40,7 @@ class TestProcessOptimizationJourneyExecution:
         """Should execute journey successfully."""
         journey = operations_solution._journeys.get("process_optimization")
         
+        # OptimizeProcessService requires workflow_id
         result = await journey.compose_journey(
             journey_id="process_optimization",
             context=execution_context,
@@ -48,7 +49,9 @@ class TestProcessOptimizationJourneyExecution:
             }
         )
         
-        assert "success" in result or "error" in result
+        # Journey returns artifacts, events, and journey metadata
+        assert "artifacts" in result
+        assert "journey_execution_id" in result
     
     @pytest.mark.asyncio
     async def test_returns_artifacts(
@@ -57,15 +60,18 @@ class TestProcessOptimizationJourneyExecution:
         """Should return artifacts in result."""
         journey = operations_solution._journeys.get("process_optimization")
         
+        # OptimizeProcessService requires workflow_id
         result = await journey.compose_journey(
             journey_id="process_optimization",
             context=execution_context,
             journey_params={
-                "workflow_id": "test_workflow_123"
+                "workflow_id": "test_workflow_456",
+                "optimization_focus": "efficiency"
             }
         )
         
         assert "artifacts" in result
+        assert "optimization" in result["artifacts"]
 
 
 class TestProcessOptimizationJourneySOAAPIs:

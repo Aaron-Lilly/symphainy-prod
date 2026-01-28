@@ -21,18 +21,22 @@ class TestCreateSessionParameters:
     """Test create_session parameter validation."""
     
     def test_requires_parameters(self):
-        """Should require required parameters."""
+        """Should accept optional parameters for session creation."""
         from symphainy_platform.runtime.intent_model import IntentFactory
         
+        # user_id and access_token are optional but useful
         intent = IntentFactory.create_intent(
             intent_type="create_session",
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="security_solution",
-            parameters={}
+            parameters={
+                "user_id": "test_user_123"
+            }
         )
         
         assert intent.intent_type == "create_session"
+        assert intent.parameters.get("user_id") == "test_user_123"
 
 
 class TestCreateSessionExecution:
@@ -50,12 +54,16 @@ class TestCreateSessionExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="security_solution",
-            parameters={}
+            parameters={
+                "user_id": "test_user_123"
+            }
         )
         
         result = await security_solution.handle_intent(intent, execution_context)
         
-        assert "success" in result or "error" in result
+        # Services return artifacts and events
+        assert "artifacts" in result
+        assert "events" in result
     
     @pytest.mark.asyncio
     async def test_registers_artifact(
@@ -69,10 +77,13 @@ class TestCreateSessionExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="security_solution",
-            parameters={}
+            parameters={
+                "user_id": "test_user_456",
+                "metadata": {"source": "test"}
+            }
         )
         
         result = await security_solution.handle_intent(intent, execution_context)
         
-        if "success" in result:
-            assert "artifacts" in result or "artifact_id" in result
+        # Services return artifacts containing session info
+        assert "artifacts" in result

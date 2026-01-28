@@ -40,16 +40,18 @@ class TestSOPManagementJourneyExecution:
         """Should execute journey successfully."""
         journey = operations_solution._journeys.get("sop_management")
         
+        # GenerateSOPService requires workflow_id
         result = await journey.compose_journey(
             journey_id="sop_management",
             context=execution_context,
             journey_params={
-                "workflow_id": "test_workflow_123",
-                "generation_mode": "from_workflow"
+                "workflow_id": "test_workflow_123"
             }
         )
         
-        assert "success" in result or "error" in result
+        # Journey returns artifacts, events, and journey metadata
+        assert "artifacts" in result
+        assert "journey_execution_id" in result
     
     @pytest.mark.asyncio
     async def test_returns_artifacts(
@@ -58,6 +60,7 @@ class TestSOPManagementJourneyExecution:
         """Should return artifacts in result."""
         journey = operations_solution._journeys.get("sop_management")
         
+        # GenerateSOPService requires workflow_id
         result = await journey.compose_journey(
             journey_id="sop_management",
             context=execution_context,
@@ -67,6 +70,7 @@ class TestSOPManagementJourneyExecution:
         )
         
         assert "artifacts" in result
+        assert "sop" in result["artifacts"]
 
 
 class TestSOPManagementJourneySOAAPIs:

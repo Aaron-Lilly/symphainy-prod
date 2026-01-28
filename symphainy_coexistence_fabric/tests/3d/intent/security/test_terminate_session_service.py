@@ -21,15 +21,18 @@ class TestTerminateSessionParameters:
     """Test terminate_session parameter validation."""
     
     def test_requires_parameters(self):
-        """Should require required parameters."""
+        """Should accept session_id parameter."""
         from symphainy_platform.runtime.intent_model import IntentFactory
         
+        # session_id can be provided or uses context session
         intent = IntentFactory.create_intent(
             intent_type="terminate_session",
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="security_solution",
-            parameters={}
+            parameters={
+                "session_id": "session_to_terminate"
+            }
         )
         
         assert intent.intent_type == "terminate_session"
@@ -50,12 +53,16 @@ class TestTerminateSessionExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="security_solution",
-            parameters={}
+            parameters={
+                "session_id": "session_to_terminate"
+            }
         )
         
         result = await security_solution.handle_intent(intent, execution_context)
         
-        assert "success" in result or "error" in result
+        # Services return artifacts and events
+        assert "artifacts" in result
+        assert "events" in result
     
     @pytest.mark.asyncio
     async def test_registers_artifact(
@@ -69,10 +76,10 @@ class TestTerminateSessionExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="security_solution",
-            parameters={}
+            parameters={}  # Uses context session_id
         )
         
         result = await security_solution.handle_intent(intent, execution_context)
         
-        if "success" in result:
-            assert "artifacts" in result or "artifact_id" in result
+        # Services return artifacts containing termination result
+        assert "artifacts" in result

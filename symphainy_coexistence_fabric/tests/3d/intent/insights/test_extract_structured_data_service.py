@@ -21,7 +21,7 @@ class TestExtractStructuredDataParameters:
     """Test extract_structured_data parameter validation."""
     
     def test_requires_parameters(self):
-        """Should require required parameters."""
+        """Should require artifact_id parameter."""
         from symphainy_platform.runtime.intent_model import IntentFactory
         
         intent = IntentFactory.create_intent(
@@ -29,10 +29,14 @@ class TestExtractStructuredDataParameters:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="insights_solution",
-            parameters={}
+            parameters={
+                "artifact_id": "test_artifact_123",
+                "extraction_schema": {"fields": ["name", "date"]}
+            }
         )
         
         assert intent.intent_type == "extract_structured_data"
+        assert intent.parameters.get("artifact_id") == "test_artifact_123"
 
 
 class TestExtractStructuredDataExecution:
@@ -50,12 +54,17 @@ class TestExtractStructuredDataExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="insights_solution",
-            parameters={}
+            parameters={
+                "artifact_id": "test_artifact_123",
+                "analysis_type": "structured_extraction"
+            }
         )
         
         result = await insights_solution.handle_intent(intent, execution_context)
         
-        assert "success" in result or "error" in result
+        assert "artifacts" in result
+        assert "events" in result
+        assert "journey_execution_id" in result
     
     @pytest.mark.asyncio
     async def test_registers_artifact(
@@ -69,10 +78,13 @@ class TestExtractStructuredDataExecution:
             tenant_id="test_tenant",
             session_id="test_session",
             solution_id="insights_solution",
-            parameters={}
+            parameters={
+                "artifact_id": "test_artifact_456",
+                "analysis_type": "general"
+            }
         )
         
         result = await insights_solution.handle_intent(intent, execution_context)
         
-        if "success" in result:
-            assert "artifacts" in result or "artifact_id" in result
+        assert "artifacts" in result
+        assert "analysis" in result["artifacts"]

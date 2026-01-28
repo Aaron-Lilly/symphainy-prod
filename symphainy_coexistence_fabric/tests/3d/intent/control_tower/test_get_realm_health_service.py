@@ -40,7 +40,7 @@ class TestGetRealmHealthExecution:
     
     @pytest.mark.asyncio
     async def test_executes_successfully(
-        self, control_tower_solution, execution_context
+        self, control_tower, execution_context
     ):
         """Should execute service successfully."""
         from symphainy_platform.runtime.intent_model import IntentFactory
@@ -53,13 +53,13 @@ class TestGetRealmHealthExecution:
             parameters={}
         )
         
-        result = await control_tower_solution.handle_intent(intent, execution_context)
+        result = await control_tower.handle_intent(intent, execution_context)
         
         assert "success" in result or "error" in result
     
     @pytest.mark.asyncio
     async def test_registers_artifact(
-        self, control_tower_solution, execution_context
+        self, control_tower, execution_context
     ):
         """Should register artifact on success."""
         from symphainy_platform.runtime.intent_model import IntentFactory
@@ -72,7 +72,7 @@ class TestGetRealmHealthExecution:
             parameters={}
         )
         
-        result = await control_tower_solution.handle_intent(intent, execution_context)
+        result = await control_tower.handle_intent(intent, execution_context)
         
         if "success" in result:
             assert "artifacts" in result or "artifact_id" in result
