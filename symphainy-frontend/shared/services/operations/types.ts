@@ -1,4 +1,65 @@
-// Operations Service Types
+/**
+ * Operations Service Types
+ * 
+ * Properly typed interfaces for the Operations pillar services.
+ * Aligned with backend contracts and the SOPModel/WorkflowGraph definitions.
+ */
+
+import { 
+  WorkflowGraph, 
+  SOPModel, 
+  CoexistenceBlueprint,
+  CoexistenceRecommendation 
+} from '../../types/responses';
+
+// =============================================================================
+// SOP and Workflow Element Types
+// =============================================================================
+
+export interface SOPElement {
+  id: string;
+  title: string;
+  content: string;
+  steps: SOPStepElement[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface SOPStepElement {
+  id: string;
+  order: number;
+  title: string;
+  description: string;
+  responsible?: string;
+  dependencies?: string[];
+}
+
+export interface WorkflowElement {
+  id: string;
+  name: string;
+  nodes: WorkflowNodeElement[];
+  edges: WorkflowEdgeElement[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface WorkflowNodeElement {
+  id: string;
+  type: string;
+  label: string;
+  position?: { x: number; y: number };
+  data?: Record<string, unknown>;
+}
+
+export interface WorkflowEdgeElement {
+  id: string;
+  source: string;
+  target: string;
+  label?: string;
+}
+
+// =============================================================================
+// Session Response Types
+// =============================================================================
+
 export interface OperationsSessionResponse {
   valid: boolean;
   action: string;
@@ -9,14 +70,14 @@ export interface OperationsSessionResponse {
     section2_complete: boolean;
   };
   elements?: {
-    sop: any;
-    workflow: any;
+    sop: SOPElement | null;
+    workflow: WorkflowElement | null;
   };
 }
 
 export interface OperationsWorkflowResponse {
-  workflow: any;
-  sop: any;
+  workflow: WorkflowGraph | null;
+  sop: SOPModel | null;
   analysis_results?: {
     errors?: Array<{ type: string; error: string }>;
     analysis_type?: string;
@@ -26,44 +87,107 @@ export interface OperationsWorkflowResponse {
   message?: string;
 }
 
-export interface OperationsCoexistenceResponse {
-  deliverable?: {
-    content?: {
-      optimized_sop?: string;
-      optimized_workflow?: any;
-    };
-    [key: string]: any;
+// =============================================================================
+// Coexistence Types
+// =============================================================================
+
+export interface OptimizedWorkflow {
+  id: string;
+  name: string;
+  nodes: WorkflowNodeElement[];
+  edges: WorkflowEdgeElement[];
+  optimizations_applied: string[];
+}
+
+export interface CoexistenceDeliverable {
+  content?: {
+    optimized_sop?: string;
+    optimized_workflow?: OptimizedWorkflow;
   };
-  blueprint?: any;
+  summary?: string;
+  recommendations?: CoexistenceRecommendation[];
+  [key: string]: unknown;
+}
+
+export interface OperationsCoexistenceResponse {
+  deliverable?: CoexistenceDeliverable;
+  blueprint?: CoexistenceBlueprint;
   optimized_sop?: string;
-  optimized_workflow?: any;
+  optimized_workflow?: OptimizedWorkflow;
   session_token: string;
   status: 'success' | 'error';
   message?: string;
 }
 
+// =============================================================================
+// Wizard Types
+// =============================================================================
+
+export interface DraftSOP {
+  id: string;
+  title: string;
+  content: string;
+  steps: SOPStepElement[];
+  status: 'draft' | 'review' | 'approved';
+}
+
 export interface OperationsWizardResponse {
   agent_response: string;
-  draft_sop?: any;
-  sop?: any;
-  workflow?: any;
+  draft_sop?: DraftSOP;
+  sop?: SOPModel;
+  workflow?: WorkflowGraph;
   session_token: string;
   status: 'success' | 'error';
   message?: string;
 }
+
+// =============================================================================
+// Error Types
+// =============================================================================
 
 export interface OperationsErrorResponse {
   message: string;
   operation: 'sop_to_workflow' | 'workflow_to_sop' | 'coexistence_analysis' | 'wizard_start' | 'wizard_chat' | 'wizard_publish';
   code?: string;
   file_uuid?: string;
-  details?: any;
+  details?: Record<string, unknown>;
+}
+
+// =============================================================================
+// Request Types
+// =============================================================================
+
+export interface SOPContent {
+  title?: string;
+  sections?: Array<{
+    title: string;
+    content: string;
+  }>;
+  steps?: SOPStepElement[];
+}
+
+export interface WorkflowContent {
+  nodes?: WorkflowNodeElement[];
+  edges?: WorkflowEdgeElement[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface WorkflowOptions {
+  include_swimlanes?: boolean;
+  include_decision_points?: boolean;
+  output_format?: 'bpmn' | 'json';
+}
+
+export interface SOPOptions {
+  include_responsibilities?: boolean;
+  include_dependencies?: boolean;
+  output_format?: 'markdown' | 'json';
 }
 
 export interface WorkflowGenerationRequest {
   sopFileUuid?: string;
-  sopContent?: Record<string, any>;
-  workflowOptions?: Record<string, any>;
+  sopContent?: SOPContent;
+  workflowOptions?: WorkflowOptions;
   sessionToken: string;
   userId?: string;
   sessionId?: string;
@@ -71,22 +195,28 @@ export interface WorkflowGenerationRequest {
 
 export interface SopGenerationRequest {
   workflowFileUuid?: string;
-  workflowContent?: Record<string, any>;
-  sopOptions?: Record<string, any>;
+  workflowContent?: WorkflowContent;
+  sopOptions?: SOPOptions;
   sessionToken: string;
   userId?: string;
   sessionId?: string;
+}
+
+export interface AnalysisOptions {
+  depth?: 'quick' | 'standard' | 'deep';
+  include_recommendations?: boolean;
+  include_gap_analysis?: boolean;
 }
 
 export interface CoexistenceAnalysisRequest {
   sessionToken: string;
   sopInputFileUuid?: string;
   workflowInputFileUuid?: string;
-  sopContent?: string | Record<string, any>;
-  workflowContent?: Record<string, any>;
-  currentState?: Record<string, any>;
-  targetState?: Record<string, any>;
-  analysisOptions?: Record<string, any>;
+  sopContent?: string | SOPContent;
+  workflowContent?: WorkflowContent;
+  currentState?: Record<string, unknown>;
+  targetState?: Record<string, unknown>;
+  analysisOptions?: AnalysisOptions;
   userId?: string;
   sessionId?: string;
 }
@@ -94,7 +224,7 @@ export interface CoexistenceAnalysisRequest {
 export interface CoexistenceContentRequest {
   sessionToken: string;
   sopContent: string;
-  workflowContent: any;
+  workflowContent: WorkflowContent;
 }
 
 export interface WizardRequest {
@@ -103,26 +233,61 @@ export interface WizardRequest {
 }
 
 export interface BlueprintSaveRequest {
-  blueprint: any;
+  blueprint: CoexistenceBlueprint;
   userId: string;
+}
+
+// =============================================================================
+// Query and Conversation Types
+// =============================================================================
+
+export interface QueryContext {
+  current_operation?: string;
+  selected_files?: string[];
+  analysis_type?: string;
 }
 
 export interface OperationsQueryRequest {
   session_id: string;
   query: string;
   file_url?: string;
-  context?: any;
+  context?: QueryContext;
+}
+
+export interface ConversationContext {
+  history?: Array<{ role: string; content: string }>;
+  current_step?: string;
+  artifacts?: string[];
 }
 
 export interface OperationsConversationRequest {
   session_id: string;
   message: string;
-  context?: any;
+  context?: ConversationContext;
+}
+
+// =============================================================================
+// State Types
+// =============================================================================
+
+export interface SelectedOperationsItem {
+  id: string;
+  type: 'sop' | 'workflow' | 'file';
+  name: string;
+  data?: SOPElement | WorkflowElement | Record<string, unknown>;
+}
+
+export interface OperationsFile {
+  uuid: string;
+  filename: string;
+  file_type: string;
+  status: string;
+  upload_date: string;
 }
 
 export interface OperationsState {
   selected: {
-    [type: string]: any | null;
+    [type: string]: SelectedOperationsItem | null;
   };
   loading: {
     isLoading: boolean;
@@ -133,9 +298,20 @@ export interface OperationsState {
   error: OperationsErrorResponse | null;
   success?: string;
   journey: "select" | "wizard" | null;
-  operationFiles: any[];
+  operationFiles: OperationsFile[];
   isLoadingFiles: boolean;
   initialized: boolean;
+}
+
+// =============================================================================
+// Liaison Event Types
+// =============================================================================
+
+export interface OperationsLiaisonEventData {
+  query?: string;
+  operation?: string;
+  files?: OperationsFile[];
+  context?: QueryContext | ConversationContext;
 }
 
 export interface OperationsLiaisonEvent {
@@ -143,10 +319,5 @@ export interface OperationsLiaisonEvent {
   session_token: string;
   agent_type: 'operations_liaison';
   pillar: 'operations';
-  data: {
-    query?: string;
-    operation?: string;
-    files?: any[];
-    context?: any;
-  };
+  data: OperationsLiaisonEventData;
 } 
