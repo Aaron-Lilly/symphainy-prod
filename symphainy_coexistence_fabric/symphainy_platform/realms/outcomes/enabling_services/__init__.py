@@ -1,15 +1,17 @@
 """
 Outcomes Enabling Services - Pure Data Processing for Outcomes Operations
+
+Note: POCGenerationService, RoadmapGenerationService, and SolutionSynthesisService
+have been replaced by full intent services (create_poc_service, generate_roadmap_service,
+create_solution_service).
 """
 
-from .roadmap_generation_service import RoadmapGenerationService
-from .poc_generation_service import POCGenerationService
-from .solution_synthesis_service import SolutionSynthesisService
 from .report_generator_service import ReportGeneratorService
+from .export_service import ExportService
+from .visual_generation_service import VisualGenerationService
 
 __all__ = [
-    "RoadmapGenerationService",
-    "POCGenerationService",
-    "SolutionSynthesisService",
     "ReportGeneratorService",
+    "ExportService",
+    "VisualGenerationService",
 ]
