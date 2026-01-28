@@ -184,9 +184,56 @@ export async function getVisualizationAnalysis(
  * Process natural language query
  */
 export async function processNaturalLanguageQuery(
-  query: string,
+  queryOrParams: string | {
+    session_id?: string;
+    query?: string;
+    file_url?: string;
+    context?: any;
+    sessionToken?: string;
+    token?: string;
+  },
   context?: Record<string, any>
 ): Promise<{ success: boolean; result?: any; error?: string }> {
   console.warn('[insights API] processNaturalLanguageQuery - stub implementation');
   return { success: true, result: {} };
+}
+
+/**
+ * Process chat message for insights
+ */
+export async function processChatMessage(params: {
+  session_id?: string;
+  message?: string;
+  context?: any;
+  sessionToken?: string;
+  token?: string;
+}): Promise<{ success: boolean; response?: any; error?: string }> {
+  console.warn('[insights API] processChatMessage - stub implementation');
+  return { success: true, response: {} };
+}
+
+/**
+ * Run EDA analysis
+ */
+export async function runEDAAnalysis(params: {
+  session_id?: string;
+  file_url?: string;
+  analysis_type?: string;
+  options?: any;
+}): Promise<{ success: boolean; result?: any; error?: string }> {
+  console.warn('[insights API] runEDAAnalysis - stub implementation');
+  return { success: true, result: {} };
+}
+
+/**
+ * Generate visualizations
+ */
+export async function generateVisualizations(params: {
+  session_id?: string;
+  file_url?: string;
+  chart_types?: string[];
+  options?: any;
+}): Promise<{ success: boolean; visualizations?: any[]; error?: string }> {
+  console.warn('[insights API] generateVisualizations - stub implementation');
+  return { success: true, visualizations: [] };
 }
