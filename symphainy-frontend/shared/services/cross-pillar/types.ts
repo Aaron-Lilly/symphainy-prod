@@ -1,16 +1,42 @@
-// Cross-Pillar Service Types
+/**
+ * Cross-Pillar Service Types
+ * 
+ * Type definitions for cross-pillar communication and data sharing.
+ */
+
+export type PillarType = 'content' | 'insights' | 'operations' | 'experience';
+
+/**
+ * Cross-pillar data payload structure
+ */
+export interface CrossPillarDataPayload {
+  dataId?: string;
+  content: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Cross-pillar context structure
+ */
+export interface CrossPillarContext {
+  sourceOperation?: string;
+  targetOperation?: string;
+  artifacts?: string[];
+  parameters?: Record<string, unknown>;
+}
+
 export interface CrossPillarDataRequest {
   sessionToken: string;
-  sourcePillar: 'content' | 'insights' | 'operations' | 'experience';
-  targetPillar: 'content' | 'insights' | 'operations' | 'experience';
+  sourcePillar: PillarType;
+  targetPillar: PillarType;
   dataType: string;
-  data: any;
-  context?: any;
+  data: CrossPillarDataPayload;
+  context?: CrossPillarContext;
 }
 
 export interface CrossPillarDataResponse {
   success: boolean;
-  data?: any;
+  data?: CrossPillarDataPayload;
   error?: string;
   sourcePillar: string;
   targetPillar: string;
@@ -18,47 +44,95 @@ export interface CrossPillarDataResponse {
   timestamp: string;
 }
 
+/**
+ * Communication message structure
+ */
+export interface CommunicationMessage {
+  type: string;
+  content: string | Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+}
+
 export interface CrossPillarCommunicationRequest {
   sessionToken: string;
-  sourcePillar: 'content' | 'insights' | 'operations' | 'experience';
-  targetPillar: 'content' | 'insights' | 'operations' | 'experience';
+  sourcePillar: PillarType;
+  targetPillar: PillarType;
   messageType: 'data_request' | 'state_update' | 'error_notification' | 'status_update';
-  message: any;
+  message: CommunicationMessage;
   priority: 'low' | 'medium' | 'high' | 'urgent';
+}
+
+/**
+ * Communication response payload
+ */
+export interface CommunicationResponsePayload {
+  acknowledgment?: boolean;
+  data?: Record<string, unknown>;
+  status?: string;
 }
 
 export interface CrossPillarCommunicationResponse {
   success: boolean;
-  response?: any;
+  response?: CommunicationResponsePayload;
   error?: string;
   messageId: string;
   timestamp: string;
 }
 
+/**
+ * Pillar state structure for sync
+ */
+export interface PillarState {
+  currentOperation?: string;
+  artifacts?: string[];
+  progress?: number;
+  status?: string;
+  data?: Record<string, unknown>;
+}
+
 export interface CrossPillarStateSyncRequest {
   sessionToken: string;
-  pillar: 'content' | 'insights' | 'operations' | 'experience';
-  state: any;
+  pillar: PillarType;
+  state: PillarState;
   version: string;
   timestamp: string;
 }
 
+/**
+ * State conflict structure
+ */
+export interface StateConflict {
+  field: string;
+  localValue: unknown;
+  remoteValue: unknown;
+  resolution?: 'local' | 'remote' | 'merge';
+}
+
 export interface CrossPillarStateSyncResponse {
   success: boolean;
-  syncedState?: any;
-  conflicts?: any[];
+  syncedState?: PillarState;
+  conflicts?: StateConflict[];
   error?: string;
   version: string;
   timestamp: string;
 }
 
+/**
+ * Validation rules structure
+ */
+export interface ValidationRules {
+  requiredFields?: string[];
+  typeChecks?: Record<string, string>;
+  customValidators?: Array<{ field: string; rule: string }>;
+}
+
 export interface CrossPillarValidationRequest {
   sessionToken: string;
-  data: any;
+  data: CrossPillarDataPayload;
   dataType: string;
   sourcePillar: string;
   targetPillar: string;
-  validationRules: any;
+  validationRules: ValidationRules;
 }
 
 export interface CrossPillarValidationResponse {
@@ -69,13 +143,23 @@ export interface CrossPillarValidationResponse {
   validationScore: number; // 0-100
 }
 
+/**
+ * Error details structure
+ */
+export interface CrossPillarErrorDetails {
+  failedOperation?: string;
+  attemptedData?: Record<string, unknown>;
+  validationErrors?: string[];
+  stackTrace?: string;
+}
+
 export interface CrossPillarErrorResponse {
   message: string;
   operation: 'data_sharing' | 'communication' | 'state_sync' | 'validation';
   code?: string;
   sourcePillar?: string;
   targetPillar?: string;
-  details?: any;
+  details?: CrossPillarErrorDetails;
 }
 
 export interface CrossPillarBridgeConfig {
@@ -107,14 +191,24 @@ export interface CrossPillarBridgeState {
   };
 }
 
+/**
+ * Event metadata structure
+ */
+export interface CrossPillarEventMetadata {
+  operationId?: string;
+  correlationId?: string;
+  retryCount?: number;
+  duration?: number;
+}
+
 export interface CrossPillarEvent {
   type: 'data_shared' | 'state_synced' | 'communication_sent' | 'validation_completed' | 'error_occurred';
   sessionToken: string;
   sourcePillar: string;
   targetPillar?: string;
-  data?: any;
+  data?: CrossPillarDataPayload;
   timestamp: string;
-  metadata?: any;
+  metadata?: CrossPillarEventMetadata;
 }
 
 export interface CrossPillarPerformanceMetrics {
