@@ -45,12 +45,16 @@ class TestRealArangoDBConnectivity:
     @pytest.mark.sre
     def test_arangodb_create_read(self, real_arangodb_client):
         """ArangoDB should create and read documents."""
+        import time
         collection_name = "test_real_docs"
         if not real_arangodb_client.has_collection(collection_name):
             real_arangodb_client.create_collection(collection_name)
-        document = {"_key": "test_doc_real", "name": "Test", "value": 123}
-        result = real_arangodb_client.insert_document(collection_name, document)
+        collection = real_arangodb_client.collection(collection_name)
+        # Use unique key to avoid conflicts
+        unique_key = f"test_doc_{int(time.time() * 1000)}"
+        document = {"_key": unique_key, "name": "Test", "value": 123}
+        result = collection.insert(document)
         assert result is not None
-        retrieved = real_arangodb_client.get_document(collection_name, "test_doc_real")
+        retrieved = collection.get(unique_key)
         assert retrieved["name"] == "Test"
-        real_arangodb_client.delete_document(collection_name, "test_doc_real")
+        collection.delete(unique_key)

@@ -21,13 +21,15 @@ class TestRealAuthenticationFlow:
     @pytest.mark.asyncio
     async def test_real_user_login(self, real_solutions, real_execution_context):
         """Test real user login."""
-        security_solution = real_solutions.security
+        solutions = await real_solutions
+        context = await real_execution_context
+        security_solution = solutions.security
         journey = security_solution._journeys.get("authentication")
         if not journey:
             pytest.skip("Authentication journey not available")
         result = await journey.compose_journey(
             journey_id="authentication",
-            context=real_execution_context,
+            context=context,
             journey_params={"email": "test@example.com", "password": "Test123!"}
         )
         assert result is not None
@@ -43,13 +45,14 @@ class TestRealFileUploadFlow:
     @pytest.mark.asyncio
     async def test_real_file_upload(self, real_solutions, real_execution_context):
         """Test real file upload."""
-        content_solution = real_solutions.content
+        solutions = await real_solutions
+        context = await real_execution_context
+        content_solution = solutions.content
         journey = content_solution.get_journey("file_upload_materialization")
         if not journey:
             pytest.skip("File upload journey not available")
         result = await journey.compose_journey(
-            journey_id="file_upload_materialization",
-            context=real_execution_context,
+            context=context,
             journey_params={"file_content": b"Test".hex(), "file_name": "test.txt"}
         )
         assert result is not None
@@ -65,13 +68,14 @@ class TestRealFileParsing:
     @pytest.mark.asyncio
     async def test_real_parsing_quality(self, real_solutions, real_execution_context):
         """Test parsing returns meaningful content."""
-        content_solution = real_solutions.content
+        solutions = await real_solutions
+        context = await real_execution_context
+        content_solution = solutions.content
         journey = content_solution.get_journey("file_parsing")
         if not journey:
             pytest.skip("File parsing journey not available")
         result = await journey.compose_journey(
-            journey_id="file_parsing",
-            context=real_execution_context,
+            context=context,
             journey_params={"file_id": "test_file_123"}
         )
         if "artifacts" in result:
@@ -88,13 +92,14 @@ class TestRealChatAgents:
     @pytest.mark.asyncio
     async def test_guide_agent_quality(self, real_solutions, real_execution_context):
         """Test GuideAgent generates real responses."""
-        coexistence_solution = real_solutions.coexistence
+        solutions = await real_solutions
+        context = await real_execution_context
+        coexistence_solution = solutions.coexistence
         journey = coexistence_solution.get_journey("guide_agent")
         if not journey:
             pytest.skip("GuideAgent journey not available")
         result = await journey.compose_journey(
-            journey_id="guide_agent",
-            context=real_execution_context,
+            context=context,
             journey_params={"action": "process_message", "message": "Hello"}
         )
         if "artifacts" in result:
@@ -111,13 +116,14 @@ class TestRealNavigation:
     @pytest.mark.asyncio
     async def test_real_navigation(self, real_solutions, real_execution_context):
         """Test real navigation."""
-        coexistence_solution = real_solutions.coexistence
+        solutions = await real_solutions
+        context = await real_execution_context
+        coexistence_solution = solutions.coexistence
         journey = coexistence_solution.get_journey("navigation")
         if not journey:
             pytest.skip("Navigation journey not available")
         result = await journey.compose_journey(
-            journey_id="navigation",
-            context=real_execution_context,
+            context=context,
             journey_params={"action": "navigate", "solution_id": "content_solution"}
         )
         assert result is not None

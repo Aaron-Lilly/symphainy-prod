@@ -73,38 +73,47 @@ def real_arangodb_client():
         pytest.skip(f"ArangoDB not available: {e}")
 
 
+# Store PublicWorks instance for reuse
+_real_pw_instance = None
+
 @pytest.fixture(scope="session")
 async def real_public_works():
     """Real PublicWorksFoundationService connected to actual infrastructure."""
-    from symphainy_platform.foundations.public_works.foundation_service import PublicWorksFoundationService
-    config = {
-        "redis_url": os.getenv("REDIS_URL", "redis://localhost:6379"),
-        "arango_url": os.getenv("ARANGO_URL", "http://localhost:8529"),
-        "arango_username": os.getenv("ARANGO_USERNAME", "root"),
-        "arango_password": os.getenv("ARANGO_ROOT_PASSWORD", "test_password"),
-        "arango_database": os.getenv("ARANGO_DATABASE", "symphainy_platform"),
-    }
-    pw = PublicWorksFoundationService(config=config)
-    try:
-        await pw.initialize()
-        print("✅ Real PublicWorks initialized")
-        yield pw
-    except Exception as e:
-        pytest.skip(f"PublicWorks initialization failed: {e}")
+    global _real_pw_instance
+    if _real_pw_instance is None:
+        from symphainy_platform.foundations.public_works.foundation_service import PublicWorksFoundationService
+        config = {
+            "redis_url": os.getenv("REDIS_URL", "redis://localhost:6379"),
+            "arango_url": os.getenv("ARANGO_URL", "http://localhost:8529"),
+            "arango_username": os.getenv("ARANGO_USERNAME", "root"),
+            "arango_password": os.getenv("ARANGO_ROOT_PASSWORD", "test_password"),
+            "arango_database": os.getenv("ARANGO_DATABASE", "symphainy_platform"),
+        }
+        pw = PublicWorksFoundationService(config=config)
+        try:
+            await pw.initialize()
+            print("✅ Real PublicWorks initialized")
+            _real_pw_instance = pw
+            yield pw
+        except Exception as e:
+            pytest.skip(f"PublicWorks initialization failed: {e}")
+    else:
+        yield _real_pw_instance
 
 
 @pytest.fixture
-def real_execution_context(real_state_surface):
+async def real_execution_context(real_state_surface):
     """Real ExecutionContext with actual state surface."""
     from symphainy_platform.runtime.execution_context import ExecutionContext
     from utilities import generate_event_id
+    state_surface = await real_state_surface
     return ExecutionContext(
         execution_id=generate_event_id(),
         tenant_id="test_tenant_real",
         session_id=f"test_session_{generate_event_id()}",
         intent=None,
         solution_id="test_solution",
-        state_surface=real_state_surface
+        state_surface=state_surface
     )
 
 
@@ -112,9 +121,13 @@ def real_execution_context(real_state_surface):
 async def real_state_surface(real_public_works):
     """Real StateSurface connected to actual Redis/ArangoDB."""
     from symphainy_platform.runtime.state_surface import StateSurface
-    ss = StateSurface(public_works=real_public_works)
-    print("✅ Real StateSurface initialized")
-    return ss
+    # Get PublicWorks from async generator
+    async for pw in real_public_works:
+        state_abstraction = pw.get_state_abstraction() if hasattr(pw, 'get_state_abstraction') else None
+        file_storage = pw.get_file_storage_abstraction() if hasattr(pw, 'get_file_storage_abstraction') else None
+        ss = StateSurface(state_abstraction=state_abstraction, file_storage=file_storage)
+        print("✅ Real StateSurface initialized")
+        return ss
 
 
 @pytest.fixture

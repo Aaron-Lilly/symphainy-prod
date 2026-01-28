@@ -88,7 +88,9 @@ class TestRealGuideAgentLLM:
         if not _has_llm_api_key():
             pytest.skip("LLM API keys not configured")
         
-        coexistence_solution = real_solutions.coexistence
+        solutions = await real_solutions
+        context = await real_execution_context
+        coexistence_solution = solutions.coexistence
         
         journey = coexistence_solution.get_journey("guide_agent")
         if not journey:
@@ -98,8 +100,7 @@ class TestRealGuideAgentLLM:
         test_message = "What is 2 + 2? Answer with just the number."
         
         result = await journey.compose_journey(
-            journey_id="guide_agent",
-            context=real_execution_context,
+            context=context,
             journey_params={
                 "action": "process_message",
                 "message": test_message
