@@ -68,12 +68,8 @@ export function ParsePreview({
 
     setLoadingParsedFiles(true);
     setError(null);
+    
     try {
-        setParsedFiles([]);
-        setError('Session required to load files');
-        return;
-      }
-
       // Submit list_files intent to get all files
       const executionId = await submitIntent(
         'list_files',
