@@ -152,16 +152,18 @@ class ControlRoomService:
                 self.logger.warning(f"Failed to get realms from Runtime: {e}")
         
         # Fallback: Use realm_registry if available
+        # NOTE: RealmRegistry now stores realm names/metadata, not RealmBase instances.
+        # Intent information should come from SolutionRegistry, not RealmRegistry.
         if self.realm_registry:
             realms = []
             for realm_name in self.realm_registry.list_realms():
-                realm = self.realm_registry.get_realm(realm_name)
-                if realm:
+                realm_metadata = self.realm_registry.get_realm(realm_name)
+                if realm_metadata:
                     realms.append({
                         "name": realm_name,
                         "status": "healthy",  # TODO: Check actual health
-                        "intents_supported": len(realm.declare_intents()) if hasattr(realm, 'declare_intents') else 0,
-                        "intents": realm.declare_intents() if hasattr(realm, 'declare_intents') else []
+                        "intents_supported": 0,  # Get from SolutionRegistry if needed
+                        "intents": []  # Get from SolutionRegistry if needed
                     })
             
             return {

@@ -73,19 +73,19 @@ class DeveloperViewService:
             "sections": {
                 "architecture": {
                     "title": "Architecture Overview",
-                    "content": "Platform architecture: Runtime, Civic Systems, Realms, Foundations"
+                    "content": "Platform architecture: Runtime, Civic Systems, Solutions, Foundations"
                 },
-                "solution_sdk": {
-                    "title": "Solution SDK",
-                    "content": "How to build and register solutions using Solution SDK"
+                "solution_pattern": {
+                    "title": "Solution Pattern",
+                    "content": "How to build solutions using BaseSolution: compose journeys, expose SOA APIs, integrate with MCP server"
                 },
-                "realm_sdk": {
-                    "title": "Realm SDK",
-                    "content": "How to implement realms using RealmBase and Runtime Participation Contract"
+                "journey_orchestrators": {
+                    "title": "Journey Orchestrators",
+                    "content": "How to implement journey orchestrators that handle specific workflows and return standardized results"
                 },
                 "smart_city_sdk": {
                     "title": "Smart City SDK",
-                    "content": "Smart City SDK: Security Guard, Traffic Cop, Post Office"
+                    "content": "Smart City SDK: Security Guard, Traffic Cop, Post Office - infrastructure abstractions"
                 },
                 "agentic_sdk": {
                     "title": "Agentic SDK",
@@ -93,7 +93,11 @@ class DeveloperViewService:
                 },
                 "public_works": {
                     "title": "Public Works",
-                    "content": "Public Works pattern: Adapters, Abstractions, Protocols"
+                    "content": "Public Works pattern: Adapters, Abstractions, Protocols for infrastructure access"
+                },
+                "mcp_integration": {
+                    "title": "MCP Integration",
+                    "content": "How to expose solution journeys as MCP tools for AI agent consumption"
                 }
             }
         }
@@ -114,41 +118,119 @@ class DeveloperViewService:
             Dict with code examples
         """
         examples = {
-            "creating_realm": {
-                "title": "Creating a Realm",
+            "creating_solution": {
+                "title": "Creating a Solution",
                 "language": "python",
                 "code": """
-from symphainy_platform.civic_systems.platform_sdk.realm_sdk import RealmBase
+from typing import Dict, Any, List
+from symphainy_platform.bases.solution_base import BaseSolution
 from symphainy_platform.runtime.intent_model import Intent
 from symphainy_platform.runtime.execution_context import ExecutionContext
 
-class MyRealm(RealmBase):
-    def __init__(self, realm_name: str = "my_realm"):
-        super().__init__(realm_name)
+class MySolution(BaseSolution):
+    '''My custom solution following the Solution Pattern.'''
     
-    def declare_intents(self) -> List[str]:
-        return ["my_intent"]
+    SOLUTION_ID = "my_solution"
+    SOLUTION_NAME = "My Solution"
+    
+    # Declare all intents this solution handles
+    SUPPORTED_INTENTS = [
+        "compose_journey",
+        "my_custom_intent",
+    ]
+    
+    def __init__(self, public_works=None, state_surface=None):
+        super().__init__(public_works, state_surface)
+        self._journeys = {}
+        self._initialize_journeys()
+    
+    def _initialize_journeys(self):
+        '''Initialize journey orchestrators.'''
+        # from .journeys.my_journey import MyJourney
+        # self._journeys["my_journey"] = MyJourney(...)
+        pass
     
     async def handle_intent(
         self,
         intent: Intent,
         context: ExecutionContext
     ) -> Dict[str, Any]:
-        # Handle intent
-        return {"artifacts": {}, "events": []}
+        '''Handle intent by routing to appropriate journey.'''
+        intent_type = intent.intent_type
+        
+        if intent_type == "compose_journey":
+            return await self._handle_compose_journey(intent, context)
+        
+        # Route to journey
+        journey = self._find_journey_for_intent(intent_type)
+        if journey:
+            return await journey.compose_journey(context, intent.parameters)
+        
+        raise ValueError(f"Unknown intent: {intent_type}")
 """
             },
             "building_solution": {
-                "title": "Building a Solution",
+                "title": "Building a Solution with SolutionBuilder",
                 "language": "python",
                 "code": """
 from symphainy_platform.civic_systems.platform_sdk.solution_builder import SolutionBuilder
 
-solution = SolutionBuilder() \\
-    .with_context(goals=["..."], constraints=["..."]) \\
-    .add_domain_binding(domain="content", system_name="...", adapter_type="...") \\
-    .register_intents(["ingest_file", "parse_content"]) \\
+solution = SolutionBuilder(solution_id="my_solution") \\
+    .with_context(
+        goals=["Provide domain capabilities"],
+        constraints=["All operations via intents", "Artifacts in State Surface"]
+    ) \\
+    .add_domain_binding(
+        domain="content",
+        system_name="file_storage",
+        adapter_type="gcs_adapter"
+    ) \\
+    .register_intents(["compose_journey", "ingest_file", "parse_content"]) \\
+    .with_metadata({"version": "1.0.0"}) \\
     .build()
+"""
+            },
+            "creating_journey": {
+                "title": "Creating a Journey Orchestrator",
+                "language": "python",
+                "code": """
+from typing import Dict, Any
+from symphainy_platform.bases.orchestrator_base import OrchestratorBase
+from symphainy_platform.runtime.execution_context import ExecutionContext
+
+class MyJourney(OrchestratorBase):
+    '''Journey orchestrator for a specific workflow.'''
+    
+    JOURNEY_ID = "my_journey"
+    JOURNEY_NAME = "My Journey"
+    
+    async def compose_journey(
+        self,
+        context: ExecutionContext,
+        params: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        '''Execute the journey workflow.'''
+        action = params.get("action", "default")
+        
+        if action == "process":
+            return await self._handle_process(context, params)
+        
+        return self.build_journey_result(
+            success=True,
+            data={"message": "Journey completed"},
+            artifacts={},
+            events=[]
+        )
+    
+    def get_soa_apis(self) -> Dict[str, Any]:
+        '''Return SOA API definitions for MCP server.'''
+        return {
+            "process": {
+                "handler": self._handle_process_soa,
+                "input_schema": {"type": "object", "properties": {...}},
+                "description": "Process something"
+            }
+        }
 """
             }
         }
@@ -167,21 +249,29 @@ solution = SolutionBuilder() \\
         """
         return {
             "patterns": {
-                "realm_implementation": {
-                    "title": "Realm Implementation Pattern",
-                    "description": "How to implement realms following the Runtime Participation Contract"
+                "solution_pattern": {
+                    "title": "Solution Pattern",
+                    "description": "How to implement solutions using BaseSolution, composing journeys and exposing SOA APIs"
+                },
+                "journey_orchestration": {
+                    "title": "Journey Orchestration Pattern",
+                    "description": "How to implement journey orchestrators that handle specific workflows with standardized results"
                 },
                 "solution_composition": {
                     "title": "Solution Composition Pattern",
-                    "description": "How to compose solutions from domain services"
+                    "description": "How to compose solutions from journey orchestrators and expose them via MCP server"
                 },
                 "agent_collaboration": {
                     "title": "Agent Collaboration Pattern",
-                    "description": "How agents collaborate via Runtime, not direct invocation"
+                    "description": "How agents collaborate via Runtime intents, not direct invocation"
                 },
                 "public_works_pattern": {
                     "title": "Public Works Pattern",
-                    "description": "How to create adapters, abstractions, and protocols"
+                    "description": "How to create adapters, abstractions, and protocols for infrastructure access"
+                },
+                "mcp_server_pattern": {
+                    "title": "MCP Server Pattern",
+                    "description": "How to expose solution journeys as MCP tools for AI agent consumption"
                 }
             }
         }
