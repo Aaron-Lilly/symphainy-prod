@@ -35,12 +35,6 @@ jobs:
         env:
           ARANGO_ROOT_PASSWORD: test_password
           ARANGO_NO_AUTH: 1
-        options: >-
-          --health-cmd "curl -f http://127.0.0.1:8529/_api/version || exit 1"
-          --health-interval 15s
-          --health-timeout 10s
-          --health-retries 15
-          --health-start-period 30s
 
     steps:
       - uses: actions/checkout@v4
@@ -63,9 +57,18 @@ jobs:
           timeout 30 bash -c 'until redis-cli ping 2>/dev/null; do sleep 1; done'
           echo "Redis is ready!"
           
-          echo "Waiting for ArangoDB..."
-          timeout 60 bash -c 'until curl -s http://localhost:8529/_api/version 2>/dev/null; do sleep 1; done'
-          echo "ArangoDB is ready!"
+          echo "Waiting for ArangoDB to initialize (this may take up to 3 minutes)..."
+          echo "ArangoDB needs time for database initialization on first start."
+          for i in {1..36}; do
+            if curl -s http://localhost:8529/_api/version > /dev/null 2>&1; then
+              echo "ArangoDB is ready!"
+              exit 0
+            fi
+            echo "  Attempt $i/36: ArangoDB not ready yet, waiting 5 seconds..."
+            sleep 5
+          done
+          echo "ArangoDB failed to start within timeout"
+          exit 1
 
       - name: Run backend unit tests
         working-directory: symphainy_coexistence_fabric
