@@ -23,12 +23,14 @@ import sys
 from pathlib import Path
 from typing import Dict, Any, Optional, List
 
+
 def _find_project_root():
     path = Path(__file__).resolve()
     for parent in path.parents:
         if (parent / "pyproject.toml").exists():
             return parent
     return path.parents[3]
+
 
 _project_root = _find_project_root()
 if str(_project_root) not in sys.path:

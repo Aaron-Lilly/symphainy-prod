@@ -27,6 +27,7 @@ import { InsightsService } from '@/shared/services/insights/core';
 import { PermitSemanticObject, Obligation } from '@/shared/services/insights/types';
 // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
 import { useSessionBoundary } from '@/shared/state/SessionBoundaryProvider';
+import { usePlatformState } from '@/shared/state/PlatformStateProvider';
 import { toast } from 'sonner';
 
 interface PSOViewerProps {
@@ -84,7 +85,7 @@ export function PSOViewer({ psoId, onClose }: PSOViewerProps) {
         
         if (status?.status === "completed") {
           // Extract PSO from execution artifacts
-          const psoArtifact = status.artifacts?.pso;
+          const psoArtifact = status.artifacts?.pso as { semantic_payload?: unknown } | undefined;
           if (psoArtifact?.semantic_payload) {
             psoData = psoArtifact.semantic_payload;
           }

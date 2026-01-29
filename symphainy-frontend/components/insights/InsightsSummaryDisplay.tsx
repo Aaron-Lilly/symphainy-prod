@@ -67,7 +67,11 @@ export default function InsightsSummaryDisplay({
         </CardHeader>
         <CardContent>
           <div className="prose max-w-none">
-            {formatSummaryText(summary.data?.summary_text || summary.message || "No summary available")}
+            {formatSummaryText(
+              (summary.data as { summary_text?: string } | undefined)?.summary_text || 
+              summary.message || 
+              "No summary available"
+            )}
           </div>
         </CardContent>
       </Card>

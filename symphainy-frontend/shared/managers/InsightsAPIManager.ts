@@ -70,10 +70,12 @@ export interface InterpretationResponse {
 export interface AnalysisResult {
   analysis_type: "structured" | "unstructured";
   summary: string;
+  confidence_score?: number;
   insights: Array<{
     type: string;
     description: string;
     confidence?: number;
+    category?: string;
   }>;
   visualizations?: Array<{
     type: string;

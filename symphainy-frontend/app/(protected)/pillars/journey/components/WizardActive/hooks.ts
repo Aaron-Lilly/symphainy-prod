@@ -107,8 +107,8 @@ export function useWizardActive({ onBack }: WizardActiveProps): WizardActiveStat
 
       // Save to realm state for journey realm
       setRealmState('journey', 'operations', {
-        sopText: response.sop,
-        workflowData: response.workflow,
+        sopText: result.sop,
+        workflowData: result.workflow,
         published: true,
         source: 'wizard'
       });

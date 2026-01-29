@@ -1,0 +1,37 @@
+# Traefik Static Configuration
+# 
+# This file defines the main Traefik configuration including:
+# - API dashboard settings (insecure for local dev only)
+# - Entry points for HTTP and WebSocket traffic
+# - Provider configuration for Docker and file-based routing
+#
+# Usage: Mount this file to /etc/traefik/traefik.yml in the Traefik container
+
+api:
+  dashboard: true
+  insecure: true  # For local development only - disable in production
+
+entryPoints:
+  web:
+    address: ":80"
+  websocket:
+    address: ":8080"
+
+providers:
+  docker:
+    endpoint: "unix:///var/run/docker.sock"
+    exposedByDefault: false
+    network: symphainy_net
+  file:
+    filename: /etc/traefik/dynamic.yml
+    watch: true
+
+log:
+  level: DEBUG
+  format: json
+
+accessLog:
+  format: json
+  filters:
+    statusCodes:
+      - "400-599"

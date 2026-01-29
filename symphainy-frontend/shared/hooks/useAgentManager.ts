@@ -7,35 +7,60 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
-// All manager imports are now dynamic to avoid SSR issues
+import { useState, useEffect, useCallback } from 'react';
+import type { 
+  IWebSocketManager, 
+  AgentRouter, 
+  AgentResponse, 
+  AdditionalMessageContext,
+  FileContext 
+} from '../managers/AgentRouter';
+import type { ContentAPIManager } from '../managers/ContentAPIManager';
+import type { OperationsAPIManager } from '../managers/OperationsAPIManager';
 
 // ============================================
 // Hook Interface
 // ============================================
 
+/**
+ * Context update payload for agent manager
+ */
+export interface AgentContextUpdate {
+  currentPillar?: string;
+  fileContext?: FileContext;
+  sessionToken?: string;
+}
+
 export interface UseAgentManagerReturn {
   // WebSocket and Agent Management
-  webSocketManager: any | null;
-  agentRouter: any | null;
+  webSocketManager: IWebSocketManager | null;
+  agentRouter: AgentRouter | null;
   isConnected: boolean;
   isLoading: boolean;
   error: string | null;
 
   // API Managers
-  contentAPI: any | null;
-  operationsAPI: any | null;
+  contentAPI: ContentAPIManager | null;
+  operationsAPI: OperationsAPIManager | null;
 
   // Agent Methods
-  sendToGuideAgent: (message: string, context?: any) => Promise<any>;
-  sendToContentAgent: (message: string, context?: any) => Promise<any>;
-  sendToInsightsAgent: (message: string, context?: any) => Promise<any>;
-  sendToOperationsAgent: (message: string, context?: any) => Promise<any>;
-  sendToExperienceAgent: (message: string, context?: any) => Promise<any>;
+  sendToGuideAgent: (message: string, context?: AdditionalMessageContext) => Promise<AgentResponse>;
+  sendToContentAgent: (message: string, context?: AdditionalMessageContext) => Promise<AgentResponse>;
+  sendToInsightsAgent: (message: string, context?: AdditionalMessageContext) => Promise<AgentResponse>;
+  sendToOperationsAgent: (message: string, context?: AdditionalMessageContext) => Promise<AgentResponse>;
+  sendToExperienceAgent: (message: string, context?: AdditionalMessageContext) => Promise<AgentResponse>;
 
   // Utility Methods
   reconnect: () => Promise<void>;
-  updateContext: (context: any) => void;
+  updateContext: (context: AgentContextUpdate) => void;
+}
+
+// ============================================
+// Extended WebSocket Manager interface for cleanup
+// ============================================
+
+interface WebSocketManagerWithCleanup extends IWebSocketManager {
+  _unsubscribe?: () => void;
 }
 
 // ============================================
@@ -45,12 +70,12 @@ export interface UseAgentManagerReturn {
 export function useAgentManager(
   sessionToken: string,
   currentPillar?: string,
-  fileContext?: any
+  fileContext?: FileContext
 ): UseAgentManagerReturn {
-  const [webSocketManager, setWebSocketManager] = useState<any | null>(null);
-  const [agentRouter, setAgentRouter] = useState<any | null>(null);
-  const [contentAPI, setContentAPI] = useState<any | null>(null);
-  const [operationsAPI, setOperationsAPI] = useState<any | null>(null);
+  const [webSocketManager, setWebSocketManager] = useState<WebSocketManagerWithCleanup | null>(null);
+  const [agentRouter, setAgentRouter] = useState<AgentRouter | null>(null);
+  const [contentAPI, setContentAPI] = useState<ContentAPIManager | null>(null);
+  const [operationsAPI, setOperationsAPI] = useState<OperationsAPIManager | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -72,9 +97,9 @@ export function useAgentManager(
       // Dynamically import managers to avoid SSR issues
       const [
         { WebSocketManager },
-        { AgentRouter },
-        { ContentAPIManager },
-        { OperationsAPIManager }
+        { AgentRouter: AgentRouterClass },
+        { ContentAPIManager: ContentAPIManagerClass },
+        { OperationsAPIManager: OperationsAPIManagerClass }
       ] = await Promise.all([
         import('../managers/WebSocketManager'),
         import('../managers/AgentRouter'),
@@ -83,11 +108,11 @@ export function useAgentManager(
       ]);
 
       // Create WebSocket manager
-      const wsManager = new WebSocketManager();
+      const wsManager = new WebSocketManager() as WebSocketManagerWithCleanup;
       await wsManager.connect(sessionToken);
 
       // Create agent router
-      const router = new AgentRouter(wsManager, {
+      const router = new AgentRouterClass(wsManager, {
         sessionToken,
         currentPillar,
         fileContext
@@ -96,11 +121,11 @@ export function useAgentManager(
       // Create API managers
       // Note: These managers now require ExperiencePlaneClient and getPlatformState
       // This hook should be refactored to use the hook pattern (useContentAPIManager, etc.)
-      const contentAPIManager = new ContentAPIManager();
-      const operationsAPIManager = new OperationsAPIManager();
+      const contentAPIManager = new ContentAPIManagerClass();
+      const operationsAPIManager = new OperationsAPIManagerClass();
 
       // Set up connection monitoring
-      const unsubscribe = wsManager.onConnectionChange((connected) => {
+      const unsubscribe = wsManager.onConnectionChange((connected: boolean) => {
         setIsConnected(connected);
       });
 
@@ -111,45 +136,46 @@ export function useAgentManager(
       setIsConnected(wsManager.isConnected());
 
       // Store unsubscribe function for cleanup
-      (wsManager as any)._unsubscribe = unsubscribe;
+      wsManager._unsubscribe = unsubscribe;
 
-    } catch (err: any) {
+    } catch (err) {
       console.error('Failed to initialize agent managers:', err);
-      setError(err.message || 'Failed to initialize agent managers');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to initialize agent managers';
+      setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
   }, [sessionToken, currentPillar, fileContext]);
 
-  const sendToGuideAgent = useCallback(async (message: string, context?: any) => {
+  const sendToGuideAgent = useCallback(async (message: string, context?: AdditionalMessageContext): Promise<AgentResponse> => {
     if (!agentRouter) {
       throw new Error('Agent router not initialized');
     }
     return agentRouter.routeMessage('guide', message, context);
   }, [agentRouter]);
 
-  const sendToContentAgent = useCallback(async (message: string, context?: any) => {
+  const sendToContentAgent = useCallback(async (message: string, context?: AdditionalMessageContext): Promise<AgentResponse> => {
     if (!agentRouter) {
       throw new Error('Agent router not initialized');
     }
     return agentRouter.routeMessage('content', message, context);
   }, [agentRouter]);
 
-  const sendToInsightsAgent = useCallback(async (message: string, context?: any) => {
+  const sendToInsightsAgent = useCallback(async (message: string, context?: AdditionalMessageContext): Promise<AgentResponse> => {
     if (!agentRouter) {
       throw new Error('Agent router not initialized');
     }
     return agentRouter.routeMessage('insights', message, context);
   }, [agentRouter]);
 
-  const sendToOperationsAgent = useCallback(async (message: string, context?: any) => {
+  const sendToOperationsAgent = useCallback(async (message: string, context?: AdditionalMessageContext): Promise<AgentResponse> => {
     if (!agentRouter) {
       throw new Error('Agent router not initialized');
     }
     return agentRouter.routeMessage('operations', message, context);
   }, [agentRouter]);
 
-  const sendToExperienceAgent = useCallback(async (message: string, context?: any) => {
+  const sendToExperienceAgent = useCallback(async (message: string, context?: AdditionalMessageContext): Promise<AgentResponse> => {
     if (!agentRouter) {
       throw new Error('Agent router not initialized');
     }
@@ -160,13 +186,14 @@ export function useAgentManager(
     if (webSocketManager && sessionToken) {
       try {
         await webSocketManager.connect(sessionToken);
-      } catch (err: any) {
-        setError(err.message || 'Reconnection failed');
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'Reconnection failed';
+        setError(errorMessage);
       }
     }
   }, [webSocketManager, sessionToken]);
 
-  const updateContext = useCallback((newContext: any) => {
+  const updateContext = useCallback((newContext: AgentContextUpdate) => {
     if (agentRouter) {
       agentRouter.updateContext(newContext);
     }
@@ -182,8 +209,8 @@ export function useAgentManager(
     return () => {
       if (webSocketManager) {
         // Clean up connection monitoring
-        if ((webSocketManager as any)._unsubscribe) {
-          (webSocketManager as any)._unsubscribe();
+        if (webSocketManager._unsubscribe) {
+          webSocketManager._unsubscribe();
         }
         webSocketManager.disconnect();
       }

@@ -62,21 +62,35 @@ class RegistrationJourney(BaseOrchestrator):
     
     async def compose_journey(
         self,
-        journey_id: str,
-        context: ExecutionContext,
-        journey_params: Optional[Dict[str, Any]] = None
+        journey_id: Optional[str] = None,
+        context: Optional[ExecutionContext] = None,
+        journey_params: Optional[Dict[str, Any]] = None,
+        **kwargs
     ) -> Dict[str, Any]:
         """
         Compose registration journey.
         
         Args:
-            journey_id: The journey being composed
-            context: Execution context
-            journey_params: Journey-specific parameters
+            journey_id: The journey being composed (defaults to 'registration')
+            context: Execution context (can also be passed as kwarg)
+            journey_params: Journey-specific parameters (can also be passed as kwarg)
+            **kwargs: Additional kwargs for flexibility
             
         Returns:
             Dict with artifacts and events
         """
+        # Handle flexible calling conventions (positional vs kwargs)
+        if context is None:
+            context = kwargs.get('context')
+        if journey_params is None:
+            journey_params = kwargs.get('journey_params', {})
+        if journey_id is None:
+            journey_id = kwargs.get('journey_id', 'registration')
+        
+        # Validate context
+        if context is None:
+            raise ValueError("context is required for compose_journey")
+        
         journey_execution_id = f"reg_journey_{generate_event_id()}"
         start_time = datetime.utcnow()
         

@@ -192,8 +192,6 @@ interface CoexistenceBlueprintProps {
   selectedSopFileUuid?: string | null;
   selectedWorkflowFileUuid?: string | null;
   sessionToken?: string;
-  // ✅ PHASE 1: Get session state from SessionBoundaryProvider
-  const { state: sessionState } = useSessionBoundary();
   isEnabled?: boolean;
 }
 
@@ -205,7 +203,6 @@ export default function CoexistenceBlueprint({
   selectedSopFileUuid,
   selectedWorkflowFileUuid,
   sessionToken, // ✅ Keep for backward compatibility, but use sessionState from hook
-  sessionState: propSessionState, // ✅ Rename prop to avoid conflict (deprecated, use hook instead)
   isEnabled = false,
 }: CoexistenceBlueprintProps) {
   // ✅ PHASE 1: Migrated to SessionBoundaryProvider and PlatformStateProvider

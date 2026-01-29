@@ -20,7 +20,7 @@ to call /api/auth/* endpoints, which can optionally route through this solution.
 
 import sys
 from pathlib import Path
-from typing import Dict, Any, Optional, List, Callable
+from typing import Dict, Any, Optional, List, Callable, TYPE_CHECKING
 
 # Add project root to path
 project_root = Path(__file__).resolve().parents[3]
@@ -218,6 +218,31 @@ class SecuritySolution:
         
         self.logger.info("SecuritySolution MCP server initialized")
         return mcp_server
+    
+    def get_journeys(self) -> Dict[str, Any]:
+        """
+        Get all available journeys.
+        
+        Returns:
+            Dict mapping journey names to journey instances
+        """
+        return self._journeys
+    
+    def get_journey(self, journey_name: str) -> Optional[Any]:
+        """
+        Get a specific journey by name.
+        
+        Args:
+            journey_name: Name of the journey (e.g., 'authentication', 'registration')
+            
+        Returns:
+            Journey instance or None if not found
+        """
+        return self._journeys.get(journey_name)
+    
+    def list_journey_ids(self) -> List[str]:
+        """Get list of available journey IDs."""
+        return list(self._journeys.keys())
     
     def get_solution_info(self) -> Dict[str, Any]:
         """Get solution metadata."""

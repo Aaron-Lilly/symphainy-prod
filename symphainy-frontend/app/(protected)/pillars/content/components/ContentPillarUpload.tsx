@@ -189,7 +189,7 @@ export function ContentPillarUpload() {
         
         if (status?.status === "completed") {
           // Extract file_id and boundary_contract_id from execution artifacts
-          const fileArtifact = status.artifacts?.file;
+          const fileArtifact = status.artifacts?.file as { semantic_payload?: { file_id?: string; boundary_contract_id?: string } } | undefined;
           if (fileArtifact?.semantic_payload) {
             file_id = fileArtifact.semantic_payload.file_id;
             boundary_contract_id = fileArtifact.semantic_payload.boundary_contract_id;

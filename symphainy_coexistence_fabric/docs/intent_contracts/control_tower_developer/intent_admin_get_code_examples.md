@@ -13,7 +13,7 @@
 ## 1. Intent Overview
 
 ### Purpose
-Retrieve code examples for Platform SDK patterns including realm implementation, solution building, and agent patterns.
+Retrieve code examples for Platform SDK patterns including solution implementation, journey orchestration, and MCP integration patterns.
 
 ---
 
@@ -36,15 +36,20 @@ Retrieve code examples for Platform SDK patterns including realm implementation,
   "artifacts": {
     "code_examples": {
       "examples": {
-        "creating_realm": {
-          "title": "Creating a Realm",
+        "creating_solution": {
+          "title": "Creating a Solution",
           "language": "python",
-          "code": "from symphainy_platform.civic_systems.platform_sdk.realm_sdk import RealmBase..."
+          "code": "from symphainy_platform.bases.solution_base import BaseSolution..."
         },
         "building_solution": {
-          "title": "Building a Solution",
+          "title": "Building a Solution with SolutionBuilder",
           "language": "python",
           "code": "from symphainy_platform.civic_systems.platform_sdk.solution_builder import SolutionBuilder..."
+        },
+        "creating_journey": {
+          "title": "Creating a Journey Orchestrator",
+          "language": "python",
+          "code": "from symphainy_platform.bases.orchestrator_base import OrchestratorBase..."
         }
       }
     }
