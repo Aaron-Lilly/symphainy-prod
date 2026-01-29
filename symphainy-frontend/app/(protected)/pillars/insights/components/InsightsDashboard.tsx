@@ -30,6 +30,7 @@ import { useAuth } from '@/shared/auth/AuthProvider';
 // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
 import { useSessionBoundary, SessionStatus } from '@/shared/state/SessionBoundaryProvider';
 import { useInsightsOrchestrator } from "@/shared/hooks/usePillarOrchestrator";
+import { useInsightsAPIManager } from "@/shared/hooks/useInsightsAPIManager";
 import { toast } from 'sonner';
 
 interface InsightData {

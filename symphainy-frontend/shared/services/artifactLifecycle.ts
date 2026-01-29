@@ -15,6 +15,7 @@ export type LifecycleState = 'draft' | 'active' | 'archived';
 
 export interface ArtifactLifecycle {
   lifecycle_state: LifecycleState;
+  status?: LifecycleState; // For UI compatibility
   purpose: string;
   scope: string;
   owner: string;

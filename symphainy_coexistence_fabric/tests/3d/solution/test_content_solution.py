@@ -159,4 +159,6 @@ class TestContentExperienceSDKConfig:
             
             assert "solution_id" in config
             assert "supported_intents" in config
-            assert "available_journeys" in config
+            # journeys is the correct field name (available_journeys is nested under integration_patterns)
+            assert "journeys" in config
+            assert "soa_apis" in config

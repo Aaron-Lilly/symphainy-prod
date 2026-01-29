@@ -42,19 +42,19 @@ Retrieve Platform SDK documentation including architecture overview, SDK guides,
       "sections": {
         "architecture": {
           "title": "Architecture Overview",
-          "content": "Platform architecture: Runtime, Civic Systems, Realms, Foundations"
+          "content": "Platform architecture: Runtime, Civic Systems, Solutions, Foundations"
         },
-        "solution_sdk": {
-          "title": "Solution SDK",
-          "content": "How to build and register solutions using Solution SDK"
+        "solution_pattern": {
+          "title": "Solution Pattern",
+          "content": "How to build solutions using BaseSolution: compose journeys, expose SOA APIs, integrate with MCP server"
         },
-        "realm_sdk": {
-          "title": "Realm SDK",
-          "content": "How to implement realms using RealmBase and Runtime Participation Contract"
+        "journey_orchestrators": {
+          "title": "Journey Orchestrators",
+          "content": "How to implement journey orchestrators that handle specific workflows with standardized results"
         },
         "smart_city_sdk": {
           "title": "Smart City SDK",
-          "content": "Smart City SDK: Security Guard, Traffic Cop, Post Office"
+          "content": "Smart City SDK: Security Guard, Traffic Cop, Post Office - infrastructure abstractions"
         },
         "agentic_sdk": {
           "title": "Agentic SDK",
@@ -62,7 +62,11 @@ Retrieve Platform SDK documentation including architecture overview, SDK guides,
         },
         "public_works": {
           "title": "Public Works",
-          "content": "Public Works pattern: Adapters, Abstractions, Protocols"
+          "content": "Public Works pattern: Adapters, Abstractions, Protocols for infrastructure access"
+        },
+        "mcp_integration": {
+          "title": "MCP Integration",
+          "content": "How to expose solution journeys as MCP tools for AI agent consumption"
         }
       }
     }

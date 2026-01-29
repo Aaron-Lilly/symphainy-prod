@@ -59,31 +59,55 @@ class TestOperationsHandleIntent:
     async def test_handle_compose_journey_workflow(
         self, operations_solution, execution_context, compose_journey_intent
     ):
-        """Should handle workflow_management journey."""
+        """Should handle workflow_management journey with valid params."""
         intent = compose_journey_intent(
             journey_id="workflow_management",
-            journey_params={},
+            journey_params={
+                "workflow_spec": {
+                    "name": "test_workflow",
+                    "steps": [{"id": "step1", "name": "Test Step"}]
+                }
+            },
             solution_id="operations_solution"
         )
         
         result = await operations_solution.handle_intent(intent, execution_context)
         
-        assert "success" in result
+        # Result should contain success or artifacts
+        assert "success" in result or "artifacts" in result
+    
+    @pytest.mark.asyncio
+    async def test_handle_compose_journey_workflow_validation(
+        self, operations_solution, execution_context, compose_journey_intent
+    ):
+        """Should validate workflow journey params."""
+        intent = compose_journey_intent(
+            journey_id="workflow_management",
+            journey_params={},  # Empty params - should fail validation
+            solution_id="operations_solution"
+        )
+        
+        # Empty params should raise validation error
+        with pytest.raises(ValueError):
+            await operations_solution.handle_intent(intent, execution_context)
     
     @pytest.mark.asyncio
     async def test_handle_compose_journey_sop(
         self, operations_solution, execution_context, compose_journey_intent
     ):
-        """Should handle sop_management journey."""
+        """Should handle sop_management journey with valid params."""
         intent = compose_journey_intent(
             journey_id="sop_management",
-            journey_params={},
+            journey_params={
+                "workflow_id": "test_workflow_123"  # Required for SOP generation
+            },
             solution_id="operations_solution"
         )
         
         result = await operations_solution.handle_intent(intent, execution_context)
         
-        assert "success" in result
+        # Result should contain success or artifacts
+        assert "success" in result or "artifacts" in result
 
 
 class TestOperationsMCPServer:

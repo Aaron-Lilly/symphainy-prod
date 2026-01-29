@@ -51,15 +51,23 @@ interface Categorization {
 interface MetadataExtractionResult {
   success: boolean;
   file_id: string;
-  extraction_type: string;
-  data_summary: DataSummary;
-  semantic_summary: SemanticSummary;
-  categorization: Categorization;
-  metadata: ExtractedFileMetadata;
-  extraction_timestamp: string;
-  api_version: string;
-  endpoint: string;
+  extraction_type?: string;
+  data_summary?: DataSummary;
+  semantic_summary?: SemanticSummary;
+  categorization?: Categorization;
+  metadata?: ExtractedFileMetadata;
+  extraction_timestamp?: string;
+  api_version?: string;
+  endpoint?: string;
   error?: string;
+  // Extended metadata fields
+  extracted_metadata?: {
+    file_id: string;
+    file_name: string;
+    file_type: string;
+    file_size: number;
+    creation_date: string;
+  };
 }
 
 interface MetadataExtractionProps {
@@ -153,7 +161,7 @@ export default function MetadataExtractor({
         
         if (status?.status === "completed") {
           // Extract file metadata from execution artifacts
-          const fileArtifact = status.artifacts?.file;
+          const fileArtifact = status.artifacts?.file as { semantic_payload?: unknown } | undefined;
           if (fileArtifact?.semantic_payload) {
             fileMetadata = fileArtifact.semantic_payload;
           }

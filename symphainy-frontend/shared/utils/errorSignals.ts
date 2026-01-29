@@ -14,8 +14,21 @@ import {
   ToolError,
   NetworkError,
   ErrorType,
+  ErrorDetails,
+  AGUIStateSnapshot,
+  NetworkErrorInfo,
   isErrorSignal,
 } from '../types/errors';
+
+/**
+ * Options for creating error signals
+ */
+interface BaseErrorOptions {
+  details?: ErrorDetails;
+  recoverable?: boolean;
+  retryable?: boolean;
+  context?: Record<string, unknown>;
+}
 
 /**
  * Create a base error signal
@@ -24,12 +37,7 @@ function createBaseErrorSignal(
   type: ErrorType,
   code: string,
   message: string,
-  options?: {
-    details?: any;
-    recoverable?: boolean;
-    retryable?: boolean;
-    context?: Record<string, any>;
-  }
+  options?: BaseErrorOptions
 ): ErrorSignal {
   return {
     type,
@@ -44,18 +52,23 @@ function createBaseErrorSignal(
 }
 
 /**
+ * Options for SessionError creation
+ */
+interface SessionErrorOptions {
+  sessionStatus?: string;
+  requiresAuth?: boolean;
+  sessionToken?: string;
+  details?: ErrorDetails;
+  recoverable?: boolean;
+}
+
+/**
  * Create a SessionError
  */
 export function createSessionError(
   code: string,
   message: string,
-  options?: {
-    sessionStatus?: string;
-    requiresAuth?: boolean;
-    sessionToken?: string;
-    details?: any;
-    recoverable?: boolean;
-  }
+  options?: SessionErrorOptions
 ): SessionError {
   const base = createBaseErrorSignal('SessionError', code, message, {
     recoverable: options?.recoverable ?? true,
@@ -71,19 +84,24 @@ export function createSessionError(
 }
 
 /**
+ * Options for AgentError creation
+ */
+interface AgentErrorOptions {
+  agentType?: string;
+  reasoning?: string;
+  partialResponse?: string;
+  details?: ErrorDetails;
+  recoverable?: boolean;
+  retryable?: boolean;
+}
+
+/**
  * Create an AgentError
  */
 export function createAgentError(
   code: string,
   message: string,
-  options?: {
-    agentType?: string;
-    reasoning?: string;
-    partialResponse?: string;
-    details?: any;
-    recoverable?: boolean;
-    retryable?: boolean;
-  }
+  options?: AgentErrorOptions
 ): AgentError {
   const base = createBaseErrorSignal('AgentError', code, message, {
     recoverable: options?.recoverable ?? true,
@@ -100,18 +118,23 @@ export function createAgentError(
 }
 
 /**
+ * Options for AGUIError creation
+ */
+interface AGUIErrorOptions {
+  validationErrors?: string[];
+  intentId?: string;
+  aguiState?: AGUIStateSnapshot;
+  details?: ErrorDetails;
+  recoverable?: boolean;
+}
+
+/**
  * Create an AGUIError
  */
 export function createAGUIError(
   code: string,
   message: string,
-  options?: {
-    validationErrors?: string[];
-    intentId?: string;
-    aguiState?: any;
-    details?: any;
-    recoverable?: boolean;
-  }
+  options?: AGUIErrorOptions
 ): AGUIError {
   const base = createBaseErrorSignal('AGUIError', code, message, {
     recoverable: options?.recoverable ?? true,
@@ -127,18 +150,23 @@ export function createAGUIError(
 }
 
 /**
+ * Options for ToolError creation
+ */
+interface ToolErrorOptions {
+  toolName?: string;
+  alternativeTools?: string[];
+  toolContext?: Record<string, unknown>;
+  details?: ErrorDetails;
+  recoverable?: boolean;
+}
+
+/**
  * Create a ToolError
  */
 export function createToolError(
   code: string,
   message: string,
-  options?: {
-    toolName?: string;
-    alternativeTools?: string[];
-    toolContext?: Record<string, any>;
-    details?: any;
-    recoverable?: boolean;
-  }
+  options?: ToolErrorOptions
 ): ToolError {
   const base = createBaseErrorSignal('ToolError', code, message, {
     recoverable: options?.recoverable ?? true,
@@ -154,19 +182,24 @@ export function createToolError(
 }
 
 /**
+ * Options for NetworkError creation
+ */
+interface NetworkErrorOptions {
+  statusCode?: number;
+  retryAfter?: number;
+  isTimeout?: boolean;
+  originalError?: NetworkErrorInfo;
+  details?: ErrorDetails;
+  retryable?: boolean;
+}
+
+/**
  * Create a NetworkError
  */
 export function createNetworkError(
   code: string,
   message: string,
-  options?: {
-    statusCode?: number;
-    retryAfter?: number;
-    isTimeout?: boolean;
-    originalError?: any;
-    details?: any;
-    retryable?: boolean;
-  }
+  options?: NetworkErrorOptions
 ): NetworkError {
   const base = createBaseErrorSignal('NetworkError', code, message, {
     recoverable: options?.retryable !== false,
@@ -180,6 +213,18 @@ export function createNetworkError(
     retryAfter: options?.retryAfter,
     isTimeout: options?.isTimeout ?? false,
     originalError: options?.originalError,
+  };
+}
+
+/**
+ * Convert an Error object to NetworkErrorInfo
+ */
+function errorToNetworkErrorInfo(error: Error): NetworkErrorInfo {
+  return {
+    name: error.name,
+    message: error.message,
+    stack: error.stack,
+    cause: error.cause ? String(error.cause) : undefined,
   };
 }
 
@@ -211,7 +256,7 @@ export function errorToSignal(error: unknown): ErrorSignal {
         'NETWORK_ERROR',
         error.message || 'Network error occurred',
         {
-          originalError: error,
+          originalError: errorToNetworkErrorInfo(error),
           isTimeout: errorMessage.includes('timeout'),
         }
       );
@@ -222,8 +267,7 @@ export function errorToSignal(error: unknown): ErrorSignal {
       'UNKNOWN_ERROR',
       error.message || 'An unexpected error occurred',
       {
-        originalError: error,
-        details: { name: error.name, stack: error.stack },
+        originalError: errorToNetworkErrorInfo(error),
       }
     );
   }
@@ -238,7 +282,7 @@ export function errorToSignal(error: unknown): ErrorSignal {
     'UNKNOWN_ERROR',
     'An unexpected error occurred',
     {
-      details: error,
+      details: { received: typeof error },
     }
   );
 }

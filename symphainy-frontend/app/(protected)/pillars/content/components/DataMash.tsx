@@ -27,8 +27,10 @@ interface DataMashProps {
 export default function DataMash({ selectedFile: propSelectedFile }: DataMashProps) {
   // ✅ PHASE 2: Use service layer hook
   const { listEmbeddings, previewEmbeddings, createEmbeddings, listParsedFilesWithEmbeddings, getMashContext } = useContentAPI();
-  const { state } = usePlatformState();
+  const { state, submitIntent, getExecutionStatus } = usePlatformState();
   const contentAPIManager = useContentAPIManager();
+  // ✅ PHASE 4: Session-First - Get session state
+  const { state: sessionState } = useSessionBoundary();
   
   const [selectedFileUuid, setSelectedFileUuid] = useState<string | null>(null);
   const [selectedParsedFileId, setSelectedParsedFileId] = useState<string | null>(null);
@@ -104,9 +106,9 @@ export default function DataMash({ selectedFile: propSelectedFile }: DataMashPro
         
         if (status?.status === "completed") {
           // Extract files from execution artifacts
-          const fileListArtifact = status.artifacts?.file_list;
+          const fileListArtifact = status.artifacts?.file_list as { semantic_payload?: { files?: unknown[] } } | undefined;
           if (fileListArtifact?.semantic_payload?.files) {
-            files = fileListArtifact.semantic_payload.files;
+            files = fileListArtifact.semantic_payload.files as any[];
           }
           break;
         } else if (status?.status === "failed") {

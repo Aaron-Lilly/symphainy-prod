@@ -227,6 +227,29 @@ export enum AuthorType {
   Human = "human",
 }
 
+/**
+ * Additional metadata for file records
+ */
+export interface FileMetadataExtra {
+  parsing_status?: string;
+  parsing_type?: string;
+  schema_detected?: boolean;
+  row_count?: number;
+  column_count?: number;
+  custom_fields?: Record<string, unknown>;
+}
+
+/**
+ * Insights derived from file analysis
+ */
+export interface FileInsights {
+  summary?: string;
+  key_findings?: string[];
+  data_quality_score?: number;
+  analysis_type?: string;
+  visualizations?: Array<{ type: string; config: Record<string, unknown> }>;
+}
+
 // File metadata type (matches FileMetadataResponse)
 export interface FileMetadata {
   uuid: string;
@@ -245,8 +268,8 @@ export interface FileMetadata {
   original_path: string;
   parsed_path?: string;
   status: FileStatus;
-  metadata?: Record<string, any>;
-  insights?: Record<string, any>;
+  metadata?: FileMetadataExtra;
+  insights?: FileInsights;
   rejection_reason?: string;
   created_at: string;
   updated_at: string;
@@ -261,7 +284,7 @@ export interface ApiUploadRequest {
   file_type: FileType;
   mime_type?: string;
   original_path: string;
-  metadata?: Record<string, any>;
+  metadata?: FileMetadataExtra;
 }
 
 // Component Upload request type (for UI state management)

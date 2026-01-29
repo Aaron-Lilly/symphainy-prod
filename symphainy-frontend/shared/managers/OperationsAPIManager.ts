@@ -20,7 +20,7 @@
  * Replaces direct API calls with Runtime-based intent flow.
  */
 
-import { ExperiencePlaneClient, getGlobalExperiencePlaneClient, ExecutionStatus } from "@/shared/services/ExperiencePlaneClient";
+import { ExperiencePlaneClient, getGlobalExperiencePlaneClient, ExecutionStatusResponse } from "@/shared/services/ExperiencePlaneClient";
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { validateSession } from "@/shared/utils/sessionValidation";
 
@@ -184,15 +184,30 @@ export class OperationsAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.optimized_process) {
+        const optimizedProcess = result.artifacts.optimized_process as {
+          process_id: string;
+          optimizations: Array<{
+            type: string;
+            description: string;
+            impact: "low" | "medium" | "high";
+            recommendation: string;
+          }>;
+          metrics?: {
+            efficiency_gain?: number;
+            time_savings?: number;
+            cost_reduction?: number;
+          };
+        };
+        
         // Update realm state (using internal key "journey" for Operations Realm data)
         platformState.setRealmState(OperationsAPIManager.REALM_STATE_KEY, "optimizedProcesses", {
           ...platformState.getRealmState(OperationsAPIManager.REALM_STATE_KEY, "optimizedProcesses") || {},
-          [workflowId]: result.artifacts.optimized_process
+          [workflowId]: optimizedProcess
         });
 
         return {
           success: true,
-          optimized_process: result.artifacts.optimized_process
+          optimized_process: optimizedProcess
         };
       } else {
         throw new Error(result.error || "Failed to optimize process");
@@ -239,15 +254,23 @@ export class OperationsAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.sop) {
+        const sop = result.artifacts.sop as {
+          sop_id: string;
+          title: string;
+          content: string;
+          sections: { title: string; content: string; }[];
+          metadata?: Record<string, unknown>;
+        };
+        
         // Update realm state
         platformState.setRealmState(OperationsAPIManager.REALM_STATE_KEY, "sops", {
           ...platformState.getRealmState(OperationsAPIManager.REALM_STATE_KEY, "sops") || {},
-          [workflowId]: result.artifacts.sop
+          [workflowId]: sop
         });
 
         return {
           success: true,
-          sop: result.artifacts.sop
+          sop
         };
       } else {
         throw new Error(result.error || "Failed to generate SOP");
@@ -292,15 +315,22 @@ export class OperationsAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.workflow) {
+        const workflow = result.artifacts.workflow as {
+          workflow_id: string;
+          name: string;
+          steps: { id: string; name: string; type: string; dependencies?: string[]; }[];
+          metadata?: Record<string, unknown>;
+        };
+        
         // Update realm state
         platformState.setRealmState(OperationsAPIManager.REALM_STATE_KEY, "workflows", {
           ...platformState.getRealmState(OperationsAPIManager.REALM_STATE_KEY, "workflows") || {},
-          [sopId]: result.artifacts.workflow
+          [sopId]: workflow
         });
 
         return {
           success: true,
-          workflow: result.artifacts.workflow
+          workflow
         };
       } else {
         throw new Error(result.error || "Failed to create workflow");
@@ -315,6 +345,40 @@ export class OperationsAPIManager {
   }
 
   /**
+   * Optimized coexistence result types
+   */
+
+  /**
+   * Optimized SOP structure
+   */
+  interface OptimizedSOP {
+    sop_id: string;
+    content: string;
+    optimizations_applied: string[];
+    sections?: Array<{ title: string; content: string }>;
+  }
+
+  /**
+   * Optimized workflow structure
+   */
+  interface OptimizedWorkflow {
+    workflow_id: string;
+    name: string;
+    steps: Array<{ id: string; name: string; type: string }>;
+    optimizations_applied: string[];
+  }
+
+  /**
+   * Coexistence blueprint structure
+   */
+  interface CoexistenceBlueprintResult {
+    blueprint_id: string;
+    summary: string;
+    recommendations: string[];
+    visualization?: string;
+  }
+
+  /**
    * Optimize coexistence with content (optimize_coexistence_with_content intent)
    * 
    * Flow: Experience Plane → Runtime → Operations Realm
@@ -324,9 +388,9 @@ export class OperationsAPIManager {
     workflowContent: string
   ): Promise<{
     success: boolean;
-    optimized_sop?: any;
-    optimized_workflow?: any;
-    blueprint?: any;
+    optimized_sop?: OptimizedSOP;
+    optimized_workflow?: OptimizedWorkflow;
+    blueprint?: CoexistenceBlueprintResult;
     error?: string;
   }> {
     try {
@@ -351,7 +415,11 @@ export class OperationsAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.optimized_coexistence) {
-        const optimizedData = result.artifacts.optimized_coexistence;
+        const optimizedData = result.artifacts.optimized_coexistence as {
+          optimized_sop?: unknown;
+          optimized_workflow?: unknown;
+          blueprint?: unknown;
+        };
         
         // Update realm state
         platformState.setRealmState(OperationsAPIManager.REALM_STATE_KEY, "operations", {
@@ -409,16 +477,20 @@ export class OperationsAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.coexistence_analysis) {
+        const coexistenceAnalysis = result.artifacts.coexistence_analysis as {
+          analysis_id: string;
+          [key: string]: unknown;
+        };
+        
         // Update realm state
-        const analysisId = result.artifacts.coexistence_analysis.analysis_id;
         platformState.setRealmState(OperationsAPIManager.REALM_STATE_KEY, "coexistenceAnalyses", {
           ...platformState.getRealmState(OperationsAPIManager.REALM_STATE_KEY, "coexistenceAnalyses") || {},
-          [analysisId]: result.artifacts.coexistence_analysis
+          [coexistenceAnalysis.analysis_id]: coexistenceAnalysis
         });
 
         return {
           success: true,
-          coexistence_analysis: result.artifacts.coexistence_analysis
+          coexistence_analysis: coexistenceAnalysis as CoexistenceAnalysisResponse["coexistence_analysis"]
         };
       } else {
         throw new Error(result.error || "Failed to analyze coexistence");
@@ -474,16 +546,20 @@ export class OperationsAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.blueprint) {
+        const blueprint = result.artifacts.blueprint as {
+          blueprint_id: string;
+          [key: string]: unknown;
+        };
+        
         // Update realm state
-        const blueprintId = result.artifacts.blueprint.blueprint_id;
         platformState.setRealmState(OperationsAPIManager.REALM_STATE_KEY, "blueprints", {
           ...platformState.getRealmState(OperationsAPIManager.REALM_STATE_KEY, "blueprints") || {},
-          [blueprintId]: result.artifacts.blueprint
+          [blueprint.blueprint_id]: blueprint
         });
 
         return {
           success: true,
-          blueprint: result.artifacts.blueprint
+          blueprint: blueprint as BlueprintCreationResponse["blueprint"]
         };
       } else {
         throw new Error(result.error || "Failed to create blueprint");
@@ -533,9 +609,10 @@ export class OperationsAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.conversation_response) {
+        const conversationResponse = result.artifacts.conversation_response as { message?: string };
         return {
           success: true,
-          message: result.artifacts.conversation_response.message
+          message: conversationResponse.message
         };
       } else {
         throw new Error(result.error || "Failed to process operations conversation");
@@ -550,6 +627,17 @@ export class OperationsAPIManager {
   }
 
   /**
+   * Draft SOP from wizard conversation
+   */
+  interface WizardDraftSOP {
+    draft_id: string;
+    title: string;
+    content: string;
+    sections: Array<{ title: string; content: string }>;
+    status: 'draft' | 'review' | 'approved';
+  }
+
+  /**
    * Process wizard conversation (process_wizard_conversation intent)
    * 
    * Flow: Experience Plane → Runtime → Operations Realm
@@ -557,8 +645,8 @@ export class OperationsAPIManager {
   async processWizardConversation(
     message: string,
     sessionId: string,
-    context?: Record<string, any>
-  ): Promise<{ success: boolean; agent_response?: string; draft_sop?: any; error?: string }> {
+    context?: Record<string, unknown>
+  ): Promise<{ success: boolean; agent_response?: string; draft_sop?: WizardDraftSOP; error?: string }> {
     try {
       const platformState = this.getPlatformState();
       
@@ -585,10 +673,11 @@ export class OperationsAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.wizard_response) {
+        const wizardResponse = result.artifacts.wizard_response as { agent_response?: string; draft_sop?: unknown };
         return {
           success: true,
-          agent_response: result.artifacts.wizard_response.agent_response,
-          draft_sop: result.artifacts.wizard_response.draft_sop
+          agent_response: wizardResponse.agent_response,
+          draft_sop: wizardResponse.draft_sop
         };
       } else {
         throw new Error(result.error || "Failed to process wizard conversation");
@@ -603,6 +692,26 @@ export class OperationsAPIManager {
   }
 
   /**
+   * Query result SOP structure
+   */
+  interface QueryResultSOP {
+    sop_id: string;
+    title: string;
+    content: string;
+    relevance_score?: number;
+  }
+
+  /**
+   * Query result workflow structure
+   */
+  interface QueryResultWorkflow {
+    workflow_id: string;
+    name: string;
+    steps: Array<{ id: string; name: string; type: string }>;
+    relevance_score?: number;
+  }
+
+  /**
    * Process operations query (process_operations_query intent)
    * 
    * Flow: Experience Plane → Runtime → Operations Realm
@@ -610,8 +719,8 @@ export class OperationsAPIManager {
   async processOperationsQuery(
     query: string,
     sessionId: string,
-    context?: Record<string, any>
-  ): Promise<{ success: boolean; sop?: any; workflow?: any; error?: string }> {
+    context?: Record<string, unknown>
+  ): Promise<{ success: boolean; sop?: QueryResultSOP; workflow?: QueryResultWorkflow; error?: string }> {
     try {
       const platformState = this.getPlatformState();
       
@@ -638,10 +747,11 @@ export class OperationsAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.query_response) {
+        const queryResponse = result.artifacts.query_response as { sop?: unknown; workflow?: unknown };
         return {
           success: true,
-          sop: result.artifacts.query_response.sop,
-          workflow: result.artifacts.query_response.workflow
+          sop: queryResponse.sop,
+          workflow: queryResponse.workflow
         };
       } else {
         throw new Error(result.error || "Failed to process operations query");
@@ -656,14 +766,25 @@ export class OperationsAPIManager {
   }
 
   /**
+   * User intent analysis result
+   */
+  interface IntentAnalysisResult {
+    intent_type: string;
+    confidence: number;
+    suggested_pillar?: string;
+    suggested_actions?: string[];
+    parameters?: Record<string, unknown>;
+  }
+
+  /**
    * Analyze user intent (analyze_user_intent intent)
    * 
    * Flow: Experience Plane → Runtime → Operations Realm (Guide Agent)
    */
   async analyzeUserIntent(
     message: string,
-    context?: Record<string, any>
-  ): Promise<{ success: boolean; intent_analysis?: any; error?: string }> {
+    context?: Record<string, unknown>
+  ): Promise<{ success: boolean; intent_analysis?: IntentAnalysisResult; error?: string }> {
     try {
       const platformState = this.getPlatformState();
       
@@ -688,7 +809,7 @@ export class OperationsAPIManager {
       if (result.status === "completed" && result.artifacts?.intent_analysis) {
         return {
           success: true,
-          intent_analysis: result.artifacts.intent_analysis
+          intent_analysis: result.artifacts.intent_analysis as unknown
         };
       } else {
         throw new Error(result.error || "Failed to analyze user intent");
@@ -703,6 +824,17 @@ export class OperationsAPIManager {
   }
 
   /**
+   * Journey guidance result
+   */
+  interface JourneyGuidanceResult {
+    current_phase: string;
+    progress_percentage: number;
+    recommendations: string[];
+    blockers?: string[];
+    completed_steps?: string[];
+  }
+
+  /**
    * Get journey guidance (get_journey_guidance intent)
    * 
    * NOTE: "journey" here refers to user journey (platform concept), not the old realm name.
@@ -712,8 +844,8 @@ export class OperationsAPIManager {
   async getJourneyGuidance(
     userGoal: string,
     currentStep?: string,
-    context?: Record<string, any>
-  ): Promise<{ success: boolean; guidance?: any; next_steps?: string[]; error?: string }> {
+    context?: Record<string, unknown>
+  ): Promise<{ success: boolean; guidance?: JourneyGuidanceResult; next_steps?: string[]; error?: string }> {
     try {
       const platformState = this.getPlatformState();
       
@@ -737,10 +869,11 @@ export class OperationsAPIManager {
       const result = await this._waitForExecution(execution, platformState);
 
       if (result.status === "completed" && result.artifacts?.journey_guidance) {
+        const journeyGuidance = result.artifacts.journey_guidance as { guidance?: unknown; next_steps?: string[] };
         return {
           success: true,
-          guidance: result.artifacts.journey_guidance.guidance,
-          next_steps: result.artifacts.journey_guidance.next_steps
+          guidance: journeyGuidance.guidance,
+          next_steps: journeyGuidance.next_steps
         };
       } else {
         throw new Error(result.error || "Failed to get journey guidance");
@@ -755,13 +888,23 @@ export class OperationsAPIManager {
   }
 
   /**
+   * Conversation history message structure
+   */
+  interface ConversationHistoryMessage {
+    role: 'user' | 'assistant' | 'system';
+    content: string;
+    timestamp: string;
+    metadata?: Record<string, unknown>;
+  }
+
+  /**
    * Get conversation history (get_conversation_history intent)
    * 
    * Flow: Experience Plane → Runtime → Operations Realm (Guide Agent)
    */
   async getConversationHistory(
     sessionId: string
-  ): Promise<{ success: boolean; conversation_history?: any[]; error?: string }> {
+  ): Promise<{ success: boolean; conversation_history?: ConversationHistoryMessage[]; error?: string }> {
     try {
       const platformState = this.getPlatformState();
       
@@ -785,7 +928,7 @@ export class OperationsAPIManager {
       if (result.status === "completed" && result.artifacts?.conversation_history) {
         return {
           success: true,
-          conversation_history: result.artifacts.conversation_history
+          conversation_history: result.artifacts.conversation_history as unknown[]
         };
       } else {
         throw new Error(result.error || "Failed to get conversation history");
@@ -800,6 +943,16 @@ export class OperationsAPIManager {
   }
 
   /**
+   * Pillar agent response structure
+   */
+  interface PillarAgentResponse {
+    content: string;
+    suggested_actions?: string[];
+    artifacts?: string[];
+    metadata?: Record<string, unknown>;
+  }
+
+  /**
    * Send message to pillar agent (send_message_to_pillar_agent intent)
    * 
    * Flow: Experience Plane → Runtime → Appropriate Realm (based on pillar)
@@ -808,8 +961,8 @@ export class OperationsAPIManager {
     message: string,
     pillar: 'content' | 'insights' | 'operations' | 'outcomes',
     conversationId?: string,
-    context?: Record<string, any>
-  ): Promise<{ success: boolean; response?: any; error?: string }> {
+    context?: Record<string, unknown>
+  ): Promise<{ success: boolean; response?: PillarAgentResponse; error?: string }> {
     try {
       const platformState = this.getPlatformState();
       
@@ -854,6 +1007,17 @@ export class OperationsAPIManager {
   }
 
   /**
+   * Pillar conversation structure
+   */
+  interface PillarConversation {
+    conversation_id: string;
+    pillar: string;
+    messages: ConversationHistoryMessage[];
+    started_at: string;
+    last_activity: string;
+  }
+
+  /**
    * Get pillar conversation history (get_pillar_conversation_history intent)
    * 
    * Flow: Experience Plane → Runtime → Appropriate Realm (based on pillar)
@@ -861,7 +1025,7 @@ export class OperationsAPIManager {
   async getPillarConversationHistory(
     sessionId: string,
     pillar: 'content' | 'insights' | 'operations' | 'outcomes'
-  ): Promise<{ success: boolean; conversation?: any; error?: string }> {
+  ): Promise<{ success: boolean; conversation?: PillarConversation; error?: string }> {
     try {
       const platformState = this.getPlatformState();
       
@@ -913,7 +1077,7 @@ export class OperationsAPIManager {
     platformState: ReturnType<typeof usePlatformState>,
     maxWaitTime: number = 60000, // 60 seconds
     pollInterval: number = 1000 // 1 second
-  ): Promise<ExecutionStatus> {
+  ): Promise<ExecutionStatusResponse> {
     const startTime = Date.now();
     
     while (Date.now() - startTime < maxWaitTime) {

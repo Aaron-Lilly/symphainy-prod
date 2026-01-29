@@ -343,7 +343,7 @@ export default function BusinessOutcomesPillarPage() {
         
         if (status?.status === "completed") {
           // Extract blueprint from execution artifacts
-          const blueprintArtifact = status.artifacts?.blueprint;
+          const blueprintArtifact = status.artifacts?.blueprint as { semantic_payload?: unknown } | undefined;
           if (blueprintArtifact?.semantic_payload) {
             blueprint = blueprintArtifact.semantic_payload;
           }
@@ -401,7 +401,7 @@ export default function BusinessOutcomesPillarPage() {
         
         if (status?.status === "completed") {
           // Extract POC from execution artifacts
-          const pocArtifact = status.artifacts?.poc;
+          const pocArtifact = status.artifacts?.poc as { semantic_payload?: unknown } | undefined;
           if (pocArtifact?.semantic_payload) {
             poc = pocArtifact.semantic_payload;
           }
@@ -457,7 +457,7 @@ export default function BusinessOutcomesPillarPage() {
         
         if (status?.status === "completed") {
           // Extract roadmap from execution artifacts
-          const roadmapArtifact = status.artifacts?.roadmap;
+          const roadmapArtifact = status.artifacts?.roadmap as { semantic_payload?: unknown } | undefined;
           if (roadmapArtifact?.semantic_payload) {
             roadmap = roadmapArtifact.semantic_payload;
           }

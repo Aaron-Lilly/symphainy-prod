@@ -120,6 +120,7 @@ export default defineConfig({
 
   /* Test patterns */
   testMatch: [
+    'e2e/**/*.spec.ts', // Critical journey E2E tests
     'scripts/test-phase7-routing.spec.ts', // Phase 7 routing tests (priority)
     'tests/e2e/**/*.spec.ts', // Other E2E tests
   ],
