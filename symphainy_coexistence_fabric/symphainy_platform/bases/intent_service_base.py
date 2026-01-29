@@ -1,7 +1,8 @@
 """
-Base Intent Service - Base Class for Intent Services
+Base Intent Service - Concrete Base for Intent Services
 
-Base class for intent services that provide atomic platform capabilities.
+Concrete base for intent services. No ABC, no Protocol—type-hint as BaseIntentService.
+See docs/architecture/PLATFORM_BASES_DISCIPLINE.md for common pattern.
 
 WHAT (Intent Service Role): I provide atomic platform capabilities
 HOW (Intent Service Implementation): I execute intents, create artifacts, register with State Surface
@@ -26,7 +27,6 @@ project_root = _find_project_root()
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
 from utilities import get_logger, get_clock, generate_event_id
 
@@ -42,9 +42,9 @@ from symphainy_platform.runtime.artifact_registry import (
 from symphainy_platform.civic_systems.smart_city.sdk.nurse_sdk import NurseSDK
 
 
-class BaseIntentService(ABC):
+class BaseIntentService:
     """
-    Base class for intent services.
+    Concrete base for intent services. No ABC, no Protocol—type-hint as BaseIntentService.
     
     Provides:
     - Logger and clock utilities
@@ -196,25 +196,20 @@ class BaseIntentService(ABC):
             materializations=materializations or []
         )
     
-    @abstractmethod
     async def execute(
         self,
         context: ExecutionContext,
         params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Execute the intent service.
-        
+        Execute the intent service. Subclasses must override.
+
         Args:
             context: Execution context
             params: Optional intent parameters
-        
+
         Returns:
             Execution result with artifacts and events
-        
-        Raises:
-            ValueError: If intent type doesn't match
-            Exception: If execution fails
         """
         # Validate intent type
         if context.intent.intent_type != self.intent_type:

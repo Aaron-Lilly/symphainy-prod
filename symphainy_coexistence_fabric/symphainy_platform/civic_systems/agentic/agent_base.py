@@ -1,7 +1,8 @@
 """
-Agent Base - Core Agent Class
+Agent Base - Concrete Base for All Agents
 
-Base class for all agents with policy-governed collaboration support.
+Concrete base for all agents. No ABC, no Protocol—type-hint as AgentBase.
+See docs/architecture/PLATFORM_BASES_DISCIPLINE.md for common pattern.
 
 WHAT (Agent Role): I provide intelligent agent capabilities
 HOW (Agent Implementation): I reason, collaborate, and produce proposals
@@ -24,7 +25,6 @@ for _ in range(10):  # Max 10 levels up
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List
 from utilities import get_logger
 
@@ -37,9 +37,9 @@ from .models.agent_runtime_context import AgentRuntimeContext
 from .mcp_client_manager import MCPClientManager
 
 
-class AgentBase(ABC):
+class AgentBase:
     """
-    Base class for all agents.
+    Concrete base for all agents. No ABC, no Protocol—type-hint as AgentBase.
     
     Provides:
     - Request processing (abstract)
@@ -326,7 +326,6 @@ class AgentBase(ABC):
         
         return user_message
     
-    @abstractmethod
     async def _process_with_assembled_prompt(
         self,
         system_message: str,
@@ -335,30 +334,19 @@ class AgentBase(ABC):
         context: ExecutionContext
     ) -> Dict[str, Any]:
         """
-        Process request with assembled prompt (abstract method).
-        
-        Subclasses implement this to handle the actual agent logic.
-        
-        Args:
-            system_message: Assembled system message (from layers 1-3)
-            user_message: Assembled user message
-            runtime_context: Runtime context
-            context: Execution context
-        
-        Returns:
-            Dict with non-executing artifacts
+        Process request with assembled prompt. Subclasses must override.
         """
-        pass
-    
-    @abstractmethod
+        raise NotImplementedError(
+            f"{self.__class__.__name__} must implement _process_with_assembled_prompt(...)"
+        )
+
     async def get_agent_description(self) -> str:
         """
-        Get agent description for discovery.
-        
-        Returns:
-            Agent description string
+        Get agent description for discovery. Subclasses must override.
         """
-        pass
+        raise NotImplementedError(
+            f"{self.__class__.__name__} must implement get_agent_description()"
+        )
     
     async def use_tool(
         self,

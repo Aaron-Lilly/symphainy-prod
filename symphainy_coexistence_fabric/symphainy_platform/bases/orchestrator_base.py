@@ -1,7 +1,8 @@
 """
-Base Orchestrator - Base Class for Journey Orchestrators
+Base Orchestrator - Concrete Base for Journey Orchestrators
 
-Base class for journey orchestrators that compose intent services into journeys.
+Concrete base for journey orchestrators. No ABC, no Protocol—type-hint as BaseOrchestrator.
+See docs/architecture/PLATFORM_BASES_DISCIPLINE.md for common pattern.
 
 WHAT (Orchestrator Role): I compose intent services into journeys
 HOW (Orchestrator Implementation): I coordinate intent execution, manage sagas, expose SOA APIs
@@ -26,7 +27,6 @@ project_root = _find_project_root()
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, List
 from utilities import get_logger, get_clock
 
@@ -35,9 +35,9 @@ from symphainy_platform.runtime.intent_model import Intent
 from symphainy_platform.civic_systems.smart_city.sdk.nurse_sdk import NurseSDK
 
 
-class BaseOrchestrator(ABC):
+class BaseOrchestrator:
     """
-    Base class for journey orchestrators.
+    Concrete base for journey orchestrators. No ABC, no Protocol—type-hint as BaseOrchestrator.
     
     Provides:
     - Logger and clock utilities
@@ -189,7 +189,6 @@ class BaseOrchestrator(ABC):
         """Get all registered MCP tools."""
         return self._mcp_tools.copy()
     
-    @abstractmethod
     async def compose_journey(
         self,
         journey_id: str,
@@ -197,17 +196,19 @@ class BaseOrchestrator(ABC):
         journey_params: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Compose a journey by orchestrating intent services.
-        
+        Compose a journey by orchestrating intent services. Subclasses must override.
+
         Args:
             journey_id: Journey identifier
             context: Execution context
             journey_params: Optional journey-specific parameters
-        
+
         Returns:
             Journey execution result with artifacts and events
         """
-        pass
+        raise NotImplementedError(
+            f"{self.__class__.__name__} must implement compose_journey(journey_id, context, journey_params)"
+        )
     
     async def coordinate_saga(
         self,

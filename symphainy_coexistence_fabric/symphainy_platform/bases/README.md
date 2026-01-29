@@ -1,31 +1,17 @@
 # Base Classes
 
-This directory contains base classes for platform components.
+This directory contains base classes for platform components. **Common pattern:** concrete base, no ABC, no Protocol—type-hint as BaseX. See `docs/architecture/PLATFORM_BASES_DISCIPLINE.md`.
 
-## Base Classes
+## Base Classes (this directory)
+
+### BaseSolution (`solution_base.py`)
+Concrete base for solutions. Defaults: get_journeys, get_journey, get_experience_sdk_config, build_journey_result. Subclass implements handle_intent, get_soa_apis.
 
 ### BaseOrchestrator (`orchestrator_base.py`)
-Base class for journey orchestrators.
-
-**To Be Created:**
-- Logger and clock utilities
-- Public Works access
-- Intent service composition
-- SOA API registration
-- MCP tool exposure
-- Saga coordination
-- Telemetry reporting (via Nurse SDK)
+Concrete base for journey orchestrators. Logger, clock, telemetry, SOA API registry. Subclass implements compose_journey.
 
 ### BaseIntentService (`intent_service_base.py`)
-Base class for intent services.
-
-**To Be Created:**
-- Logger and clock utilities
-- Public Works access
-- Execution context handling
-- Artifact creation and registration
-- Telemetry reporting (via Nurse SDK)
-- Contract compliance validation
+Concrete base for intent services. Logger, clock, telemetry, artifact helpers. Subclass implements execute.
 
 ## Usage
 
@@ -44,14 +30,14 @@ class MyIntentService(BaseIntentService):
         pass
 ```
 
-## Status
+## Other platform bases (elsewhere)
 
-✅ **IMPLEMENTED** - Base classes created and ready for use.
+- **AgentBase** — `symphainy_platform/civic_systems/agentic/agent_base.py`
+- **MCPServerBase** — `symphainy_platform/civic_systems/agentic/mcp_server_base.py`
+- **RealmBase** — `symphainy_platform/civic_systems/platform_sdk/realm_sdk.py` — **Unused in fabric.** Realms = solution + orchestrators + intent services; no XRealm(RealmBase). Legacy.
 
-**Created:**
-- `orchestrator_base.py` - BaseOrchestrator class (330+ lines)
-- `intent_service_base.py` - BaseIntentService class (350+ lines)
+Same discipline for AgentBase and MCPServerBase: concrete base, no ABC, no Protocol; type-hint as BaseX.
 
 ---
 
-**Last Updated:** January 27, 2026
+**Last Updated:** January 2026

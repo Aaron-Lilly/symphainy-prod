@@ -1,8 +1,8 @@
 """
-MCP Server Base - Simplified Base Class for Realm MCP Servers
+MCP Server Base - Concrete Base for Realm MCP Servers
 
-Base class for MCP servers that expose realm SOA APIs as MCP tools.
-Follows the unified pattern from old codebase but simplified for current architecture.
+Concrete base for MCP servers. No ABC, no Protocol—type-hint as MCPServerBase.
+See docs/architecture/PLATFORM_BASES_DISCIPLINE.md for common pattern.
 
 WHAT (Base Role): I provide MCP server functionality for realm services
 HOW (Base Implementation): I register SOA APIs as MCP tools and handle tool execution
@@ -22,13 +22,12 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from typing import Dict, Any, List, Optional
-from abc import ABC, abstractmethod
 from utilities import get_logger
 
 
-class MCPServerBase(ABC):
+class MCPServerBase:
     """
-    Base class for all MCP servers in the platform.
+    Concrete base for all MCP servers in the platform. No ABC, no Protocol—type-hint as MCPServerBase.
     
     Provides:
     - Tool registration and management
@@ -142,30 +141,18 @@ class MCPServerBase(ABC):
             self.logger.error(f"Tool execution failed: {tool_name}: {e}", exc_info=True)
             raise
     
-    @abstractmethod
     async def initialize(self) -> bool:
         """
-        Initialize MCP server.
-        
-        Should:
-        - Get SOA APIs from orchestrator
-        - Register tools from SOA API definitions
-        - Return True if successful
-        
-        Returns:
-            True if initialization successful
+        Initialize MCP server. Subclasses must override.
+        Returns True if successful.
         """
-        pass
-    
-    @abstractmethod
+        return False
+
     def get_usage_guide(self) -> Dict[str, Any]:
         """
-        Return usage guide for this MCP server.
-        
-        Returns:
-            Dict with server metadata and tool list
+        Return usage guide for this MCP server. Subclasses must override.
         """
-        pass
+        return {}
     
     async def get_health_status(self) -> Dict[str, Any]:
         """
