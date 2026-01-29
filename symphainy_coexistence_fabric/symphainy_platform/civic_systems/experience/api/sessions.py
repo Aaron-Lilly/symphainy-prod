@@ -22,6 +22,7 @@ from typing import Dict, Any, Optional
 from utilities import get_logger
 from ..models.session_model import SessionCreateRequest, SessionCreateResponse
 from ..sdk.runtime_client import RuntimeClient
+from ..sdk.experience_sdk import ExperienceSDK
 from symphainy_platform.civic_systems.smart_city.sdk.security_guard_sdk import SecurityGuardSDK
 from symphainy_platform.civic_systems.smart_city.sdk.traffic_cop_sdk import TrafficCopSDK
 
@@ -34,6 +35,11 @@ def get_runtime_client() -> RuntimeClient:
     """Dependency to get Runtime client."""
     # In production, this would come from DI container
     return RuntimeClient(runtime_url="http://runtime:8000")
+
+
+def get_experience_sdk(runtime_client: RuntimeClient = Depends(get_runtime_client)) -> ExperienceSDK:
+    """Dependency to get Experience SDK (facade over RuntimeClient)."""
+    return ExperienceSDK(runtime_client)
 
 
 def get_security_guard_sdk(request: Request) -> SecurityGuardSDK:
@@ -54,24 +60,18 @@ def get_traffic_cop_sdk(request: Request) -> TrafficCopSDK:
 async def get_session(
     session_id: str,
     tenant_id: Optional[str] = Query(None, description="Tenant ID (optional for anonymous sessions)"),
-    runtime_client: RuntimeClient = Depends(get_runtime_client)
+    experience_sdk: ExperienceSDK = Depends(get_experience_sdk)
 ):
     """
     Get session details (anonymous or authenticated).
-    
-    Flow:
-    1. Query Runtime for session details (tenant_id optional for anonymous)
-    2. Return session information
+    Uses Experience SDK query_state.
     """
     try:
-        # Query Runtime for session (tenant_id is optional for anonymous sessions)
-        session_data = await runtime_client.get_session(session_id, tenant_id)
-        
+        state = await experience_sdk.query_state(session_id=session_id, tenant_id=tenant_id)
+        session_data = state.get("session")
         if not session_data:
             raise HTTPException(status_code=404, detail=f"Session {session_id} not found")
-        
         return session_data
-        
     except HTTPException:
         raise
     except Exception as e:

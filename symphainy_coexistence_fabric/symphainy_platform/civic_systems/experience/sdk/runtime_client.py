@@ -75,6 +75,7 @@ class RuntimeClient:
     ) -> Optional[Dict[str, Any]]:
         """
         Get session state from Runtime (anonymous or authenticated).
+        Uses GET /api/session/{session_id} — same payload as session details (no /state path).
         
         Args:
             session_id: Session identifier
@@ -89,7 +90,7 @@ class RuntimeClient:
                 params["tenant_id"] = tenant_id
             
             response = await self.client.get(
-                f"{self.runtime_url}/api/session/{session_id}/state",
+                f"{self.runtime_url}/api/session/{session_id}",
                 params=params if params else None
             )
             response.raise_for_status()
@@ -184,19 +185,52 @@ class RuntimeClient:
             self.logger.error(f"Failed to submit intent: {e}", exc_info=True)
             raise
     
+    async def get_execution_status(
+        self,
+        execution_id: str,
+        tenant_id: str,
+        include_artifacts: bool = False,
+        include_visuals: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Get execution status from Runtime (GET /api/execution/{id}/status).
+        Used for polling when stream is not available.
+        """
+        try:
+            response = await self.client.get(
+                f"{self.runtime_url}/api/execution/{execution_id}/status",
+                params={
+                    "tenant_id": tenant_id,
+                    "include_artifacts": include_artifacts,
+                    "include_visuals": include_visuals,
+                }
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            self.logger.error(f"Failed to get execution status: {e}", exc_info=True)
+            raise
+
     async def stream_execution(
         self,
-        execution_id: str
+        execution_id: str,
+        tenant_id: Optional[str] = None
     ) -> AsyncIterator[Dict[str, Any]]:
         """
         Stream execution updates from Runtime.
+        Tries GET /api/execution/{id}/stream first; if Runtime returns 404,
+        falls back to polling GET /api/execution/{id}/status until terminal.
+        See EXPERIENCE_SDK_CONTRACT: subscribe is polling until Runtime supports stream.
         
         Args:
             execution_id: Execution identifier
+            tenant_id: Tenant identifier (required for polling fallback)
         
         Yields:
-            Execution update events
+            Execution update events (stream events or status payloads when polling)
         """
+        import asyncio
+        # Try stream first (Runtime may not expose it yet)
         try:
             async with self.client.stream(
                 "GET",
@@ -211,24 +245,43 @@ class RuntimeClient:
                             yield event
                         except json.JSONDecodeError:
                             self.logger.warning(f"Failed to parse event: {line}")
+                return
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                pass  # Fall through to polling
+            else:
+                raise
         except Exception as e:
-            self.logger.error(f"Failed to stream execution: {e}", exc_info=True)
-            raise
-    
+            self.logger.debug(f"Stream not available, falling back to polling: {e}")
+        # Polling fallback: poll status until terminal
+        if not tenant_id:
+            self.logger.warning("stream_execution: tenant_id required for polling fallback")
+            return
+        terminal_statuses = {"completed", "failed", "cancelled", "unknown"}
+        while True:
+            status = await self.get_execution_status(execution_id, tenant_id)
+            yield status
+            if status.get("status") in terminal_statuses:
+                break
+            await asyncio.sleep(1)
+
     async def get_realms(self) -> Dict[str, Any]:
         """
         Get list of registered realms from Runtime.
-        
-        Returns:
-            Dict with realm information
+        Runtime may not expose GET /api/realms yet; on 404 returns empty structure
+        so callers (e.g. control room) can fall back to local registry.
         """
         try:
             response = await self.client.get(f"{self.runtime_url}/api/realms")
             response.raise_for_status()
             return response.json()
-        except Exception as e:
-            self.logger.error(f"Failed to get realms: {e}", exc_info=True)
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 404:
+                return {"total": 0, "realm_names": [], "realms": []}
             raise
+        except Exception as e:
+            self.logger.debug(f"Failed to get realms (Runtime may not expose /api/realms): {e}")
+            return {"total": 0, "realm_names": [], "realms": []}
     
     async def close(self):
         """Close HTTP client."""

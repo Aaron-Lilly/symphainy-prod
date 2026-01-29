@@ -9,6 +9,7 @@
 - [FOUNDATION_PLAN.md](../FOUNDATION_PLAN.md) Step 4
 - [PLATFORM_CONTRACT.md](PLATFORM_CONTRACT.md) — §5 (pre-boot), §6 (init order, no hidden coupling), §7 (RuntimeServices)
 - [PRE_BOOT_SPEC.md](PRE_BOOT_SPEC.md) — G3 runs before this sequence
+- [BOOT_PHASES.md](BOOT_PHASES.md) — Φ3 outcome = Experience SDK surface available; Φ4 = attach experience surfaces
 
 ---
 
@@ -112,5 +113,6 @@ This is enforced in code by `RuntimeServices.__post_init__`. The init-order spec
 | **Sequence** | 1. Public Works (adapters → abstractions) 2. StateSurface 3. WAL 4. IntentRegistry + realm intent registration 5. ExecutionLifecycleManager. |
 | **No hidden coupling** | Registry and other Supabase/GCS-backed abstractions are not blocked by Arango; pre-boot ensures we do not enter Φ3 with a failed service. |
 | **Public Works input** | Canonical config only; no env or config_helper for platform infra. |
+| **Φ3 outcome** | Experience SDK surface is available; Φ4 = attach experience surfaces. See [BOOT_PHASES.md](BOOT_PHASES.md). |
 
 Implementations (`service_factory.create_runtime_services`, `PublicWorksFoundationService.initialize`) must conform to this spec. The “continuing anyway” behavior when Public Works init has issues must be removed or made impossible once G2/G3 are fully enforced (Step 6).

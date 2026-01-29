@@ -17,10 +17,11 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from utilities import get_logger
 from ..sdk.runtime_client import RuntimeClient
+from ..sdk.experience_sdk import ExperienceSDK
 
 
 router = APIRouter(prefix="/api/execution", tags=["websocket"])
@@ -32,29 +33,34 @@ def get_runtime_client() -> RuntimeClient:
     return RuntimeClient(runtime_url="http://runtime:8000")
 
 
+def get_experience_sdk(runtime_client: RuntimeClient = Depends(get_runtime_client)) -> ExperienceSDK:
+    """Dependency to get Experience SDK."""
+    return ExperienceSDK(runtime_client)
+
+
 @router.websocket("/{execution_id}/stream")
 async def stream_execution(
     websocket: WebSocket,
     execution_id: str,
-    runtime_client: RuntimeClient = Depends(get_runtime_client)
+    runtime_client: RuntimeClient = Depends(get_runtime_client),
+    experience_sdk: ExperienceSDK = Depends(get_experience_sdk)
 ):
     """
     Stream execution updates via WebSocket.
-    
-    Flow:
-    1. Accept WebSocket connection
-    2. Subscribe to execution events from Runtime
-    3. Stream events to client
-    4. Handle disconnection
+    Uses Experience SDK subscribe when tenant_id in query string (enables polling fallback);
+    otherwise RuntimeClient.stream_execution for backward compat.
     """
     await websocket.accept()
+    tenant_id: Optional[str] = websocket.query_params.get("tenant_id") if websocket.query_params else None
     logger.info(f"WebSocket connection established for execution: {execution_id}")
-    
+
     try:
-        # Subscribe to execution events (via Runtime WebSocket)
-        async for event in runtime_client.stream_execution(execution_id):
-            await websocket.send_json(event)
-            
+        if tenant_id:
+            async for event in experience_sdk.subscribe(execution_id, tenant_id):
+                await websocket.send_json(event)
+        else:
+            async for event in runtime_client.stream_execution(execution_id):
+                await websocket.send_json(event)
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected for execution: {execution_id}")
     except Exception as e:
@@ -62,5 +68,4 @@ async def stream_execution(
         try:
             await websocket.close(code=1011, reason="Internal server error")
         except Exception:
-            # WebSocket may already be closed, ignore error
             logger.debug("WebSocket already closed, ignoring close error")
