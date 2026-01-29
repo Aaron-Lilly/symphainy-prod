@@ -124,9 +124,9 @@ export interface BlueprintCreationResponse {
  * Optimized SOP structure (from optimize_coexistence_with_content)
  */
 export interface OptimizedSOP {
-  sop_id: string;
-  content: string;
-  optimizations_applied: string[];
+  sop_id?: string;
+  content?: string;
+  optimizations_applied?: string[];
   sections?: Array<{ title: string; content: string }>;
 }
 
@@ -134,19 +134,19 @@ export interface OptimizedSOP {
  * Optimized workflow structure (from optimize_coexistence_with_content)
  */
 export interface OptimizedWorkflow {
-  workflow_id: string;
-  name: string;
-  steps: Array<{ id: string; name: string; type: string }>;
-  optimizations_applied: string[];
+  workflow_id?: string;
+  name?: string;
+  steps?: Array<{ id: string; name: string; type: string }>;
+  optimizations_applied?: string[];
 }
 
 /**
  * Coexistence blueprint result structure
  */
 export interface CoexistenceBlueprintResult {
-  blueprint_id: string;
-  summary: string;
-  recommendations: string[];
+  blueprint_id?: string;
+  summary?: string;
+  recommendations?: string[];
   visualization?: string;
 }
 
@@ -154,20 +154,20 @@ export interface CoexistenceBlueprintResult {
  * Draft SOP from wizard conversation
  */
 export interface WizardDraftSOP {
-  draft_id: string;
-  title: string;
-  content: string;
-  sections: Array<{ title: string; content: string }>;
-  status: 'draft' | 'review' | 'approved';
+  draft_id?: string;
+  title?: string;
+  content?: string;
+  sections?: Array<{ title: string; content: string }>;
+  status?: 'draft' | 'review' | 'approved';
 }
 
 /**
  * Query result SOP structure
  */
 export interface QueryResultSOP {
-  sop_id: string;
-  title: string;
-  content: string;
+  sop_id?: string;
+  title?: string;
+  content?: string;
   relevance_score?: number;
 }
 
@@ -175,9 +175,9 @@ export interface QueryResultSOP {
  * Query result workflow structure
  */
 export interface QueryResultWorkflow {
-  workflow_id: string;
-  name: string;
-  steps: Array<{ id: string; name: string; type: string }>;
+  workflow_id?: string;
+  name?: string;
+  steps?: Array<{ id: string; name: string; type: string }>;
   relevance_score?: number;
 }
 
@@ -185,8 +185,8 @@ export interface QueryResultWorkflow {
  * User intent analysis result
  */
 export interface IntentAnalysisResult {
-  intent_type: string;
-  confidence: number;
+  intent_type?: string;
+  confidence?: number;
   suggested_pillar?: string;
   suggested_actions?: string[];
   parameters?: Record<string, unknown>;
@@ -196,9 +196,9 @@ export interface IntentAnalysisResult {
  * Journey guidance result
  */
 export interface JourneyGuidanceResult {
-  current_phase: string;
-  progress_percentage: number;
-  recommendations: string[];
+  current_phase?: string;
+  progress_percentage?: number;
+  recommendations?: string[];
   blockers?: string[];
   completed_steps?: string[];
 }
@@ -207,9 +207,9 @@ export interface JourneyGuidanceResult {
  * Conversation history message structure
  */
 export interface ConversationHistoryMessage {
-  role: 'user' | 'assistant' | 'system';
-  content: string;
-  timestamp: string;
+  role?: 'user' | 'assistant' | 'system';
+  content?: string;
+  timestamp?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -217,7 +217,7 @@ export interface ConversationHistoryMessage {
  * Pillar agent response structure
  */
 export interface PillarAgentResponse {
-  content: string;
+  content?: string;
   suggested_actions?: string[];
   artifacts?: string[];
   metadata?: Record<string, unknown>;
@@ -227,11 +227,11 @@ export interface PillarAgentResponse {
  * Pillar conversation structure
  */
 export interface PillarConversation {
-  conversation_id: string;
-  pillar: string;
-  messages: ConversationHistoryMessage[];
-  started_at: string;
-  last_activity: string;
+  conversation_id?: string;
+  pillar?: string;
+  messages?: ConversationHistoryMessage[];
+  started_at?: string;
+  last_activity?: string;
 }
 
 // ============================================

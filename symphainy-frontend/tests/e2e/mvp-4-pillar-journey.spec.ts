@@ -312,9 +312,9 @@ test.describe('Content Pillar', () => {
     await expect(page.locator('[data-testid="files-dashboard"]')).toBeVisible();
     
     // Upload different file types
-    await page.uploadFile('[data-testid="file-uploader"]', 'test-files/sample.csv');
-    await page.uploadFile('[data-testid="file-uploader"]', 'test-files/mainframe.bin');
-    await page.uploadFile('[data-testid="file-uploader"]', 'test-files/copybook.cpy');
+    await page.locator('[data-testid="file-uploader"]').setInputFiles('test-files/sample.csv');
+    await page.locator('[data-testid="file-uploader"]').setInputFiles('test-files/mainframe.bin');
+    await page.locator('[data-testid="file-uploader"]').setInputFiles('test-files/copybook.cpy');
     
     // Verify files appear in dashboard
     await expect(page.locator('[data-testid="file-item-sample.csv"]')).toBeVisible();
@@ -345,7 +345,7 @@ test.describe('Content Pillar', () => {
     });
     
     // Upload invalid file
-    await page.uploadFile('[data-testid="file-uploader"]', 'test-files/invalid.txt');
+    await page.locator('[data-testid="file-uploader"]').setInputFiles('test-files/invalid.txt');
     
     // Verify error handling
     await expect(page.locator('[data-testid="upload-error"]')).toBeVisible();
@@ -356,7 +356,7 @@ test.describe('Content Pillar', () => {
     await page.goto('/content');
     
     // Upload file
-    await page.uploadFile('[data-testid="file-uploader"]', 'test-files/corrupted.csv');
+    await page.locator('[data-testid="file-uploader"]').setInputFiles('test-files/corrupted.csv');
     
     // Mock parsing error
     await page.route('**/api/parse', route => {
@@ -575,7 +575,7 @@ test.describe('Pillar Navigation', () => {
   test('should maintain state when navigating between pillars', async ({ page }) => {
     // Start in Content Pillar and upload file
     await page.goto('/content');
-    await page.uploadFile('[data-testid="file-uploader"]', 'test-files/sample.csv');
+    await page.locator('[data-testid="file-uploader"]').setInputFiles('test-files/sample.csv');
     
     // Navigate to Insights Pillar
     await page.click('[data-testid="navbar-insights"]');
@@ -601,7 +601,7 @@ test.describe('Error Recovery', () => {
     });
     
     // Attempt file upload
-    await page.uploadFile('[data-testid="file-uploader"]', 'test-files/sample.csv');
+    await page.locator('[data-testid="file-uploader"]').setInputFiles('test-files/sample.csv');
     
     // Verify error handling
     await expect(page.locator('[data-testid="network-error"]')).toBeVisible();
@@ -658,7 +658,7 @@ test.describe('Performance', () => {
     await page.click('[data-testid="start-journey-button"]');
     
     // Content Pillar
-    await page.uploadFile('[data-testid="file-uploader"]', 'test-files/sample.csv');
+    await page.locator('[data-testid="file-uploader"]').setInputFiles('test-files/sample.csv');
     await page.click('[data-testid="parse-files-button"]');
     await expect(page.locator('[data-testid="parsing-complete"]')).toBeVisible();
     await page.click('[data-testid="next-pillar-insights"]');

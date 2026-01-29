@@ -76,16 +76,38 @@ export interface ParsedContent {
   column_count?: number;
   columns?: Array<{ name: string; type: string }>;
   sample_data?: unknown[][];
+  
+  // Additional properties used by preview components
+  rows?: unknown[][];
+  total_rows?: number;
+  total_columns?: number;
+  preview_rows?: number;
+  preview_columns?: number;
+  
+  // New parsed content format fields
+  format?: string;
+  chunks?: unknown[];
+  structured_data?: unknown;
+  metadata?: Record<string, unknown>;
+  preview_grid?: unknown[][];
+  text?: string;
 }
 
 /**
  * File preview structure
  */
 export interface FilePreview {
-  preview_type: 'text' | 'table' | 'binary';
-  content: string | string[][];
-  truncated: boolean;
+  preview_type?: 'text' | 'table' | 'binary';
+  content?: string | string[][];
+  truncated?: boolean;
   total_rows?: number;
+  
+  // Additional preview fields
+  rows?: unknown[][];
+  columns?: Array<{ name: string; type: string }>;
+  total_columns?: number;
+  preview_rows?: number;
+  preview_columns?: number;
 }
 
 export interface ParseResponse {
@@ -1193,7 +1215,10 @@ export class ContentAPIManager {
           return {
             success: true,
             parsed_file_id: parsedArtifact?.semantic_payload?.parsed_artifact_id,
-            parsed_content: parsedArtifact,
+            // Map the artifact to ParsedContent format
+            parsed_content: parsedArtifact ? {
+              parsed_file_reference: parsedArtifact.semantic_payload?.parsed_artifact_id,
+            } as ParsedContent : undefined,
           };
         } else if (status?.status === "failed") {
           throw new Error(status.error || "Parsing journey failed");

@@ -287,8 +287,9 @@ test.describe('Semantic Components E2E Tests', () => {
       // Check for React hydration errors
       const hydrationErrors = Array.from(document.querySelectorAll('*')).filter(el => {
         const className = el.className;
+        // className can be string (HTMLElement) or SVGAnimatedString (SVGElement)
         const classNameStr = typeof className === 'string' ? className : 
-                            (className?.toString?.() || '');
+                            String(className || '');
         return el.getAttribute('data-hydration-error') || 
                classNameStr.includes('hydration-error');
       });
@@ -597,9 +598,9 @@ test.describe('Semantic Components E2E Tests', () => {
       await expect(firstFile).toBeVisible();
 
       // Step 5: Test view file button
-      const viewButton = firstFile.locator('[data-testid^="view-file-"]').first;
+      const viewButton = firstFile.locator('[data-testid^="view-file-"]');
       if ((await viewButton.count()) > 0 && await viewButton.first().isVisible().catch(() => false)) {
-        await viewButton.click();
+        await viewButton.first().click();
         await page.waitForTimeout(1000);
         console.log('✅ View file button works');
       }
@@ -799,7 +800,7 @@ test.describe('Semantic Components E2E Tests', () => {
     
     // Step 6: Verify extraction results are displayed
     // Look for metadata cards or results
-    const metadataResults = page.locator('text=/metadata|extraction|summary/i').first;
+    const metadataResults = page.locator('text=/metadata|extraction|summary/i').first();
     await expect(metadataResults).toBeVisible({ timeout: 15000 }).catch(() => {
       console.log('⚠️ Metadata extraction results may still be loading or extraction may have failed');
     });

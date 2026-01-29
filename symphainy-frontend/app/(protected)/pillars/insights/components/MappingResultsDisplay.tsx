@@ -58,9 +58,12 @@ export function MappingResultsDisplay({
   } = mappingResults;
 
   // Extract mapped records from mapped_data
-  const mapped_records = mapped_data?.transformed_data?.records || 
-                         mapped_data?.transformed_data || 
-                         [];
+  // Always get records array from transformed_data, or use empty array
+  const mapped_records: Record<string, unknown>[] = Array.isArray(mapped_data?.transformed_data?.records)
+    ? mapped_data.transformed_data.records
+    : Array.isArray(mapped_data?.transformed_data)
+      ? mapped_data.transformed_data as Record<string, unknown>[]
+      : [];
 
   // Transform backend data_quality to frontend QualityReport format
   const quality_report = data_quality ? {

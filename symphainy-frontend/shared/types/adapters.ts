@@ -48,27 +48,33 @@ export interface LegacyDocumentResponse {
 
 // Adapter functions
 export function adaptRoadmapResponse(response: ExperienceRoadmapResponse): LegacyRoadmapData {
+  // Cast to unknown first then to Record to handle property mismatch between new and legacy types
+  const roadmapData = response.roadmap_data as unknown as Record<string, unknown> | undefined;
   return {
-    roadmap: response.roadmap_data?.roadmap || '',
-    phases: response.roadmap_data?.phases || [],
+    roadmap: (roadmapData?.roadmap as string) || (roadmapData?.title as string) || '',
+    phases: ((roadmapData?.phases as Array<Record<string, unknown>>)?.map(phase => ({
+      title: (phase.name as string) || (phase.title as string) || '',
+      items: (phase.deliverables as string[]) || (phase.items as string[]) || []
+    }))) || [],
     analysis_type: response.analysis_type,
     file_source: response.file_source
   };
 }
 
 export function adaptPOCResponse(response: ExperiencePOCResponse): LegacyPOCProposal {
-  const proposal = response.poc_proposal;
+  // Cast to unknown first then to Record to handle property mismatch between new and legacy types
+  const proposal = response.poc_proposal as unknown as Record<string, unknown> | undefined;
   return {
-    title: proposal?.title || 'POC Proposal',
-    executive_summary: proposal?.executive_summary || '',
-    business_case: proposal?.business_case || '',
-    poc_scope: proposal?.poc_scope || [],
-    timeline: proposal?.timeline || {
+    title: (proposal?.title as string) || 'POC Proposal',
+    executive_summary: (proposal?.executive_summary as string) || (proposal?.scope as string) || '',
+    business_case: (proposal?.business_case as string) || '',
+    poc_scope: (proposal?.poc_scope as string[]) || (proposal?.objectives as string[]) || [],
+    timeline: (proposal?.timeline as LegacyPOCProposal['timeline']) || {
       total_duration_days: 30,
       phases: []
     },
-    budget: proposal?.budget || {
-      total_cost: 0,
+    budget: (proposal?.budget as LegacyPOCProposal['budget']) || {
+      total_cost: (proposal?.estimated_cost as number) || 0,
       currency: 'USD',
       breakdown: []
     }
@@ -76,8 +82,10 @@ export function adaptPOCResponse(response: ExperiencePOCResponse): LegacyPOCProp
 }
 
 export function adaptDocumentResponse(response: ExperienceDocumentResponse): LegacyDocumentResponse {
+  // document_data has document_id and title, not file_path
+  const docData = response.document_data as unknown as Record<string, unknown> | undefined;
   return {
-    file_path: response.document_data?.file_path || '',
+    file_path: (docData?.file_path as string) || response.download_url || '',
     file_size_bytes: response.file_size_bytes,
     download_url: response.download_url,
     document_type: response.document_type

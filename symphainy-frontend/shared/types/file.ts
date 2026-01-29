@@ -229,14 +229,36 @@ export enum AuthorType {
 
 /**
  * Additional metadata for file records
+ * 
+ * Includes both parsing metadata and artifact metadata from backend.
  */
 export interface FileMetadataExtra {
+  // Parsing metadata
   parsing_status?: string;
   parsing_type?: string;
   schema_detected?: boolean;
   row_count?: number;
   column_count?: number;
   custom_fields?: Record<string, unknown>;
+  
+  // Artifact metadata (from backend State Surface)
+  artifact_id?: string;
+  artifact_type?: string;
+  lifecycle_state?: string;
+  semantic_descriptor?: {
+    schema?: string;
+    record_count?: number;
+    parser_type?: string;
+    embedding_model?: string;
+    [key: string]: unknown;
+  };
+  
+  // File reference and parsed status
+  file_reference?: string;
+  parsed?: boolean;
+  
+  // File size (for display)
+  size?: number;
 }
 
 /**

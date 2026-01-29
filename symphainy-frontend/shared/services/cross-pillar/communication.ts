@@ -84,16 +84,17 @@ export interface CommunicationChannel {
   messageCount: number;
 }
 
-export interface CommunicationMessage {
+// Detailed communication message with tracking info (extends base CommunicationMessage)
+export interface DetailedCommunicationMessage {
   id: string;
   type: string;
   sourcePillar: string;
   targetPillars: string[];
-  content: any;
+  content: unknown;
   priority: 'low' | 'medium' | 'high' | 'urgent';
   timestamp: string;
   status: 'sent' | 'delivered' | 'failed' | 'pending';
-  metadata?: any;
+  metadata?: Record<string, unknown>;
 }
 
 export interface CommunicationConfig {
