@@ -51,9 +51,9 @@ function getExperiencePlaneClient(): ExperiencePlaneClient {
  */
 export async function createAnonymousSession(): Promise<{
   session_id: string;
-  tenant_id: string | null;
-  user_id: string | null;
-  created_at: string;
+  tenant_id?: string | null;
+  user_id?: string | null;
+  created_at?: string;
 }> {
   const client = getExperiencePlaneClient();
   return client.createSession({
@@ -274,10 +274,8 @@ export async function submitIntent(
 ): Promise<{
   execution_id: string;
   intent_id: string;
-  status: 'accepted' | 'rejected';
-  tenant_id: string;
-  session_id: string;
-  created_at: string;
+  status?: string;
+  created_at?: string;
 }> {
   if (!config?.sessionId || !config?.tenantId) {
     throw new Error('Session ID and tenant ID are required to submit intent');
@@ -303,13 +301,10 @@ export async function getExecutionStatus(
   config?: ServiceLayerAPIConfig
 ): Promise<{
   execution_id: string;
-  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
-  intent_id: string;
-  tenant_id: string;
-  session_id: string;
-  started_at?: string;
-  completed_at?: string;
+  status: string;
+  intent_id?: string;
   error?: string;
+  artifacts?: Record<string, unknown>;
 }> {
   if (!config?.tenantId) {
     throw new Error('Tenant ID is required to get execution status');
@@ -456,10 +451,8 @@ export async function submitIntentFromAGUI(
 ): Promise<{
   execution_id: string;
   intent_id: string;
-  status: 'accepted' | 'rejected';
-  tenant_id: string;
-  session_id: string;
-  created_at: string;
+  status?: string;
+  created_at?: string;
 }> {
   // Compile AGUI → Intent (frontend compilation)
   const compilation = compileIntentFromAGUI(aguiState, intentType);

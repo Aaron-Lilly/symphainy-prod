@@ -8,19 +8,96 @@
 // WebSocketManager will be dynamically imported to avoid SSR issues
 
 // ============================================
+// WebSocket Manager Interface
+// ============================================
+
+/**
+ * WebSocket Manager interface for agent communication
+ */
+export interface IWebSocketManager {
+  connect(sessionToken?: string): Promise<void>;
+  disconnect(): void;
+  sendMessage(message: string): void;
+  isConnected(): boolean;
+  onConnectionChange(callback: (connected: boolean) => void): () => void;
+  sendToGuideAgent?(message: string, pillar?: string, context?: Record<string, unknown>): Promise<AgentResponse>;
+  sendToContentAgent?(message: string, context?: Record<string, unknown>): Promise<AgentResponse>;
+  sendToInsightsAgent?(message: string, context?: Record<string, unknown>): Promise<AgentResponse>;
+  sendToOperationsAgent?(message: string, context?: Record<string, unknown>): Promise<AgentResponse>;
+  sendToExperienceAgent?(message: string, context?: Record<string, unknown>): Promise<AgentResponse>;
+}
+
+// ============================================
 // Agent Router Types
 // ============================================
 
+/**
+ * File context information for agent interactions
+ */
+export interface FileContext {
+  fileId?: string;
+  fileName?: string;
+  fileType?: string;
+  fileSize?: number;
+  parseStatus?: string;
+}
+
+/**
+ * User context information for agent interactions
+ */
+export interface UserContext {
+  userId?: string;
+  preferences?: Record<string, unknown>;
+  history?: string[];
+}
+
+/**
+ * Agent context containing session and contextual information
+ */
 export interface AgentContext {
   sessionToken: string;
   currentPillar?: string;
-  fileContext?: any;
-  userContext?: any;
+  fileContext?: FileContext;
+  userContext?: UserContext;
 }
 
+/**
+ * Agent response structure
+ */
+export interface AgentResponse {
+  type: string;
+  content: string;
+  metadata?: Record<string, unknown>;
+  artifacts?: string[];
+  suggested_actions?: string[];
+}
+
+/**
+ * Operation data for different agent operations
+ */
+export interface OperationData {
+  query?: string;
+  topic?: string;
+  pillar?: string;
+  fileName?: string;
+  fileId?: string;
+  contentType?: string;
+  dataType?: string;
+  chartType?: string;
+  process?: string;
+  workflowType?: string;
+  processId?: string;
+  goal?: string;
+  timeline?: string;
+  metrics?: string;
+}
+
+/**
+ * Agent operation request
+ */
 export interface AgentOperation {
   type: string;
-  data: any;
+  data: OperationData;
   context: AgentContext;
 }
 
@@ -28,19 +105,29 @@ export interface AgentOperation {
 // Base Agent Manager
 // ============================================
 
+/**
+ * Additional context for message processing
+ */
+export interface AdditionalMessageContext {
+  conversationId?: string;
+  priority?: 'low' | 'medium' | 'high';
+  includeHistory?: boolean;
+  customData?: Record<string, unknown>;
+}
+
 export abstract class BaseAgentManager {
-  protected webSocketManager: any;
+  protected webSocketManager: IWebSocketManager;
   protected agentType: string;
   protected context: AgentContext;
 
-  constructor(webSocketManager: any, agentType: string, context: AgentContext) {
+  constructor(webSocketManager: IWebSocketManager, agentType: string, context: AgentContext) {
     this.webSocketManager = webSocketManager;
     this.agentType = agentType;
     this.context = context;
   }
 
-  abstract processMessage(message: string, additionalContext?: any): Promise<any>;
-  abstract processOperation(operation: AgentOperation): Promise<any>;
+  abstract processMessage(message: string, additionalContext?: AdditionalMessageContext): Promise<AgentResponse>;
+  abstract processOperation(operation: AgentOperation): Promise<AgentResponse>;
 }
 
 // ============================================
@@ -48,11 +135,14 @@ export abstract class BaseAgentManager {
 // ============================================
 
 export class GuideAgentManager extends BaseAgentManager {
-  constructor(webSocketManager: any, context: AgentContext) {
+  constructor(webSocketManager: IWebSocketManager, context: AgentContext) {
     super(webSocketManager, 'guide', context);
   }
 
-  async processMessage(message: string, additionalContext?: any): Promise<any> {
+  async processMessage(message: string, additionalContext?: AdditionalMessageContext): Promise<AgentResponse> {
+    if (!this.webSocketManager.sendToGuideAgent) {
+      throw new Error('WebSocket manager does not support Guide Agent');
+    }
     return this.webSocketManager.sendToGuideAgent(
       message,
       this.context.currentPillar,
@@ -60,7 +150,7 @@ export class GuideAgentManager extends BaseAgentManager {
     );
   }
 
-  async processOperation(operation: AgentOperation): Promise<any> {
+  async processOperation(operation: AgentOperation): Promise<AgentResponse> {
     switch (operation.type) {
       case 'analyze_intent':
         return this.processMessage(`Analyze intent: ${operation.data.query}`);
@@ -79,18 +169,21 @@ export class GuideAgentManager extends BaseAgentManager {
 // ============================================
 
 export class ContentAgentManager extends BaseAgentManager {
-  constructor(webSocketManager: any, context: AgentContext) {
+  constructor(webSocketManager: IWebSocketManager, context: AgentContext) {
     super(webSocketManager, 'content', context);
   }
 
-  async processMessage(message: string, additionalContext?: any): Promise<any> {
+  async processMessage(message: string, additionalContext?: AdditionalMessageContext): Promise<AgentResponse> {
+    if (!this.webSocketManager.sendToContentAgent) {
+      throw new Error('WebSocket manager does not support Content Agent');
+    }
     return this.webSocketManager.sendToContentAgent(
       message,
       { ...this.context.fileContext, ...additionalContext }
     );
   }
 
-  async processOperation(operation: AgentOperation): Promise<any> {
+  async processOperation(operation: AgentOperation): Promise<AgentResponse> {
     switch (operation.type) {
       case 'upload_file':
         return this.processMessage(`Help with file upload: ${operation.data.fileName}`);
@@ -109,18 +202,21 @@ export class ContentAgentManager extends BaseAgentManager {
 // ============================================
 
 export class InsightsAgentManager extends BaseAgentManager {
-  constructor(webSocketManager: any, context: AgentContext) {
+  constructor(webSocketManager: IWebSocketManager, context: AgentContext) {
     super(webSocketManager, 'insights', context);
   }
 
-  async processMessage(message: string, additionalContext?: any): Promise<any> {
+  async processMessage(message: string, additionalContext?: AdditionalMessageContext): Promise<AgentResponse> {
+    if (!this.webSocketManager.sendToInsightsAgent) {
+      throw new Error('WebSocket manager does not support Insights Agent');
+    }
     return this.webSocketManager.sendToInsightsAgent(
       message,
       { ...this.context.fileContext, ...additionalContext }
     );
   }
 
-  async processOperation(operation: AgentOperation): Promise<any> {
+  async processOperation(operation: AgentOperation): Promise<AgentResponse> {
     switch (operation.type) {
       case 'analyze_data':
         return this.processMessage(`Analyze data: ${operation.data.dataType}`);
@@ -139,18 +235,21 @@ export class InsightsAgentManager extends BaseAgentManager {
 // ============================================
 
 export class OperationsAgentManager extends BaseAgentManager {
-  constructor(webSocketManager: any, context: AgentContext) {
+  constructor(webSocketManager: IWebSocketManager, context: AgentContext) {
     super(webSocketManager, 'operations', context);
   }
 
-  async processMessage(message: string, additionalContext?: any): Promise<any> {
+  async processMessage(message: string, additionalContext?: AdditionalMessageContext): Promise<AgentResponse> {
+    if (!this.webSocketManager.sendToOperationsAgent) {
+      throw new Error('WebSocket manager does not support Operations Agent');
+    }
     return this.webSocketManager.sendToOperationsAgent(
       message,
       { ...this.context.fileContext, ...additionalContext }
     );
   }
 
-  async processOperation(operation: AgentOperation): Promise<any> {
+  async processOperation(operation: AgentOperation): Promise<AgentResponse> {
     switch (operation.type) {
       case 'generate_sop':
         return this.processMessage(`Generate SOP for: ${operation.data.process}`);
@@ -169,18 +268,21 @@ export class OperationsAgentManager extends BaseAgentManager {
 // ============================================
 
 export class ExperienceAgentManager extends BaseAgentManager {
-  constructor(webSocketManager: any, context: AgentContext) {
+  constructor(webSocketManager: IWebSocketManager, context: AgentContext) {
     super(webSocketManager, 'business-outcomes', context);
   }
 
-  async processMessage(message: string, additionalContext?: any): Promise<any> {
+  async processMessage(message: string, additionalContext?: AdditionalMessageContext): Promise<AgentResponse> {
+    if (!this.webSocketManager.sendToExperienceAgent) {
+      throw new Error('WebSocket manager does not support Experience Agent');
+    }
     return this.webSocketManager.sendToExperienceAgent(
       message,
       { ...this.context.fileContext, ...additionalContext }
     );
   }
 
-  async processOperation(operation: AgentOperation): Promise<any> {
+  async processOperation(operation: AgentOperation): Promise<AgentResponse> {
     switch (operation.type) {
       case 'strategic_planning':
         return this.processMessage(`Strategic planning for: ${operation.data.goal}`);
@@ -198,12 +300,14 @@ export class ExperienceAgentManager extends BaseAgentManager {
 // Agent Router
 // ============================================
 
-export class AgentRouter {
-  private webSocketManager: any;
-  private context: AgentContext;
-  private agents: Map<string, BaseAgentManager> = new Map();
+export type AgentType = 'guide' | 'content' | 'insights' | 'operations' | 'experience';
 
-  constructor(webSocketManager: any, context: AgentContext) {
+export class AgentRouter {
+  private webSocketManager: IWebSocketManager;
+  private context: AgentContext;
+  private agents: Map<AgentType, BaseAgentManager> = new Map();
+
+  constructor(webSocketManager: IWebSocketManager, context: AgentContext) {
     this.webSocketManager = webSocketManager;
     this.context = context;
     this.initializeAgents();
@@ -217,7 +321,7 @@ export class AgentRouter {
     this.agents.set('experience', new ExperienceAgentManager(this.webSocketManager, this.context));
   }
 
-  getAgent(agentType: string): BaseAgentManager {
+  getAgent(agentType: AgentType): BaseAgentManager {
     const agent = this.agents.get(agentType);
     if (!agent) {
       throw new Error(`Unknown agent type: ${agentType}`);
@@ -225,12 +329,12 @@ export class AgentRouter {
     return agent;
   }
 
-  async routeMessage(agentType: string, message: string, additionalContext?: any): Promise<any> {
+  async routeMessage(agentType: AgentType, message: string, additionalContext?: AdditionalMessageContext): Promise<AgentResponse> {
     const agent = this.getAgent(agentType);
     return agent.processMessage(message, additionalContext);
   }
 
-  async routeOperation(agentType: string, operation: AgentOperation): Promise<any> {
+  async routeOperation(agentType: AgentType, operation: AgentOperation): Promise<AgentResponse> {
     const agent = this.getAgent(agentType);
     return agent.processOperation(operation);
   }
@@ -255,10 +359,10 @@ export class AgentRouter {
 // ============================================
 
 export class AgentRouterFactory {
-  static async createRouter(sessionToken: string, currentPillar?: string, fileContext?: any): Promise<AgentRouter> {
+  static async createRouter(sessionToken: string, currentPillar?: string, fileContext?: FileContext): Promise<AgentRouter> {
     // WebSocketManager will be dynamically imported
     const { WebSocketManager } = await import('./WebSocketManager');
-    const webSocketManager = new WebSocketManager();
+    const webSocketManager = new WebSocketManager() as IWebSocketManager;
     const context: AgentContext = {
       sessionToken,
       currentPillar,

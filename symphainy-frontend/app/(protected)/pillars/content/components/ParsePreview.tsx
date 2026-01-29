@@ -91,9 +91,9 @@ export function ParsePreview({
         
         if (status?.status === "completed") {
           // Extract files from execution artifacts
-          const fileListArtifact = status.artifacts?.file_list;
+          const fileListArtifact = status.artifacts?.file_list as { semantic_payload?: { files?: unknown[] } } | undefined;
           if (fileListArtifact?.semantic_payload?.files) {
-            files = fileListArtifact.semantic_payload.files;
+            files = fileListArtifact.semantic_payload.files as any[];
           }
           break;
         } else if (status?.status === "failed") {

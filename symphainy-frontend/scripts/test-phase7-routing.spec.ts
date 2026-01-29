@@ -79,7 +79,7 @@ test.describe('Phase 7: Routing Refactoring', () => {
       // Check if redirected to login FIRST before any assertions
       const currentUrl = page.url();
       if (currentUrl.includes('/login')) {
-        test.skip('Authentication required - cannot test URL params without auth');
+        test.skip(true, 'Authentication required - cannot test URL params without auth');
         return;
       }
       
@@ -113,7 +113,7 @@ test.describe('Phase 7: Routing Refactoring', () => {
       
       // Check if redirected to login
       if (page.url().includes('/login')) {
-        test.skip('Authentication required');
+        test.skip(true, 'Authentication required');
         return;
       }
       
@@ -158,7 +158,7 @@ test.describe('Phase 7: Routing Refactoring', () => {
       
       // Check if redirected to login
       if (page.url().includes('/login')) {
-        test.skip('Authentication required');
+        test.skip(true, 'Authentication required');
         return;
       }
       
@@ -182,7 +182,7 @@ test.describe('Phase 7: Routing Refactoring', () => {
       
       // Check if redirected to login
       if (page.url().includes('/login')) {
-        test.skip('Authentication required');
+        test.skip(true, 'Authentication required');
         return;
       }
       
@@ -203,7 +203,7 @@ test.describe('Phase 7: Routing Refactoring', () => {
       
       // Check if redirected to login
       if (page.url().includes('/login')) {
-        test.skip('Authentication required');
+        test.skip(true, 'Authentication required');
         return;
       }
       
@@ -242,7 +242,7 @@ test.describe('Phase 7: Routing Refactoring', () => {
       
       // Check if redirected to login
       if (page.url().includes('/login')) {
-        test.skip('Authentication required');
+        test.skip(true, 'Authentication required');
         return;
       }
       
@@ -290,7 +290,7 @@ test.describe('Phase 7: Routing Refactoring', () => {
       
       // Check if redirected to login
       if (page.url().includes('/login')) {
-        test.skip('Authentication required');
+        test.skip(true, 'Authentication required');
         return;
       }
       
@@ -320,7 +320,7 @@ test.describe('Phase 7: Routing Refactoring', () => {
       
       // Check if redirected to login
       if (page.url().includes('/login')) {
-        test.skip('Authentication required');
+        test.skip(true, 'Authentication required');
         return;
       }
       
@@ -344,7 +344,7 @@ test.describe('Phase 7: Routing Refactoring', () => {
       
       // Check if redirected to login
       if (page.url().includes('/login')) {
-        test.skip('Authentication required');
+        test.skip(true, 'Authentication required');
         return;
       }
       
@@ -369,7 +369,7 @@ test.describe('Phase 7: Routing Refactoring', () => {
       
       // Check if redirected to login
       if (page.url().includes('/login')) {
-        test.skip('Authentication required');
+        test.skip(true, 'Authentication required');
         return;
       }
       

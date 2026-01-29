@@ -296,7 +296,10 @@ export default function OperationsPillarUpdated() {
         }
 
         // Step 2: Parse file
-        const parseResult = await contentAPIManager.parseFile(uploadResult.file_id);
+        const parseResult = await contentAPIManager.parseFile(
+          uploadResult.file_id,
+          uploadResult.file_reference || uploadResult.file_id  // Use file_reference or fallback to file_id
+        );
         if (!parseResult.success || !parseResult.parsed_file_id) {
           setErrorState(parseResult.error || "Failed to parse DOCX file", 'sop_to_workflow');
           return;

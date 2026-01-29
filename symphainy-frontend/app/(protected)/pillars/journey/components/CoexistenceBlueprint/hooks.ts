@@ -248,7 +248,13 @@ export function useCoexistenceBlueprint(props: CoexistenceBlueprintProps): Coexi
       );
 
       if (response.success) {
-        setOptimizedSop(response.optimized_sop || null);
+        // Extract content string from OptimizedSOP object, or use content as-is if string
+        const sopContent = response.optimized_sop
+          ? (typeof response.optimized_sop === 'string' 
+              ? response.optimized_sop 
+              : response.optimized_sop.content || JSON.stringify(response.optimized_sop))
+          : null;
+        setOptimizedSop(sopContent);
         setOptimizedWorkflow(response.optimized_workflow || null);
         setBlueprint(response.blueprint || null);
 

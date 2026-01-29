@@ -6,6 +6,75 @@
 import { atom } from 'jotai';
 
 // ============================================
+// Type Definitions
+// ============================================
+
+/**
+ * Agent information structure for chatbot
+ */
+export interface AgentInfo {
+  title: string;
+  agent: string;
+  file_url: string;
+  additional_info: string;
+}
+
+/**
+ * Business analysis result structure
+ */
+export interface BusinessAnalysisResult {
+  summary?: string;
+  key_findings?: string[];
+  recommendations?: string[];
+  metrics?: Record<string, number>;
+  timestamp?: string;
+}
+
+/**
+ * Visualization result structure
+ */
+export interface VisualizationResult {
+  type: string;
+  config: Record<string, unknown>;
+  data?: unknown[];
+  title?: string;
+}
+
+/**
+ * Anomaly detection result structure
+ */
+export interface AnomalyDetectionResult {
+  anomalies?: Array<{
+    id: string;
+    field: string;
+    value: unknown;
+    severity: 'low' | 'medium' | 'high';
+    description: string;
+  }>;
+  summary?: string;
+  confidence?: number;
+}
+
+/**
+ * EDA analysis result structure
+ */
+export interface EDAAnalysisResult {
+  statistics?: Record<string, number>;
+  distributions?: Record<string, unknown[]>;
+  correlations?: Array<{ field1: string; field2: string; correlation: number }>;
+  summary?: string;
+}
+
+/**
+ * Combined analysis results type
+ */
+export type AnalysisResult = 
+  | BusinessAnalysisResult 
+  | VisualizationResult 
+  | AnomalyDetectionResult 
+  | EDAAnalysisResult;
+
+// ============================================
 // Core State Atoms - Single source of truth
 // ============================================
 
@@ -13,7 +82,7 @@ import { atom } from 'jotai';
 export const mainChatbotOpenAtom = atom(true);
 
 // Chatbot agent information
-export const chatbotAgentInfoAtom = atom({
+export const chatbotAgentInfoAtom = atom<AgentInfo>({
   title: "",
   agent: "",
   file_url: "",
@@ -25,10 +94,10 @@ export const chatInputFocusedAtom = atom(false);
 export const messageComposingAtom = atom(false);
 
 // Analysis results atoms for cross-component communication
-export const businessAnalysisResultAtom = atom<any>(null);
-export const visualizationResultAtom = atom<any>(null);
-export const anomalyDetectionResultAtom = atom<any>(null);
-export const edaAnalysisResultAtom = atom<any>(null);
+export const businessAnalysisResultAtom = atom<BusinessAnalysisResult | null>(null);
+export const visualizationResultAtom = atom<VisualizationResult | null>(null);
+export const anomalyDetectionResultAtom = atom<AnomalyDetectionResult | null>(null);
+export const edaAnalysisResultAtom = atom<EDAAnalysisResult | null>(null);
 
 // ============================================
 // State Management Utilities
@@ -37,22 +106,22 @@ export const edaAnalysisResultAtom = atom<any>(null);
 export interface StateManager {
   getMainChatbotState(): boolean;
   setMainChatbotState(open: boolean): void;
-  getAgentInfo(): any;
-  setAgentInfo(info: any): void;
-  getAnalysisResults(): Record<string, any>;
-  setAnalysisResult(type: string, result: any): void;
+  getAgentInfo(): AgentInfo;
+  setAgentInfo(info: Partial<AgentInfo>): void;
+  getAnalysisResults(): Record<string, AnalysisResult | null>;
+  setAnalysisResult(type: string, result: AnalysisResult | null): void;
   resetAnalysisResults(): void;
 }
 
 export class ApplicationStateManager implements StateManager {
   private mainChatbotOpen: boolean = true;
-  private agentInfo: any = {
+  private agentInfo: AgentInfo = {
     title: "",
     agent: "",
     file_url: "",
     additional_info: "",
   };
-  private analysisResults: Record<string, any> = {};
+  private analysisResults: Record<string, AnalysisResult | null> = {};
 
   getMainChatbotState(): boolean {
     return this.mainChatbotOpen;
@@ -62,19 +131,19 @@ export class ApplicationStateManager implements StateManager {
     this.mainChatbotOpen = open;
   }
 
-  getAgentInfo(): any {
+  getAgentInfo(): AgentInfo {
     return { ...this.agentInfo };
   }
 
-  setAgentInfo(info: any): void {
+  setAgentInfo(info: Partial<AgentInfo>): void {
     this.agentInfo = { ...this.agentInfo, ...info };
   }
 
-  getAnalysisResults(): Record<string, any> {
+  getAnalysisResults(): Record<string, AnalysisResult | null> {
     return { ...this.analysisResults };
   }
 
-  setAnalysisResult(type: string, result: any): void {
+  setAnalysisResult(type: string, result: AnalysisResult | null): void {
     this.analysisResults[type] = result;
   }
 

@@ -12,17 +12,22 @@ import { getGlobalConfig, UnifiedConfig } from '../config';
 // Types and Interfaces
 // ============================================
 
+/**
+ * Request body type - can be any JSON-serializable value
+ */
+export type RequestBody = Record<string, unknown> | unknown[] | string | number | boolean | null;
+
 export interface RequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
   headers?: Record<string, string>;
-  body?: any;
+  body?: RequestBody;
   timeout?: number;
   retries?: number;
   retryDelay?: number;
   requireAuth?: boolean;
 }
 
-export interface APIResponse<T = any> {
+export interface APIResponse<T = unknown> {
   data: T;
   status: number;
   statusText: string;
@@ -32,11 +37,22 @@ export interface APIResponse<T = any> {
   retryCount?: number;
 }
 
+/**
+ * API error details structure
+ */
+export interface APIErrorDetails {
+  message?: string;
+  code?: string;
+  field?: string;
+  validation?: string[];
+  [key: string]: unknown;
+}
+
 export interface APIError {
   message: string;
   status?: number;
   code?: string;
-  details?: any;
+  details?: APIErrorDetails;
   retryable: boolean;
 }
 
@@ -51,7 +67,7 @@ export class APIService {
   // Core Request Method
   // ============================================
 
-  async request<T = any>(
+  async request<T = unknown>(
     endpoint: string,
     options: RequestOptions = {}
   ): Promise<APIResponse<T>> {
@@ -99,23 +115,23 @@ export class APIService {
   // Convenience Methods
   // ============================================
 
-  async get<T = any>(endpoint: string, options: Omit<RequestOptions, 'method'> = {}): Promise<APIResponse<T>> {
+  async get<T = unknown>(endpoint: string, options: Omit<RequestOptions, 'method'> = {}): Promise<APIResponse<T>> {
     return this.request<T>(endpoint, { ...options, method: 'GET' });
   }
 
-  async post<T = any>(endpoint: string, body?: any, options: Omit<RequestOptions, 'method' | 'body'> = {}): Promise<APIResponse<T>> {
+  async post<T = unknown>(endpoint: string, body?: RequestBody, options: Omit<RequestOptions, 'method' | 'body'> = {}): Promise<APIResponse<T>> {
     return this.request<T>(endpoint, { ...options, method: 'POST', body });
   }
 
-  async put<T = any>(endpoint: string, body?: any, options: Omit<RequestOptions, 'method' | 'body'> = {}): Promise<APIResponse<T>> {
+  async put<T = unknown>(endpoint: string, body?: RequestBody, options: Omit<RequestOptions, 'method' | 'body'> = {}): Promise<APIResponse<T>> {
     return this.request<T>(endpoint, { ...options, method: 'PUT', body });
   }
 
-  async delete<T = any>(endpoint: string, options: Omit<RequestOptions, 'method'> = {}): Promise<APIResponse<T>> {
+  async delete<T = unknown>(endpoint: string, options: Omit<RequestOptions, 'method'> = {}): Promise<APIResponse<T>> {
     return this.request<T>(endpoint, { ...options, method: 'DELETE' });
   }
 
-  async patch<T = any>(endpoint: string, body?: any, options: Omit<RequestOptions, 'method' | 'body'> = {}): Promise<APIResponse<T>> {
+  async patch<T = unknown>(endpoint: string, body?: RequestBody, options: Omit<RequestOptions, 'method' | 'body'> = {}): Promise<APIResponse<T>> {
     return this.request<T>(endpoint, { ...options, method: 'PATCH', body });
   }
 
@@ -128,7 +144,7 @@ export class APIService {
     options: {
       method: string;
       headers: Record<string, string>;
-      body?: any;
+      body?: RequestBody;
       timeout: number;
       requireAuth: boolean;
     }
@@ -196,8 +212,9 @@ export class APIService {
     return result;
   }
 
-  private handleError(error: any): APIError {
-    if (error.name === 'AbortError') {
+  private handleError(error: unknown): APIError {
+    // Check for AbortError (timeout)
+    if (error instanceof Error && error.name === 'AbortError') {
       return {
         message: 'Request timeout',
         code: 'TIMEOUT',
@@ -209,14 +226,23 @@ export class APIService {
       return this.createHTTPError(error, {});
     }
 
+    // Handle standard Error objects
+    if (error instanceof Error) {
+      return {
+        message: error.message || 'Unknown error',
+        code: 'UNKNOWN',
+        retryable: false,
+      };
+    }
+
     return {
-      message: error.message || 'Unknown error',
+      message: 'Unknown error',
       code: 'UNKNOWN',
       retryable: false,
     };
   }
 
-  private createHTTPError(response: Response, data: any): APIError {
+  private createHTTPError(response: Response, data: APIErrorDetails): APIError {
     return {
       message: data.message || response.statusText,
       status: response.status,
@@ -254,22 +280,22 @@ export const apiService = globalAPIService;
 // Convenience Functions
 // ============================================
 
-export async function apiGet<T = any>(endpoint: string, options?: Omit<RequestOptions, 'method'>): Promise<APIResponse<T>> {
+export async function apiGet<T = unknown>(endpoint: string, options?: Omit<RequestOptions, 'method'>): Promise<APIResponse<T>> {
   return globalAPIService.get<T>(endpoint, options);
 }
 
-export async function apiPost<T = any>(endpoint: string, body?: any, options?: Omit<RequestOptions, 'method' | 'body'>): Promise<APIResponse<T>> {
+export async function apiPost<T = unknown>(endpoint: string, body?: RequestBody, options?: Omit<RequestOptions, 'method' | 'body'>): Promise<APIResponse<T>> {
   return globalAPIService.post<T>(endpoint, body, options);
 }
 
-export async function apiPut<T = any>(endpoint: string, body?: any, options?: Omit<RequestOptions, 'method' | 'body'>): Promise<APIResponse<T>> {
+export async function apiPut<T = unknown>(endpoint: string, body?: RequestBody, options?: Omit<RequestOptions, 'method' | 'body'>): Promise<APIResponse<T>> {
   return globalAPIService.put<T>(endpoint, body, options);
 }
 
-export async function apiDelete<T = any>(endpoint: string, options?: Omit<RequestOptions, 'method'>): Promise<APIResponse<T>> {
+export async function apiDelete<T = unknown>(endpoint: string, options?: Omit<RequestOptions, 'method'>): Promise<APIResponse<T>> {
   return globalAPIService.delete<T>(endpoint, options);
 }
 
-export async function apiPatch<T = any>(endpoint: string, body?: any, options?: Omit<RequestOptions, 'method' | 'body'>): Promise<APIResponse<T>> {
+export async function apiPatch<T = unknown>(endpoint: string, body?: RequestBody, options?: Omit<RequestOptions, 'method' | 'body'>): Promise<APIResponse<T>> {
   return globalAPIService.patch<T>(endpoint, body, options);
 } 
