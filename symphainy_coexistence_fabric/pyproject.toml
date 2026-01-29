@@ -57,4 +57,11 @@ markers = [
     "critical: Critical demo paths that must work",
     "llm: Tests that use real LLM API calls",
     "integration: Integration tests",
+    # Layer markers for Hop 1 discovery (see docs/HOLISTIC_TESTING_STRATEGY.md)
+    "layer_platform: Probes startup, config, entry point (Lock platform behavior)",
+    "layer_public_works: Probes Public Works / adapters / storage",
+    "layer_curator: Probes Curator / registry / artifacts",
+    "layer_civic: Probes Civic Systems / security / agents",
+    "layer_solution_journey: Probes Solution / Journey / Realm implementation",
+    "layer_e2e: Probes browser / E2E / horizontal journeys",
 ]

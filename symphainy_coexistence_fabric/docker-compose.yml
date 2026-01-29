@@ -31,6 +31,7 @@ services:
     volumes:
       - arango_data:/var/lib/arangodb3
     healthcheck:
+      # Port-only; run scripts/probe_health_checks.py from host to verify HTTP+auth
       test: ["CMD-SHELL", "nc -z 127.0.0.1 8529 || exit 1"]
       interval: 10s
       timeout: 5s
@@ -64,6 +65,25 @@ services:
     networks:
       - symphainy_net
 
+  meilisearch:
+    image: getmeili/meilisearch:v1.11
+    container_name: symphainy-meilisearch
+    ports:
+      - ${MEILISEARCH_PORT:-7700}:7700
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-}
+    volumes:
+      - meilisearch_data:/meili_data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      - symphainy_net
+
   # Runtime Service - NEW BACKEND CONTAINER
   runtime:
     build:
@@ -82,6 +102,8 @@ services:
       - ARANGO_DATABASE=${ARANGO_DATABASE:-symphainy_platform}
       - CONSUL_HOST=consul
       - CONSUL_PORT=8500
+      - MEILISEARCH_HOST=meilisearch
+      - MEILISEARCH_PORT=7700
       - RUNTIME_PORT=8000
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
     depends_on:
@@ -90,6 +112,8 @@ services:
       arango:
         condition: service_healthy
       consul:
+        condition: service_healthy
+      meilisearch:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -116,20 +140,24 @@ services:
   experience:
     build:
       context: .
-      dockerfile: Dockerfile.runtime  # Can use same Dockerfile or create separate one
+      dockerfile: Dockerfile.runtime  # Same image; CMD overridden to run experience_main
     container_name: symphainy-experience
+    command: ["python3", "experience_main.py"]
     ports:
       - ${EXPERIENCE_PORT:-8001}:8001
     env_file:
       - .env.secrets
     environment:
-      - REDIS_URL=${REDIS_URL:-redis://redis:6379}
-      - ARANGO_URL=${ARANGO_URL:-http://arango:8529}
+      # Force container-network URLs so experience always reaches infra when run in compose
+      - REDIS_URL=redis://redis:6379
+      - ARANGO_URL=http://arango:8529
       - ARANGO_ROOT_PASSWORD=${ARANGO_ROOT_PASSWORD:-test_password}
-      - ARANGO_USERNAME=${ARANGO_USERNAME:-root}
-      - ARANGO_DATABASE=${ARANGO_DATABASE:-symphainy_platform}
+      - ARANGO_USERNAME=root
+      - ARANGO_DATABASE=symphainy_platform
       - CONSUL_HOST=consul
       - CONSUL_PORT=8500
+      - MEILISEARCH_HOST=meilisearch
+      - MEILISEARCH_PORT=7700
       - RUNTIME_URL=http://runtime:8000
       - EXPERIENCE_PORT=8001
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
@@ -144,7 +172,7 @@ services:
       consul:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "timeout 1 bash -c '</dev/tcp/127.0.0.1/8001' || exit 1"]
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -237,6 +265,8 @@ volumes:
   redis_data:
   arango_data:
   consul_data:
+  meilisearch_data:
+  duckdb_data:
 
 networks:
   symphainy_net:

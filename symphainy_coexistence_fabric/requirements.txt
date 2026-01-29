@@ -38,3 +38,7 @@ numpy>=1.24.0  # Required by plotly
 # Data Processing (REQUIRED for parsing and deterministic compute)
 duckdb>=0.9.0  # DuckDB for deterministic compute and data processing
 PyYAML>=6.0.0  # YAML parsing for data model processing (JSON Schema, YAML schemas)
+
+# EDA and Excel (REQUIRED per platform contract §9.4)
+pandas>=2.0.0   # EDA analysis agent, Excel parsing (preferred path)
+openpyxl>=3.1.0  # Excel parsing (pandas read_excel engine)

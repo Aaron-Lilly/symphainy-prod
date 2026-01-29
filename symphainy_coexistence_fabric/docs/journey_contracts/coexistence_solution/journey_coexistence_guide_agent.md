@@ -41,6 +41,19 @@
 [Journey Complete]
 ```
 
+### Liaison routing params (route_to_liaison_agent)
+
+**Canonical param name:** `target_pillar` (required). Do not use `pillar_type` — journey and intent service expect `target_pillar`.
+
+| Param | Required | Description |
+|-------|----------|-------------|
+| `target_pillar` | Yes | One of: "content", "insights", "journey", "solution" |
+| `chat_session_id` | No | Defaults from context if omitted |
+| `routing_reason` | No | User-facing reason for handoff |
+| `context_to_share` | No | Conversation history / context; journey builds from session if omitted |
+
+See intent contract: `docs/intent_contracts/journey_coexistence_guide_agent/intent_route_to_liaison_agent.md`.
+
 ### Expected Observable Artifacts
 - Navigation artifacts (logged for analytics)
 - Conversation artifacts (stored if enabled)

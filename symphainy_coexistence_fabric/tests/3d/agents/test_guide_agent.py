@@ -103,29 +103,46 @@ class TestGuideAgentLiaisonHandoff:
         
         assert hasattr(journey, '_route_to_liaison_agent'), \
             "GuideAgentJourney should have _route_to_liaison_agent method"
-    
+
+    @pytest.mark.asyncio
+    async def test_route_to_liaison_requires_target_pillar(
+        self, coexistence_solution, execution_context
+    ):
+        """Probe: journey contract requires target_pillar (canonical param)."""
+        journey = coexistence_solution.get_journey("guide_agent")
+        result = await journey._route_to_liaison_agent(
+            context=execution_context,
+            params={"target_pillar": "content"},
+            journey_execution_id="probe_exec_123",
+        )
+        assert result.get("success") is True
+        assert "artifacts" in result and "liaison_agent_activation" in result.get("artifacts", {})
+
     @pytest.mark.asyncio
     async def test_route_to_liaison_with_context(
         self, coexistence_solution, execution_context
     ):
         """Should route to Liaison with conversation context."""
         journey = coexistence_solution.get_journey("guide_agent")
-        
-        if hasattr(journey, '_route_to_liaison_agent'):
-            result = await journey._route_to_liaison_agent(
-                context=execution_context,
-                params={
-                    "pillar_type": "content",
+        if not hasattr(journey, '_route_to_liaison_agent'):
+            pytest.skip("journey has no _route_to_liaison_agent")
+        result = await journey._route_to_liaison_agent(
+            context=execution_context,
+            params={
+                "target_pillar": "content",
+                "routing_reason": "User requested specialist assistance",
+                "context_to_share": {
                     "conversation_history": [
                         {"role": "user", "content": "Help me upload a file"},
-                        {"role": "assistant", "content": "I'll route you to the Content specialist."}
+                        {"role": "assistant", "content": "I'll route you to the Content specialist."},
                     ],
-                    "user_query": "Upload my document"
+                    "user_query": "Upload my document",
                 },
-                journey_execution_id="test_exec_123"
-            )
-            
-            assert "success" in result
+            },
+            journey_execution_id="test_exec_123",
+        )
+        assert result.get("success") is True
+        assert "artifacts" in result and "liaison_agent_activation" in result.get("artifacts", {})
     
     @pytest.mark.asyncio
     async def test_share_context_to_agent_method_exists(self, coexistence_solution):

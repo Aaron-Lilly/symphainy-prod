@@ -62,11 +62,15 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
     logger.info("  → Initializing PublicWorksFoundationService...")
     public_works = PublicWorksFoundationService(config=config)
     
-    # Initialize adapters and abstractions (async method)
+    # Initialize adapters and abstractions (async method). Pre-boot passed, so init must succeed.
     logger.info("  → Initializing adapters and abstractions...")
     initialized = await public_works.initialize()
     if not initialized:
-        logger.warning("  ⚠️ PublicWorksFoundationService initialization had issues, continuing anyway...")
+        raise RuntimeError(
+            "PublicWorksFoundationService initialization failed. "
+            "Pre-boot (G3) passed, so required backing services are reachable; init must not fail. "
+            "Check logs for adapter/abstraction errors."
+        )
     logger.info("  ✅ PublicWorksFoundationService initialized")
     
     # Step 2: Create StateSurface (with ArtifactRegistry)

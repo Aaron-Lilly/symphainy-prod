@@ -174,10 +174,7 @@ class PublicWorksFoundationService:
             return False
     
     async def _create_adapters(self):
-        from symphainy_platform.config.env_contract import get_env_contract
-        env = get_env_contract()
-
-        """Create all infrastructure adapters (Layer 0)."""
+        """Create all infrastructure adapters (Layer 0). Uses only self.config (canonical config)."""
         self.logger.info("Creating infrastructure adapters...")
         
         # Redis adapter
@@ -251,10 +248,10 @@ class PublicWorksFoundationService:
         self.logger.info("JSON adapter created")
         
 
-        # Meilisearch adapter
+        # Meilisearch adapter (canonical config only)
         meilisearch_host = self.config.get("meilisearch_host") or "meilisearch"
         meilisearch_port = self.config.get("meilisearch_port") or 7700
-        meilisearch_key = self.config.get("meilisearch_key") or (getattr(env, "MEILI_MASTER_KEY", None) if hasattr(env, "MEILI_MASTER_KEY") else None)
+        meilisearch_key = self.config.get("meilisearch_key")
         self.meilisearch_adapter = MeilisearchAdapter(
             host=meilisearch_host,
             port=meilisearch_port,
@@ -265,31 +262,12 @@ class PublicWorksFoundationService:
         else:
             self.logger.warning("Meilisearch adapter connection failed")
         
-        # Supabase adapter (with fallback pattern matching original ConfigAdapter)
-        from symphainy_platform.config.config_helper import (
-            get_supabase_url,
-            get_supabase_anon_key,
-            get_supabase_service_key
-        )
-        from symphainy_platform.config.env_contract import get_env_contract
-        env = get_env_contract()
-        
-        # Use helper functions that support fallback patterns and .env.secrets
-        supabase_url = (
-            self.config.get("supabase_url") or
-            get_supabase_url() or
-            (getattr(env, "SUPABASE_URL", None) if hasattr(env, "SUPABASE_URL") else None)
-        )
-        supabase_anon_key = (
-            self.config.get("supabase_anon_key") or
-            get_supabase_anon_key()
-        )
-        supabase_service_key = (
-            self.config.get("supabase_service_key") or
-            get_supabase_service_key()
-        )
-        supabase_jwks_url = self.config.get("supabase_jwks_url") or (getattr(env, "SUPABASE_JWKS_URL", None) if hasattr(env, "SUPABASE_JWKS_URL") else None)
-        supabase_jwt_issuer = self.config.get("supabase_jwt_issuer") or (getattr(env, "SUPABASE_JWT_ISSUER", None) if hasattr(env, "SUPABASE_JWT_ISSUER") else None)
+        # Supabase adapter (canonical config only; no env/config_helper)
+        supabase_url = self.config.get("supabase_url")
+        supabase_anon_key = self.config.get("supabase_anon_key")
+        supabase_service_key = self.config.get("supabase_service_key")
+        supabase_jwks_url = self.config.get("supabase_jwks_url")
+        supabase_jwt_issuer = self.config.get("supabase_jwt_issuer")
         
         # Debug logging for Supabase credential access
         self.logger.info(f"🔍 Supabase Configuration Check:")
@@ -313,28 +291,10 @@ class PublicWorksFoundationService:
         else:
             self.logger.warning("Supabase configuration not provided, Supabase adapter not created")
         
-        # GCS adapter (with fallback pattern matching original ConfigAdapter)
-        from symphainy_platform.config.config_helper import (
-            get_gcs_project_id,
-            get_gcs_bucket_name,
-            get_gcs_credentials_json
-        )
-        
-        gcs_project_id = (
-            self.config.get("gcs_project_id") or
-            get_gcs_project_id() or
-            (getattr(env, "GCS_PROJECT_ID", None) if hasattr(env, "GCS_PROJECT_ID") else None)
-        )
-        gcs_bucket_name = (
-            self.config.get("gcs_bucket_name") or
-            get_gcs_bucket_name() or
-            (getattr(env, "GCS_BUCKET_NAME", None) if hasattr(env, "GCS_BUCKET_NAME") else None)
-        )
-        gcs_credentials_json = (
-            self.config.get("gcs_credentials_json") or
-            get_gcs_credentials_json() or
-            (getattr(env, "GCS_CREDENTIALS_JSON", None) if hasattr(env, "GCS_CREDENTIALS_JSON") else None)
-        )
+        # GCS adapter (canonical config only)
+        gcs_project_id = self.config.get("gcs_project_id")
+        gcs_bucket_name = self.config.get("gcs_bucket_name")
+        gcs_credentials_json = self.config.get("gcs_credentials_json")
         
         # Debug logging for credential access
         self.logger.info(f"🔍 GCS Configuration Check:")
@@ -387,26 +347,9 @@ class PublicWorksFoundationService:
         self.visual_generation_adapter = VisualGenerationAdapter()
         self.logger.info("Visual Generation adapter created")
         
-        # LLM Adapters (OpenAI and HuggingFace)
-        from symphainy_platform.config.config_helper import (
-            get_openai_api_key,
-            get_huggingface_endpoint_url,
-            get_huggingface_api_key
-        )
-        from symphainy_platform.config.env_contract import get_env_contract
-        env = get_env_contract()
-        
-        # OpenAI adapter
-        openai_api_key = (
-            self.config.get("openai_api_key") or
-            get_openai_api_key() or
-            (getattr(env, "LLM_OPENAI_API_KEY", None) if hasattr(env, "LLM_OPENAI_API_KEY") else None) or
-            (getattr(env, "OPENAI_API_KEY", None) if hasattr(env, "OPENAI_API_KEY") else None)
-        )
-        openai_base_url = (
-            self.config.get("openai_base_url") or
-            (getattr(env, "OPENAI_BASE_URL", None) if hasattr(env, "OPENAI_BASE_URL") else None)
-        )
+        # LLM Adapters (OpenAI and HuggingFace) — canonical config only (optional keys)
+        openai_api_key = self.config.get("openai_api_key")
+        openai_base_url = self.config.get("openai_base_url")
         
         if openai_api_key:
             from .adapters.openai_adapter import OpenAIAdapter
@@ -427,18 +370,9 @@ class PublicWorksFoundationService:
         else:
             self.logger.warning("OpenAI API key not found, OpenAI adapter not created")
         
-        # HuggingFace adapter
-        hf_endpoint_url = (
-            self.config.get("huggingface_endpoint_url") or
-            get_huggingface_endpoint_url() or
-            (getattr(env, "HUGGINGFACE_EMBEDDINGS_ENDPOINT_URL", None) if hasattr(env, "HUGGINGFACE_EMBEDDINGS_ENDPOINT_URL") else None)
-        )
-        hf_api_key = (
-            self.config.get("huggingface_api_key") or
-            get_huggingface_api_key() or
-            (getattr(env, "HUGGINGFACE_EMBEDDINGS_API_KEY", None) if hasattr(env, "HUGGINGFACE_EMBEDDINGS_API_KEY") else None) or
-            (getattr(env, "HUGGINGFACE_API_KEY", None) if hasattr(env, "HUGGINGFACE_API_KEY") else None)
-        )
+        # HuggingFace adapter (optional keys from config)
+        hf_endpoint_url = self.config.get("huggingface_endpoint_url")
+        hf_api_key = self.config.get("huggingface_api_key")
         
         if hf_endpoint_url and hf_api_key:
             from .adapters.huggingface_adapter import HuggingFaceAdapter
@@ -462,30 +396,11 @@ class PublicWorksFoundationService:
         
         # Mainframe adapter (will be created in _create_abstractions after State Surface is available)
         
-        # ArangoDB adapter
-        from symphainy_platform.config.env_contract import get_env_contract
-        env = get_env_contract()
-        
-        arango_url = (
-            self.config.get("arango_url") or
-            (getattr(env, "ARANGO_URL", None) if hasattr(env, "ARANGO_URL") else None) or
-            "http://localhost:8529"
-        )
-        arango_username = (
-            self.config.get("arango_username") or
-            (getattr(env, "ARANGO_USERNAME", None) if hasattr(env, "ARANGO_USERNAME") else None) or
-            "root"
-        )
-        arango_password = (
-            self.config.get("arango_password") or
-            (getattr(env, "ARANGO_ROOT_PASSWORD", None) if hasattr(env, "ARANGO_ROOT_PASSWORD") else None) or
-            ""
-        )
-        arango_database = (
-            self.config.get("arango_database") or
-            (getattr(env, "ARANGO_DATABASE", None) if hasattr(env, "ARANGO_DATABASE") else None) or
-            "symphainy_platform"
-        )
+        # ArangoDB adapter (canonical config only)
+        arango_url = self.config.get("arango_url") or "http://localhost:8529"
+        arango_username = self.config.get("arango_username") or "root"
+        arango_password = self.config.get("arango_password") or ""
+        arango_database = self.config.get("arango_database") or "symphainy_platform"
         
         if arango_url:
             from .adapters.arango_adapter import ArangoAdapter
