@@ -130,3 +130,13 @@ Only if you did **not** merge content-intent-services (which already includes mo
 1. **Yes:** Branch and file visibility is possible from the repo (remotes fetched). This doc is based on that.
 2. **Strategy:** Foundation → main first; then merge content-intent-services (Content Realm); then infrastructure-testing-setup-800e (frontend + CI + SecuritySolution); then parameter-assertion-tests-829c (testing docs + integration). Resolve the high-risk files (service_factory, docker-compose, bases, frontend types) in that order with clear ownership.
 3. **Best of all three:** Keep your config/pre-boot/experience/auth and healthchecks; add Content intent services and orchestrator from content-intent-services; add type cleanup, tests, CI, and SecuritySolution fixes from infrastructure-testing-setup-800e; add testing vision and integration scripts from parameter-assertion-tests-829c.
+
+---
+
+## 7. Merge log (integration/three-teams)
+
+- **Foundation:** Committed to `integration/three-teams` (bootstrap, experience_main, healthchecks, config override=False, probe script, docs).
+- **content-intent-services:** Merged; kept Foundation service_factory (per-intent Content registration); resolved path/directory conflict.
+- **infrastructure-testing-setup-800e:** Merged; kept **our** bases: concrete `BaseSolution` (no ABC), `build_journey_result(success, journey_id, journey_execution_id, artifacts, events, error)`. Did not adopt 800e SOA/ABC design; deferred for future strategic refactoring.
+- **parameter-assertion-tests-829c:** Merged; kept 800e workflow structure (backend/frontend/e2e/docker-build); added workflow_dispatch and validation-tests job (tests/expected JSON). Brought in TESTING_STRATEGY, wait-for-services.sh, docker-compose.test.yml, tests/expected/, integration test script, frontend archive/deprecated.
+- **Next:** Run tests; push `integration/three-teams` and open PR to main (or merge locally).
