@@ -62,21 +62,35 @@ class SessionManagementJourney(BaseOrchestrator):
     
     async def compose_journey(
         self,
-        journey_id: str,
-        context: ExecutionContext,
-        journey_params: Optional[Dict[str, Any]] = None
+        journey_id: Optional[str] = None,
+        context: Optional[ExecutionContext] = None,
+        journey_params: Optional[Dict[str, Any]] = None,
+        **kwargs
     ) -> Dict[str, Any]:
         """
         Compose session management journey.
         
         Args:
-            journey_id: The journey being composed
-            context: Execution context
-            journey_params: Journey-specific parameters
+            journey_id: The journey being composed (defaults to 'session_management')
+            context: Execution context (can also be passed as kwarg)
+            journey_params: Journey-specific parameters (can also be passed as kwarg)
+            **kwargs: Additional kwargs for flexibility
             
         Returns:
             Dict with artifacts and events
         """
+        # Handle flexible calling conventions (positional vs kwargs)
+        if context is None:
+            context = kwargs.get('context')
+        if journey_params is None:
+            journey_params = kwargs.get('journey_params', {})
+        if journey_id is None:
+            journey_id = kwargs.get('journey_id', 'session_management')
+        
+        # Validate context
+        if context is None:
+            raise ValueError("context is required for compose_journey")
+        
         journey_execution_id = f"session_journey_{generate_event_id()}"
         start_time = datetime.utcnow()
         
@@ -85,8 +99,13 @@ class SessionManagementJourney(BaseOrchestrator):
         try:
             params = journey_params or {}
             
-            if journey_id in ["session_management", "create_session"]:
-                result = await self.create_session_service.execute(context, params)
+            if journey_id in ["session_management", "create_session", "create", "validate"]:
+                # Handle common action parameter pattern
+                action = params.get("action")
+                if action == "validate" or journey_id == "validate_authorization":
+                    result = await self.validate_authorization_service.execute(context, params)
+                else:
+                    result = await self.create_session_service.execute(context, params)
             elif journey_id == "validate_authorization":
                 result = await self.validate_authorization_service.execute(context, params)
             else:
