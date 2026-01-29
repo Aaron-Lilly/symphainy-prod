@@ -3,27 +3,74 @@
  * Type definitions for insights service functionality
  */
 
+/**
+ * Insights session data structure
+ */
+export interface InsightsSessionData {
+  current_file?: string;
+  analysis_status?: string;
+  results?: Record<string, unknown>;
+}
+
 export interface InsightsSessionResponse {
   session_id: string;
   status: string;
   message: string;
-  data?: any;
+  data?: InsightsSessionData;
+}
+
+/**
+ * Analysis result data structure
+ */
+export interface AnalysisResultData {
+  summary?: string;
+  findings?: string[];
+  visualizations?: VisualizationConfig[];
+  metadata?: Record<string, unknown>;
 }
 
 export interface InsightsAnalysisResponse {
   success: boolean;
-  data?: any;
+  data?: AnalysisResultData;
   error?: string;
   session_id?: string;
   workflow_id?: string;
+}
+
+/**
+ * Visualization configuration
+ */
+export interface VisualizationConfig {
+  type: 'chart' | 'table' | 'graph' | 'map';
+  config: Record<string, unknown>;
+  data?: unknown[];
+}
+
+/**
+ * Summary metadata structure
+ */
+export interface SummaryMetadata {
+  source_files?: string[];
+  analysis_type?: string;
+  generated_at?: string;
+  confidence_score?: number;
 }
 
 export interface InsightsSummaryResponse {
   summary: string;
   key_insights: string[];
   recommendations: string[];
-  visualizations?: any[];
-  metadata?: any;
+  visualizations?: VisualizationConfig[];
+  metadata?: SummaryMetadata;
+}
+
+/**
+ * Additional context for VARK insights
+ */
+export interface VARKAdditionalContext {
+  file_context?: string;
+  user_preferences?: Record<string, unknown>;
+  previous_insights?: string[];
 }
 
 export interface VARKInsightsRequest {
@@ -31,22 +78,51 @@ export interface VARKInsightsRequest {
   file_uuid?: string;
   learning_style: LearningStyleType;
   user_query?: string;
-  additional_context?: any;
+  additional_context?: VARKAdditionalContext;
+}
+
+/**
+ * Analysis results for business summary
+ */
+export interface BusinessAnalysisResults {
+  data_summary?: string;
+  key_metrics?: Record<string, number>;
+  trends?: string[];
+  anomalies?: string[];
 }
 
 export interface BusinessSummaryRequest {
   session_token: string;
   file_uuid?: string;
-  analysis_results?: any;
+  analysis_results?: BusinessAnalysisResults;
   user_insights?: string[];
   include_recommendations?: boolean;
 }
 
+/**
+ * Insights summary for cross-pillar integration
+ */
+export interface CrossPillarInsightsSummary {
+  summary_text: string;
+  key_findings: string[];
+  data_context?: Record<string, unknown>;
+}
+
 export interface CrossPillarIntegrationRequest {
   session_token: string;
-  insights_summary: any;
+  insights_summary: CrossPillarInsightsSummary;
   target_pillar?: string;
   integration_type?: string;
+}
+
+/**
+ * Smart city context structure
+ */
+export interface SmartCityContext {
+  department?: string;
+  data_type?: string;
+  priority?: string;
+  additional_params?: Record<string, unknown>;
 }
 
 export interface SmartCityInsightsRequest {
@@ -54,13 +130,22 @@ export interface SmartCityInsightsRequest {
   user_id?: string;
   file_url?: string;
   additional_info?: string;
-  context?: any;
+  context?: SmartCityContext;
+}
+
+/**
+ * AGUI event data structure
+ */
+export interface AGUIEventData {
+  action?: string;
+  parameters?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
 }
 
 export interface AGUIEvent {
   type: string;
   session_token: string;
-  [key: string]: any;
+  data?: AGUIEventData;
 }
 
 export interface FileUrlRequest {
@@ -76,20 +161,29 @@ export interface InsightsSessionState {
   session_id: string;
   status: 'active' | 'inactive' | 'error';
   current_file?: string;
-  analysis_results?: any;
+  analysis_results?: AnalysisResultData;
   vark_preferences?: LearningStyleType;
 }
 
 export interface InsightsSessionUpdate {
   current_file?: string;
   status?: string;
-  analysis_results?: any;
+  analysis_results?: AnalysisResultData;
   vark_preferences?: LearningStyleType;
 }
 
 // ============================================================================
 // Data Mapping Types
 // ============================================================================
+
+/**
+ * Transformed data structure from mapping
+ */
+export interface TransformedData {
+  records: Array<Record<string, unknown>>;
+  schema?: Record<string, string>;
+  row_count?: number;
+}
 
 // Backend returns the mapping result directly (no separate response/result split)
 export interface DataMappingResponse {
@@ -99,7 +193,7 @@ export interface DataMappingResponse {
   mapping_rules: MappingRule[];
   mapped_data: {
     success: boolean;
-    transformed_data?: any;
+    transformed_data?: TransformedData;
     output_file_id?: string;
     transformation_metadata?: {
       fields_mapped?: number;
@@ -153,6 +247,8 @@ export interface DataMappingResponse {
   };
   workflow_id?: string;
   error?: string;
+  // Extended field for runtime result
+  mapping_result?: Record<string, unknown>;
 }
 
 // Alias for backward compatibility
@@ -228,7 +324,7 @@ export interface QualityIssue {
   suggested_fix?: string;
   source_field?: string;
   target_field?: string;
-  source_value?: any;
+  source_value?: string | number | boolean | null;
   expected_type?: string;
   expected_format?: string;
 }
@@ -254,6 +350,18 @@ export interface DataMappingOptions {
 // Permit Semantic Object (PSO) Types
 // ============================================================================
 
+/**
+ * Permit metadata structure
+ */
+export interface PermitMetadata {
+  classification?: string;
+  review_status?: string;
+  last_reviewed?: string;
+  reviewer?: string;
+  notes?: string[];
+  custom_fields?: Record<string, unknown>;
+}
+
 export interface PermitSemanticObject {
   pso_id: string;
   permit_id: string;
@@ -268,9 +376,30 @@ export interface PermitSemanticObject {
   covered_entities: string[];
   obligations: Obligation[];
   source_provenance?: SourceProvenance;
-  metadata?: Record<string, any>;
+  metadata?: PermitMetadata;
   created_at: string;
   updated_at: string;
+}
+
+/**
+ * Threshold value structure
+ */
+export interface ThresholdValue {
+  value: number;
+  unit?: string;
+  comparator?: 'lt' | 'lte' | 'gt' | 'gte' | 'eq';
+  min?: number;
+  max?: number;
+}
+
+/**
+ * Obligation metadata structure
+ */
+export interface ObligationMetadata {
+  priority?: 'low' | 'medium' | 'high' | 'critical';
+  category?: string;
+  review_notes?: string;
+  automated?: boolean;
 }
 
 export interface Obligation {
@@ -280,14 +409,14 @@ export interface Obligation {
   trigger?: string;
   condition?: string;
   metric?: string;
-  threshold?: any;
+  threshold?: ThresholdValue;
   unit?: string;
   frequency?: string;
   deadline?: string;
   enforcement_reference?: string;
   confidence: number;
   source_provenance?: SourceProvenance;
-  metadata?: Record<string, any>;
+  metadata?: ObligationMetadata;
 }
 
 export interface SourceProvenance {

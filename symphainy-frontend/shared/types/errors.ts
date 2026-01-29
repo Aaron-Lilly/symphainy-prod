@@ -15,6 +15,18 @@ export type ErrorType =
   | 'NetworkError';
 
 /**
+ * Error details structure for additional error information
+ */
+export interface ErrorDetails {
+  field?: string;
+  expected?: string;
+  received?: string;
+  constraint?: string;
+  suggestion?: string;
+  [key: string]: unknown;
+}
+
+/**
  * Base error signal interface
  * 
  * All errors in the platform follow this structure.
@@ -30,7 +42,7 @@ export interface ErrorSignal {
   message: string;
   
   /** Additional error details (optional) */
-  details?: any;
+  details?: ErrorDetails;
   
   /** Timestamp when error occurred */
   timestamp: number;
@@ -42,7 +54,7 @@ export interface ErrorSignal {
   retryable?: boolean;
   
   /** Additional context about the error */
-  context?: Record<string, any>;
+  context?: Record<string, unknown>;
 }
 
 /**
@@ -86,6 +98,16 @@ export interface AgentError extends ErrorSignal {
 }
 
 /**
+ * AGUI state snapshot for error context
+ */
+export interface AGUIStateSnapshot {
+  currentIntent?: string;
+  pendingActions?: string[];
+  validationState?: Record<string, boolean>;
+  formData?: Record<string, unknown>;
+}
+
+/**
  * AGUIError - AGUI validation, state errors, intent compilation failures
  * 
  * Handled by: AGUIStateProvider or AGUI components
@@ -102,7 +124,7 @@ export interface AGUIError extends ErrorSignal {
   intentId?: string;
   
   /** AGUI state snapshot if available */
-  aguiState?: any;
+  aguiState?: AGUIStateSnapshot;
 }
 
 /**
@@ -122,7 +144,17 @@ export interface ToolError extends ErrorSignal {
   alternativeTools?: string[];
   
   /** Tool execution context */
-  toolContext?: Record<string, any>;
+  toolContext?: Record<string, unknown>;
+}
+
+/**
+ * Original network error information
+ */
+export interface NetworkErrorInfo {
+  name?: string;
+  message?: string;
+  stack?: string;
+  cause?: string;
 }
 
 /**
@@ -145,26 +177,28 @@ export interface NetworkError extends ErrorSignal {
   isTimeout?: boolean;
   
   /** Original network error if available */
-  originalError?: any;
+  originalError?: NetworkErrorInfo;
 }
 
 /**
  * Type guard to check if an error is an ErrorSignal
  */
-export function isErrorSignal(error: any): error is ErrorSignal {
+export function isErrorSignal(error: unknown): error is ErrorSignal {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+  const obj = error as Record<string, unknown>;
   return (
-    error &&
-    typeof error === 'object' &&
-    'type' in error &&
-    'code' in error &&
-    'message' in error &&
-    'timestamp' in error &&
-    'recoverable' in error &&
-    typeof error.type === 'string' &&
-    typeof error.code === 'string' &&
-    typeof error.message === 'string' &&
-    typeof error.timestamp === 'number' &&
-    typeof error.recoverable === 'boolean'
+    'type' in obj &&
+    'code' in obj &&
+    'message' in obj &&
+    'timestamp' in obj &&
+    'recoverable' in obj &&
+    typeof obj.type === 'string' &&
+    typeof obj.code === 'string' &&
+    typeof obj.message === 'string' &&
+    typeof obj.timestamp === 'number' &&
+    typeof obj.recoverable === 'boolean'
   );
 }
 

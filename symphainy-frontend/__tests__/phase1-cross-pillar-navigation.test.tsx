@@ -243,12 +243,15 @@ describe('Phase 1: Cross-Pillar Navigation Test', () => {
 
     function MultiRealmComponent() {
       const { getRealmState, setRealmState } = usePlatformState();
+      const [statesSet, setStatesSet] = React.useState(false);
       
       React.useEffect(() => {
         setRealmState('content', 'testKey', contentState);
         setRealmState('insights', 'testKey', insightsState);
         setRealmState('journey', 'testKey', journeyState);
         setRealmState('outcomes', 'testKey', outcomesState);
+        // Trigger re-render after setting states
+        setStatesSet(true);
       }, [setRealmState]);
 
       const content = getRealmState('content', 'testKey');
@@ -258,6 +261,7 @@ describe('Phase 1: Cross-Pillar Navigation Test', () => {
 
       return (
         <div>
+          <div data-testid="states-ready">{statesSet ? 'ready' : 'loading'}</div>
           <div data-testid="content-realm">{JSON.stringify(content || null)}</div>
           <div data-testid="insights-realm">{JSON.stringify(insights || null)}</div>
           <div data-testid="journey-realm">{JSON.stringify(journey || null)}</div>

@@ -11,12 +11,13 @@ import { useApp } from "@/shared/agui/AppProvider";
 import { useAuth } from '@/shared/auth/AuthProvider';
 // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
 import { useSessionBoundary, SessionStatus } from '@/shared/state/SessionBoundaryProvider';
-import { useGuideAgent } from "@/lib/contexts/ExperienceLayerProvider";
+import { useGuideAgent } from "@/shared/agui/GuideAgentProvider";
 import { pillars } from "@/shared/data/pillars";
 import { toast } from "sonner";
 import { mvpSolutionService } from "@/shared/services/mvp";
 import type { SolutionStructureResponse, SolutionPillar, UserCustomizations } from "@/shared/services/mvp/types";
 import { ArtifactGallery } from "./ArtifactGallery";
+import { CoexistenceExplanation } from "./CoexistenceExplanation";
 
 export function WelcomeJourney({
   handleWelcomeComplete,

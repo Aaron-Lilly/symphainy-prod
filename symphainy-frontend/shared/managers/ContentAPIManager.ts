@@ -11,7 +11,7 @@
  * Replaces direct API calls with Runtime-based intent flow.
  */
 
-import { ExperiencePlaneClient, getGlobalExperiencePlaneClient, ExecutionStatus } from "@/shared/services/ExperiencePlaneClient";
+import { ExperiencePlaneClient, getGlobalExperiencePlaneClient, ExecutionStatusResponse } from "@/shared/services/ExperiencePlaneClient";
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { validateSession } from "@/shared/utils/sessionValidation";
 import { getApiEndpointUrl } from "@/shared/config/api-config";
@@ -20,6 +20,21 @@ import { getApiEndpointUrl } from "@/shared/config/api-config";
 // Content API Manager Types
 // ============================================
 
+/**
+ * Content file metadata structure
+ */
+export interface ContentFileMetadata {
+  file_id?: string;
+  file_reference?: string;
+  execution_id?: string;
+  boundary_contract_id?: string;
+  materialization_pending?: boolean;
+  file_type?: string;
+  mime_type?: string;
+  parsed_path?: string;
+  [key: string]: unknown;
+}
+
 export interface ContentFile {
   id: string;
   name: string;
@@ -27,7 +42,7 @@ export interface ContentFile {
   size: number;
   uploadDate: string;
   status?: string; // File status: "uploaded", "parsed", "embedded", "pending"
-  metadata?: any;
+  metadata?: ContentFileMetadata;
   boundary_contract_id?: string;  // NEW: Boundary contract ID
   materialization_pending?: boolean;  // NEW: Whether materialization is pending
 }
@@ -51,11 +66,57 @@ export interface SaveMaterializationResponse {
   error?: string;
 }
 
+/**
+ * Parsed content structure
+ */
+export interface ParsedContent {
+  parsed_file_reference?: string;
+  content_type?: string;
+  row_count?: number;
+  column_count?: number;
+  columns?: Array<{ name: string; type: string }>;
+  sample_data?: unknown[][];
+  
+  // Additional properties used by preview components
+  rows?: unknown[][];
+  total_rows?: number;
+  total_columns?: number;
+  preview_rows?: number;
+  preview_columns?: number;
+  
+  // New parsed content format fields
+  format?: string;
+  chunks?: unknown[];
+  structured_data?: unknown;
+  metadata?: Record<string, unknown>;
+  preview_grid?: unknown[][];
+  text?: string;
+}
+
+/**
+ * File preview structure
+ */
+export interface FilePreview {
+  preview_type?: 'text' | 'table' | 'binary';
+  content?: string | string[][];
+  truncated?: boolean;
+  total_rows?: number;
+  
+  // Additional preview fields
+  rows?: unknown[][];
+  columns?: Array<{ name: string; type: string }>;
+  total_columns?: number;
+  preview_rows?: number;
+  preview_columns?: number;
+}
+
 export interface ParseResponse {
   success: boolean;
   parsed_file_id?: string;
-  parsed_content?: any;
-  preview?: any;
+  parsed_file_reference?: string;
+  parsed_content?: ParsedContent;
+  parsed_file?: Record<string, unknown>;
+  preview?: FilePreview;
   error?: string;
 }
 
@@ -66,10 +127,37 @@ export interface EmbeddingResponse {
   error?: string;
 }
 
+/**
+ * Semantic interpretation result
+ */
+export interface SemanticInterpretation {
+  summary?: string;
+  entities?: Array<{ name: string; type: string; confidence: number }>;
+  relationships?: Array<{ source: string; target: string; type: string }>;
+  metadata?: Record<string, unknown>;
+}
+
 export interface SemanticInterpretationResponse {
   success: boolean;
-  interpretation?: any;
+  interpretation?: SemanticInterpretation;
   error?: string;
+}
+
+/**
+ * Backend file record structure from list_files response
+ */
+export interface BackendFileRecord {
+  file_id?: string;
+  uuid?: string;
+  file_name?: string;
+  ui_name?: string;
+  file_type?: string;
+  mime_type?: string;
+  file_size?: number;
+  created_at?: string;
+  status?: string;
+  boundary_contract_id?: string;
+  materialization_pending?: boolean;
 }
 
 // ============================================
@@ -227,7 +315,7 @@ export class ContentAPIManager {
         
         if (status?.status === "completed") {
           // Extract file_id and boundary_contract_id from execution artifacts
-          const fileArtifact = status.artifacts?.file;
+          const fileArtifact = status.artifacts?.file as { semantic_payload?: { file_id?: string; boundary_contract_id?: string; materialization_pending?: boolean } } | undefined;
           if (fileArtifact?.semantic_payload) {
             fileId = fileArtifact.semantic_payload.file_id;
             boundaryContractId = fileArtifact.semantic_payload.boundary_contract_id;
@@ -329,13 +417,14 @@ export class ContentAPIManager {
         
         if (status?.status === "completed") {
           // Extract materialization_id from execution artifacts
-          const materializationArtifact = status.artifacts?.materialization;
+          const materializationArtifact = status.artifacts?.materialization as { semantic_payload?: { materialization_id?: string; success?: boolean } } | undefined;
+          const fileArtifactFallback = status.artifacts?.file as { semantic_payload?: { materialization_id?: string; materialization_pending?: boolean } } | undefined;
           if (materializationArtifact?.semantic_payload) {
             materializationId = materializationArtifact.semantic_payload.materialization_id;
             success = materializationArtifact.semantic_payload.success === true;
-          } else if (status.artifacts?.file?.semantic_payload) {
+          } else if (fileArtifactFallback?.semantic_payload) {
             // Fallback: check if file artifact has materialization info
-            const filePayload = status.artifacts.file.semantic_payload;
+            const filePayload = fileArtifactFallback.semantic_payload;
             materializationId = filePayload.materialization_id;
             success = filePayload.materialization_pending === false;
           } else {
@@ -405,12 +494,12 @@ export class ContentAPIManager {
         
         if (status?.status === "completed") {
           // Extract files from execution artifacts
-          const fileListArtifact = status.artifacts?.file_list;
+          const fileListArtifact = status.artifacts?.file_list as { semantic_payload?: { files?: unknown[] } } | undefined;
           if (fileListArtifact?.semantic_payload?.files) {
-            const backendFiles = fileListArtifact.semantic_payload.files;
+            const backendFiles = fileListArtifact.semantic_payload.files as BackendFileRecord[];
             
             // Map backend response to ContentFile format
-            return backendFiles.map((file: any) => ({
+            return backendFiles.map((file: BackendFileRecord) => ({
               id: file.file_id || file.uuid || '',
               name: file.file_name || file.ui_name || 'Unnamed File',
               type: file.file_type || file.mime_type || '',
@@ -420,7 +509,6 @@ export class ContentAPIManager {
               boundary_contract_id: file.boundary_contract_id,
               materialization_pending: file.materialization_pending === true,
               metadata: {
-                ...file,
                 file_type: file.file_type,
                 mime_type: file.mime_type,
                 boundary_contract_id: file.boundary_contract_id,
@@ -471,7 +559,9 @@ export class ContentAPIManager {
 
       // Check if file has content_type === DATA_MODEL and set parsing_type accordingly
       const files = platformState.state.realm.content.files || [];
-      const file = files.find((f: any) => (f.uuid === fileId || f.file_id === fileId));
+      const file = files.find((f: { uuid?: string; file_id?: string; content_type?: string }) => 
+        (f.uuid === fileId || f.file_id === fileId)
+      );
       const finalParseOptions = { ...parseOptions };
       
       if (file?.content_type === "data_model") {
@@ -506,7 +596,7 @@ export class ContentAPIManager {
         
         if (status?.status === "completed") {
           // Extract parsed_file_id from execution artifacts
-          const parsedFileArtifact = status.artifacts?.parsed_file;
+          const parsedFileArtifact = status.artifacts?.parsed_file as { semantic_payload?: { parsed_file_id?: string; parsed_file_reference?: string } } | undefined;
           if (parsedFileArtifact?.semantic_payload) {
             parsedFileId = parsedFileArtifact.semantic_payload.parsed_file_id || fileId;
             parsedFileReference = parsedFileArtifact.semantic_payload.parsed_file_reference;
@@ -592,7 +682,7 @@ export class ContentAPIManager {
         
         if (status?.status === "completed") {
           // Extract embedding_id from execution artifacts
-          const embeddingArtifact = status.artifacts?.embeddings;
+          const embeddingArtifact = status.artifacts?.embeddings as { semantic_payload?: { embeddings_id?: string; embedding_reference?: string } } | undefined;
           if (embeddingArtifact?.semantic_payload) {
             embeddingId = embeddingArtifact.semantic_payload.embeddings_id;
             embeddingReference = embeddingArtifact.semantic_payload.embedding_reference || parsedFileReference;
@@ -771,7 +861,7 @@ export class ContentAPIManager {
     platformState: ReturnType<typeof usePlatformState>,
     maxWaitTime: number = 60000, // 60 seconds
     pollInterval: number = 1000 // 1 second
-  ): Promise<ExecutionStatus> {
+  ): Promise<ExecutionStatusResponse> {
     const startTime = Date.now();
     
     while (Date.now() - startTime < maxWaitTime) {
@@ -948,13 +1038,16 @@ export class ContentAPIManager {
    * 
    * The ingestion_profile is stored in the intent context, not on the artifact.
    */
+  /**
+   * Pending intent context structure
+   */
   async createPendingIntent(
     intentType: string,
     targetArtifactId: string,
     context: {
       ingestion_profile?: string;
-      parse_options?: Record<string, any>;
-      [key: string]: any;
+      parse_options?: Record<string, unknown>;
+      [key: string]: unknown;
     },
     tenantId: string,
     userId?: string,
@@ -1020,7 +1113,8 @@ export class ContentAPIManager {
 
       // Convert file to base64
       const fileBuffer = await file.arrayBuffer();
-      const fileContentBase64 = btoa(String.fromCharCode(...new Uint8Array(fileBuffer)));
+      const uint8Array = new Uint8Array(fileBuffer);
+      const fileContentBase64 = btoa(String.fromCharCode.apply(null, Array.from(uint8Array)));
 
       // Submit compose_journey intent for file_upload_materialization journey
       const executionId = await platformState.submitIntent(
@@ -1049,16 +1143,16 @@ export class ContentAPIManager {
         const status = await platformState.getExecutionStatus(executionId);
 
         if (status?.status === "completed") {
-          const fileArtifact = status.artifacts?.file;
-          const semanticPayload = fileArtifact?.semantic_payload || {};
+          const fileArtifact = status.artifacts?.file as { semantic_payload?: Record<string, unknown> } | undefined;
+          const semanticPayload = (fileArtifact?.semantic_payload || {}) as Record<string, unknown>;
 
           return {
             success: true,
-            file_id: semanticPayload.artifact_id,
-            boundary_contract_id: semanticPayload.boundary_contract_id,
+            file_id: semanticPayload.artifact_id as string | undefined,
+            boundary_contract_id: semanticPayload.boundary_contract_id as string | undefined,
             materialization_pending: false,
             file: {
-              id: semanticPayload.artifact_id || "",
+              id: (semanticPayload.artifact_id as string | undefined) || "",
               name: file.name,
               type: file.type,
               size: file.size,
@@ -1117,11 +1211,14 @@ export class ContentAPIManager {
         const status = await platformState.getExecutionStatus(executionId);
 
         if (status?.status === "completed") {
-          const parsedArtifact = status.artifacts?.parsed_content;
+          const parsedArtifact = status.artifacts?.parsed_content as { semantic_payload?: { parsed_artifact_id?: string } } | undefined;
           return {
             success: true,
             parsed_file_id: parsedArtifact?.semantic_payload?.parsed_artifact_id,
-            parsed_content: parsedArtifact,
+            // Map the artifact to ParsedContent format
+            parsed_content: parsedArtifact ? {
+              parsed_file_reference: parsedArtifact.semantic_payload?.parsed_artifact_id,
+            } as ParsedContent : undefined,
           };
         } else if (status?.status === "failed") {
           throw new Error(status.error || "Parsing journey failed");
