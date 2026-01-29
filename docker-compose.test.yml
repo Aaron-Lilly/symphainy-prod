@@ -1,11 +1,15 @@
-# Docker Compose Configuration for Testing
+# Docker Compose Configuration for Integration Testing
 # 
-# This file provides test-specific docker-compose configuration.
-# Uses same services as production but with test-specific settings:
-# - Different ports to avoid conflicts
-# - Test databases/collections
+# This file provides the FULL test stack for integration testing:
+# - All infrastructure services (Redis, ArangoDB, Consul, Meilisearch, GCS emulator)
+# - Runtime backend service
+# - Frontend service (optional, for E2E tests)
+#
+# Test-specific settings:
+# - Different ports to avoid conflicts with development
 # - Fast health checks for CI/CD
-# - Isolated test data
+# - Isolated test data with TEST_ prefix
+# - All services on symphainy_test_net network
 
 version: '3.8'
 
@@ -18,7 +22,7 @@ services:
     image: redis:7-alpine
     container_name: symphainy-redis-test
     ports:
-      - "${TEST_REDIS_PORT:-6380}:6379"  # Different port to avoid conflicts
+      - "${TEST_REDIS_PORT:-6380}:6379"
     command: redis-server --appendonly yes
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -26,7 +30,7 @@ services:
       timeout: 3s
       retries: 3
       start_period: 5s
-    restart: "no"  # Don't restart in tests
+    restart: "no"
     networks:
       - symphainy_test_net
 
@@ -34,9 +38,10 @@ services:
     image: arangodb:3.11
     container_name: symphainy-arango-test
     ports:
-      - "${TEST_ARANGO_PORT:-8530}:8529"  # Different port
+      - "${TEST_ARANGO_PORT:-8530}:8529"
     environment:
       ARANGO_ROOT_PASSWORD: ${TEST_ARANGO_ROOT_PASSWORD:-test_password}
+      ARANGO_NO_AUTH: ${TEST_ARANGO_NO_AUTH:-0}
     volumes:
       - arango_test_data:/var/lib/arangodb3
     healthcheck:
@@ -45,7 +50,7 @@ services:
       timeout: 3s
       retries: 5
       start_period: 30s
-    restart: "no"  # Don't restart in tests
+    restart: "no"
     networks:
       - symphainy_test_net
 
@@ -53,14 +58,14 @@ services:
     image: hashicorp/consul:latest
     container_name: symphainy-consul-test
     ports:
-      - "${TEST_CONSUL_PORT:-8501}:8500"  # Different port
+      - "${TEST_CONSUL_PORT:-8501}:8500"
     environment:
       - CONSUL_BIND_INTERFACE=eth0
       - CONSUL_CLIENT_INTERFACE=eth0
       - CONSUL_DATACENTER=${CONSUL_DATACENTER:-dc1}
       - CONSUL_BOOTSTRAP_EXPECT=1
       - CONSUL_ACL_ENABLED=false
-      - CONSUL_ENABLE_UI=false  # Disable UI for tests
+      - CONSUL_ENABLE_UI=false
     volumes:
       - consul_test_data:/consul/data
     command: agent -server -bootstrap-expect=1 -client=0.0.0.0
@@ -78,7 +83,7 @@ services:
     image: getmeili/meilisearch:v1.5
     container_name: symphainy-meilisearch-test
     ports:
-      - "${TEST_MEILISEARCH_PORT:-7701}:7700"  # Different port
+      - "${TEST_MEILISEARCH_PORT:-7701}:7700"
     environment:
       - MEILI_MASTER_KEY=${TEST_MEILISEARCH_MASTER_KEY:-test_master_key}
       - MEILI_ENV=development
@@ -100,8 +105,8 @@ services:
     image: fsouza/fake-gcs-server:latest
     container_name: symphainy-gcs-emulator-test
     ports:
-      - "${TEST_GCS_EMULATOR_PORT:-9023}:9023"  # GCS emulator port
-      - "${TEST_GCS_EMULATOR_HTTP_PORT:-9024}:9024"  # HTTP port
+      - "${TEST_GCS_EMULATOR_PORT:-9023}:9023"
+      - "${TEST_GCS_EMULATOR_HTTP_PORT:-9024}:9024"
     command: -scheme http -port 9023 -public-host 0.0.0.0:9023 -backend memory
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "-O", "/dev/null", "http://localhost:9023/storage/v1/b"]
@@ -113,11 +118,111 @@ services:
     networks:
       - symphainy_test_net
 
-  # Note: Supabase uses hosted test project (not local stack)
-  # See test_fixtures.py for configuration
+  # ============================================================================
+  # APPLICATION SERVICES (Test Configuration)
+  # ============================================================================
+
+  # Runtime Backend Service
+  runtime:
+    build:
+      context: .
+      dockerfile: Dockerfile.runtime
+    container_name: symphainy-runtime-test
+    ports:
+      - "${TEST_RUNTIME_PORT:-8100}:8000"
+    environment:
+      # Runtime configuration
+      PYTHONPATH: /app
+      ENVIRONMENT: test
+      LOG_LEVEL: INFO
+      
+      # Redis configuration
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      
+      # ArangoDB configuration
+      ARANGO_URL: http://arango:8529
+      ARANGO_USERNAME: root
+      ARANGO_PASSWORD: ${TEST_ARANGO_ROOT_PASSWORD:-test_password}
+      ARANGO_DATABASE: symphainy_platform_test
+      ARANGO_ROOT_PASSWORD: ${TEST_ARANGO_ROOT_PASSWORD:-test_password}
+      
+      # Consul configuration
+      CONSUL_HOST: consul
+      CONSUL_PORT: 8500
+      
+      # Meilisearch configuration
+      MEILISEARCH_HOST: meilisearch
+      MEILISEARCH_PORT: 7700
+      MEILISEARCH_API_KEY: ${TEST_MEILISEARCH_MASTER_KEY:-test_master_key}
+      
+      # GCS Emulator configuration
+      STORAGE_EMULATOR_HOST: http://gcs-emulator:9023
+      GCS_PROJECT_ID: test-project
+      GCS_BUCKET_NAME: symphainy-test-bucket
+      
+      # Disable authentication for testing
+      DISABLE_AUTH: "true"
+      TEST_MODE: "true"
+      
+      # Optional: Supabase (uses hosted test project)
+      SUPABASE_URL: ${SUPABASE_URL:-}
+      SUPABASE_PUBLISHABLE_KEY: ${SUPABASE_PUBLISHABLE_KEY:-}
+      SUPABASE_SECRET_KEY: ${SUPABASE_SECRET_KEY:-}
+    depends_on:
+      redis:
+        condition: service_healthy
+      arango:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+      meilisearch:
+        condition: service_healthy
+      gcs-emulator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: "no"
+    networks:
+      - symphainy_test_net
+    volumes:
+      # Mount test data for file operations
+      - ./tests/test_data/files:/app/test_data:ro
+
+  # Frontend Service (for E2E tests)
+  frontend:
+    build:
+      context: ./symphainy-frontend
+      dockerfile: Dockerfile
+    container_name: symphainy-frontend-test
+    ports:
+      - "${TEST_FRONTEND_PORT:-3100}:3000"
+    environment:
+      NODE_ENV: test
+      NEXT_PUBLIC_BACKEND_URL: http://runtime:8000
+      NEXT_PUBLIC_API_URL: http://runtime:8000
+      NEXT_PUBLIC_WS_URL: ws://runtime:8000/ws
+    depends_on:
+      runtime:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "-O", "/dev/null", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    restart: "no"
+    networks:
+      - symphainy_test_net
+    profiles:
+      - e2e  # Only start for E2E tests
 
 volumes:
-  redis_test_data:
   arango_test_data:
   consul_test_data:
   meilisearch_test_data:

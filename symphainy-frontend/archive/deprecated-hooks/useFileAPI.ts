@@ -78,7 +78,7 @@ export function useFileAPI() {
   );
   
   const updateFile = useCallback(
-    async (uuid: string, updates: Partial<FileMetadata>): Promise<ServiceResult<FileMetadata>> => {
+    async (uuid: string, updates: Partial<FileMetadata>): Promise<ServiceResult<{ success: boolean }>> => {
       const result = await wrapServiceCall(() => fmsAPI.updateFile(uuid, updates, getToken()));
       setLastError(result.error);
       return result;

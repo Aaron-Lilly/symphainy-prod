@@ -2,8 +2,13 @@
  * Insights API Module
  * 
  * Provides API functions for the Insights pillar.
- * TODO: Implement actual API calls using the intent-based pattern.
+ * Uses ExperiencePlaneClient for real backend calls.
+ * 
+ * NOTE: These functions work outside React context. For React components,
+ * prefer using useInsightsOperations hook when possible.
  */
+
+import { getGlobalExperiencePlaneClient } from '@/shared/services/ExperiencePlaneClient';
 
 export interface ContentMetadata {
   id: string;
@@ -102,6 +107,8 @@ export interface AnalyzeContentResponse {
 /**
  * Get available content metadata from the Content pillar
  * 
+ * Uses content_list_files intent to get available files.
+ * 
  * @param tenantId - Tenant ID (optional)
  * @param contentType - Content type filter (optional)
  * @param limit - Max results (optional)
@@ -114,10 +121,66 @@ export async function getAvailableContentMetadata(
   limit?: number,
   offset?: number
 ): Promise<ContentMetadataResponse> {
-  // TODO: Implement using intent-based API pattern
-  // For now, return empty array to allow build to complete
-  console.warn('[insights API] getAvailableContentMetadata - stub implementation', { tenantId, contentType, limit, offset });
-  return { success: true, content_metadata_items: [] };
+  const client = getGlobalExperiencePlaneClient();
+  const resolvedTenantId = tenantId || (typeof window !== 'undefined' ? sessionStorage.getItem('tenant_id') || 'default' : 'default');
+  const sessionId = typeof window !== 'undefined' ? sessionStorage.getItem('session_id') || '' : '';
+  
+  if (!sessionId) {
+    console.warn('[insights API] No session ID available');
+    return { success: true, content_metadata_items: [] };
+  }
+  
+  try {
+    const submitResponse = await client.submitIntent({
+      intent_type: 'content_list_files',
+      tenant_id: resolvedTenantId,
+      session_id: sessionId,
+      parameters: {
+        artifact_type: 'parsed_content',
+        limit,
+        offset,
+      },
+    });
+    
+    // Poll for completion
+    const maxAttempts = 30;
+    let attempts = 0;
+    
+    while (attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const status = await client.getExecutionStatus(submitResponse.execution_id, resolvedTenantId);
+      
+      if (status.status === 'completed') {
+        const artifacts = status.artifacts || {};
+        const files = (artifacts.files || []) as Array<{
+          artifact_id?: string;
+          name?: string;
+          artifact_type?: string;
+          created_at?: string;
+        }>;
+        
+        // Transform to ContentMetadata format
+        const contentMetadataItems: ContentMetadata[] = files.map(file => ({
+          id: file.artifact_id || '',
+          name: file.name || 'Unnamed',
+          type: (contentType || 'structured') as 'structured' | 'unstructured',
+          source: file.artifact_type || 'file',
+          created_at: file.created_at || new Date().toISOString(),
+        }));
+        
+        return { success: true, content_metadata_items: contentMetadataItems };
+      } else if (status.status === 'failed') {
+        return { success: false, error: status.error || 'Failed to get content metadata' };
+      }
+      
+      attempts++;
+    }
+    
+    return { success: false, error: 'Request timed out' };
+  } catch (error) {
+    console.error('[insights API] getAvailableContentMetadata error:', error);
+    return { success: true, content_metadata_items: [] }; // Return empty on error to avoid breaking UI
+  }
 }
 
 /**
@@ -130,6 +193,9 @@ export async function getContentMetadataById(id: string): Promise<ContentMetadat
 
 /**
  * Analyze content for insights
+ * 
+ * Uses analyze_structured_data or interpret_data_self_discovery intent
+ * based on content type.
  */
 export async function analyzeContentForInsights(
   requestOrContentId: AnalyzeContentRequest | string,
@@ -138,24 +204,82 @@ export async function analyzeContentForInsights(
     generateVisualizations?: boolean;
   }
 ): Promise<AnalyzeContentResponse> {
-  console.warn('[insights API] analyzeContentForInsights - stub implementation');
   const request = typeof requestOrContentId === 'string' 
     ? { content_id: requestOrContentId } 
     : requestOrContentId;
-  return {
-    success: true,
-    summary: {
-      textual: '',
-      visualizations: []
-    },
-    analysis: {
-      analysis_type: request.analysis_type || options?.analysisType || 'unstructured',
-      summary: '',
-      insights: [],
-      confidence_score: 0,
-      visualizations: []
+  
+  const client = getGlobalExperiencePlaneClient();
+  const tenantId = typeof window !== 'undefined' ? sessionStorage.getItem('tenant_id') || 'default' : 'default';
+  const sessionId = typeof window !== 'undefined' ? sessionStorage.getItem('session_id') || '' : '';
+  
+  if (!sessionId) {
+    console.warn('[insights API] No session ID available');
+    return { success: false, error: 'No active session' };
+  }
+  
+  try {
+    const analysisType = request.analysis_type || request.content_type || options?.analysisType || 'unstructured';
+    const fileId = request.file_id || request.content_id || '';
+    
+    // Choose intent based on analysis type
+    const intentType = analysisType === 'structured' 
+      ? 'analyze_structured_data' 
+      : 'interpret_data_self_discovery';
+    
+    // Submit intent
+    const submitResponse = await client.submitIntent({
+      intent_type: intentType,
+      tenant_id: tenantId,
+      session_id: sessionId,
+      parameters: {
+        parsed_file_id: fileId,
+        analysis_type: analysisType,
+        include_visualization: request.analysis_options?.include_visualizations ?? options?.generateVisualizations ?? true,
+      },
+    });
+    
+    // Poll for completion
+    const maxAttempts = 60;
+    let attempts = 0;
+    
+    while (attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const status = await client.getExecutionStatus(submitResponse.execution_id, tenantId);
+      
+      if (status.status === 'completed') {
+        // Transform backend response to expected format
+        const artifacts = status.artifacts || {};
+        const analysis = (artifacts.analysis_result || artifacts.discovery || artifacts.interpretation) as Record<string, unknown> | undefined;
+        
+        return {
+          success: true,
+          summary: {
+            textual: (analysis?.summary as string) || '',
+            visualizations: (analysis?.visualizations as AnalyzeContentResponse['summary'])?.visualizations || [],
+          },
+          analysis: {
+            analysis_type: analysisType as 'structured' | 'unstructured',
+            summary: (analysis?.summary as string) || '',
+            insights: ((analysis?.insights || analysis?.findings) as AnalyzeContentResponse['analysis'])?.insights || [],
+            confidence_score: (analysis?.confidence as number) || 0,
+          },
+          insights: ((analysis?.insights || analysis?.findings) as AnalyzeContentResponse['insights']) || [],
+        };
+      } else if (status.status === 'failed') {
+        return { success: false, error: status.error || 'Analysis failed' };
+      }
+      
+      attempts++;
     }
-  };
+    
+    return { success: false, error: 'Analysis timed out' };
+  } catch (error) {
+    console.error('[insights API] analyzeContentForInsights error:', error);
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Analysis failed' 
+    };
+  }
 }
 
 /**

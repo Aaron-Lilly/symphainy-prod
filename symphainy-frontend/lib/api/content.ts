@@ -2,8 +2,24 @@
  * Content API Module
  * 
  * Provides API functions for the Content pillar.
- * TODO: Implement actual API calls using the intent-based pattern.
+ * Uses ExperiencePlaneClient for real backend calls.
+ * 
+ * NOTE: These functions work outside React context. For React components,
+ * prefer using useFileOperations hook when possible.
  */
+
+import { getGlobalExperiencePlaneClient } from '@/shared/services/ExperiencePlaneClient';
+
+// Helper to get session info
+function getSessionInfo() {
+  if (typeof window === 'undefined') {
+    return { tenantId: 'default', sessionId: '' };
+  }
+  return {
+    tenantId: sessionStorage.getItem('tenant_id') || 'default',
+    sessionId: sessionStorage.getItem('session_id') || '',
+  };
+}
 
 export interface SimpleFileData {
   id?: string;
@@ -62,34 +78,198 @@ export interface ParseResponse {
 
 /**
  * List content files
+ * 
+ * Uses content_list_files intent.
  */
 export async function listContentFiles(
   tokenOrOptions?: string | { tenantId?: string; sessionId?: string }
 ): Promise<SimpleFileData[]> {
-  console.warn('[content API] listContentFiles - stub implementation');
-  return [];
+  const client = getGlobalExperiencePlaneClient();
+  const { tenantId: defaultTenantId, sessionId: defaultSessionId } = getSessionInfo();
+  
+  const options = typeof tokenOrOptions === 'object' ? tokenOrOptions : {};
+  const tenantId = options.tenantId || defaultTenantId;
+  const sessionId = options.sessionId || defaultSessionId;
+  
+  if (!sessionId) {
+    console.warn('[content API] No session ID available');
+    return [];
+  }
+  
+  try {
+    const submitResponse = await client.submitIntent({
+      intent_type: 'content_list_files',
+      tenant_id: tenantId,
+      session_id: sessionId,
+      parameters: {},
+    });
+    
+    // Poll for completion
+    const maxAttempts = 30;
+    let attempts = 0;
+    
+    while (attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const status = await client.getExecutionStatus(submitResponse.execution_id, tenantId);
+      
+      if (status.status === 'completed') {
+        const artifacts = status.artifacts || {};
+        const files = (artifacts.files || []) as Array<Record<string, unknown>>;
+        
+        return files.map(file => ({
+          id: file.artifact_id as string || file.file_id as string || '',
+          file_id: file.file_id as string || file.artifact_id as string || '',
+          filename: file.name as string || file.filename as string || 'Unnamed',
+          ui_name: file.name as string || file.ui_name as string,
+          file_type: file.mime_type as string || file.file_type as string,
+          file_size: file.size_bytes as number || file.file_size as number,
+          status: file.lifecycle_state as string || file.status as string || 'uploaded',
+          parsed_file_id: file.parsed_file_id as string,
+          created_at: file.created_at as string,
+        }));
+      } else if (status.status === 'failed') {
+        console.error('[content API] listContentFiles failed:', status.error);
+        return [];
+      }
+      
+      attempts++;
+    }
+    
+    return [];
+  } catch (error) {
+    console.error('[content API] listContentFiles error:', error);
+    return [];
+  }
 }
 
 /**
  * Upload a file
+ * 
+ * Uses ingest_file intent.
  */
 export async function uploadFile(
   file: File,
   options?: { tenantId?: string; sessionId?: string }
 ): Promise<UploadResponse> {
-  console.warn('[content API] uploadFile - stub implementation');
-  return { success: true, file_id: `file_${Date.now()}` };
+  const client = getGlobalExperiencePlaneClient();
+  const { tenantId: defaultTenantId, sessionId: defaultSessionId } = getSessionInfo();
+  
+  const tenantId = options?.tenantId || defaultTenantId;
+  const sessionId = options?.sessionId || defaultSessionId;
+  
+  if (!sessionId) {
+    return { success: false, error: 'No active session' };
+  }
+  
+  try {
+    // Convert file to base64
+    const fileContent = await file.arrayBuffer();
+    const base64Content = btoa(
+      Array.from(new Uint8Array(fileContent))
+        .map(byte => String.fromCharCode(byte))
+        .join('')
+    );
+    
+    const submitResponse = await client.submitIntent({
+      intent_type: 'ingest_file',
+      tenant_id: tenantId,
+      session_id: sessionId,
+      parameters: {
+        file_content: base64Content,
+        file_name: file.name,
+        file_size: file.size,
+        mime_type: file.type || 'application/octet-stream',
+        file_type: 'auto',
+        ingest_type: 'auto',
+      },
+    });
+    
+    // Poll for completion
+    const maxAttempts = 60;
+    let attempts = 0;
+    
+    while (attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const status = await client.getExecutionStatus(submitResponse.execution_id, tenantId);
+      
+      if (status.status === 'completed') {
+        const artifacts = status.artifacts || {};
+        const fileArtifact = artifacts.file as { semantic_payload?: { file_id?: string } } | undefined;
+        return { 
+          success: true, 
+          file_id: fileArtifact?.semantic_payload?.file_id || artifacts.file_id as string || submitResponse.execution_id
+        };
+      } else if (status.status === 'failed') {
+        return { success: false, error: status.error || 'Upload failed' };
+      }
+      
+      attempts++;
+    }
+    
+    return { success: false, error: 'Upload timed out' };
+  } catch (error) {
+    console.error('[content API] uploadFile error:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Upload failed' };
+  }
 }
 
 /**
  * Parse a file
+ * 
+ * Uses parse_content intent.
  */
 export async function parseFile(
   fileId: string,
   options?: { tenantId?: string; sessionId?: string }
 ): Promise<ParseResponse> {
-  console.warn('[content API] parseFile - stub implementation');
-  return { success: true, parsed_data: {} };
+  const client = getGlobalExperiencePlaneClient();
+  const { tenantId: defaultTenantId, sessionId: defaultSessionId } = getSessionInfo();
+  
+  const tenantId = options?.tenantId || defaultTenantId;
+  const sessionId = options?.sessionId || defaultSessionId;
+  
+  if (!sessionId) {
+    return { success: false, error: 'No active session' };
+  }
+  
+  try {
+    const submitResponse = await client.submitIntent({
+      intent_type: 'parse_content',
+      tenant_id: tenantId,
+      session_id: sessionId,
+      parameters: {
+        artifact_id: fileId,
+        parser_type: 'auto',
+        auto_save: true,
+      },
+    });
+    
+    // Poll for completion
+    const maxAttempts = 60;
+    let attempts = 0;
+    
+    while (attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const status = await client.getExecutionStatus(submitResponse.execution_id, tenantId);
+      
+      if (status.status === 'completed') {
+        const artifacts = status.artifacts || {};
+        return { 
+          success: true, 
+          parsed_data: artifacts.parsed_content || artifacts.parsed_file || {}
+        };
+      } else if (status.status === 'failed') {
+        return { success: false, error: status.error || 'Parsing failed' };
+      }
+      
+      attempts++;
+    }
+    
+    return { success: false, error: 'Parsing timed out' };
+  } catch (error) {
+    console.error('[content API] parseFile error:', error);
+    return { success: false, error: error instanceof Error ? error.message : 'Parsing failed' };
+  }
 }
 
 /**

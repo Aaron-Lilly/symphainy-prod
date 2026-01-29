@@ -5,6 +5,7 @@ on:
     branches: [main, 'cursor/*']
   pull_request:
     branches: [main]
+  workflow_dispatch:  # Allow manual triggering (from 829c)
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -16,7 +17,7 @@ jobs:
   # ===========================================================================
   backend-tests:
     runs-on: ubuntu-latest
-    
+
     services:
       redis:
         image: redis:7-alpine
@@ -285,3 +286,36 @@ jobs:
         run: |
           test -f traefik/traefik.yml && echo "✅ traefik.yml exists" || echo "❌ traefik.yml missing"
           test -f traefik/dynamic.yml && echo "✅ dynamic.yml exists" || echo "❌ dynamic.yml missing"
+
+  # ===========================================================================
+  # Validation tests - verify expected outputs are well-formed (from 829c)
+  # ===========================================================================
+  validation-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Validate expected outputs are well-formed
+        run: |
+          python -c "
+          import json
+          from pathlib import Path
+
+          expected_dir = Path('tests/expected')
+          if not expected_dir.exists():
+            print('No tests/expected dir - skipping')
+            exit(0)
+          for json_file in expected_dir.rglob('*.json'):
+              print(f'Validating {json_file}...')
+              with open(json_file) as f:
+                  data = json.load(f)
+              print(f'  OK - {len(str(data))} chars')
+          print('All expected output files are valid JSON')
+          "
