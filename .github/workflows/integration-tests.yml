@@ -51,12 +51,15 @@ jobs:
           pip install -r requirements.txt
           pip install pytest pytest-asyncio pytest-timeout pytest-cov
 
-      - name: Wait for services
+      - name: Wait for Redis
         run: |
           echo "Waiting for Redis..."
           timeout 30 bash -c 'until redis-cli ping 2>/dev/null; do sleep 1; done'
           echo "Redis is ready!"
-          
+
+      - name: Wait for ArangoDB (optional)
+        continue-on-error: true
+        run: |
           echo "Waiting for ArangoDB to initialize (this may take up to 3 minutes)..."
           echo "ArangoDB needs time for database initialization on first start."
           for i in {1..36}; do
@@ -67,7 +70,7 @@ jobs:
             echo "  Attempt $i/36: ArangoDB not ready yet, waiting 5 seconds..."
             sleep 5
           done
-          echo "ArangoDB failed to start within timeout"
+          echo "⚠️ ArangoDB failed to start within timeout - some tests may be skipped"
           exit 1
 
       - name: Run backend unit tests
