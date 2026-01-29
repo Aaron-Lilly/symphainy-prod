@@ -120,6 +120,120 @@ export interface BlueprintCreationResponse {
   error?: string;
 }
 
+/**
+ * Optimized SOP structure (from optimize_coexistence_with_content)
+ */
+export interface OptimizedSOP {
+  sop_id: string;
+  content: string;
+  optimizations_applied: string[];
+  sections?: Array<{ title: string; content: string }>;
+}
+
+/**
+ * Optimized workflow structure (from optimize_coexistence_with_content)
+ */
+export interface OptimizedWorkflow {
+  workflow_id: string;
+  name: string;
+  steps: Array<{ id: string; name: string; type: string }>;
+  optimizations_applied: string[];
+}
+
+/**
+ * Coexistence blueprint result structure
+ */
+export interface CoexistenceBlueprintResult {
+  blueprint_id: string;
+  summary: string;
+  recommendations: string[];
+  visualization?: string;
+}
+
+/**
+ * Draft SOP from wizard conversation
+ */
+export interface WizardDraftSOP {
+  draft_id: string;
+  title: string;
+  content: string;
+  sections: Array<{ title: string; content: string }>;
+  status: 'draft' | 'review' | 'approved';
+}
+
+/**
+ * Query result SOP structure
+ */
+export interface QueryResultSOP {
+  sop_id: string;
+  title: string;
+  content: string;
+  relevance_score?: number;
+}
+
+/**
+ * Query result workflow structure
+ */
+export interface QueryResultWorkflow {
+  workflow_id: string;
+  name: string;
+  steps: Array<{ id: string; name: string; type: string }>;
+  relevance_score?: number;
+}
+
+/**
+ * User intent analysis result
+ */
+export interface IntentAnalysisResult {
+  intent_type: string;
+  confidence: number;
+  suggested_pillar?: string;
+  suggested_actions?: string[];
+  parameters?: Record<string, unknown>;
+}
+
+/**
+ * Journey guidance result
+ */
+export interface JourneyGuidanceResult {
+  current_phase: string;
+  progress_percentage: number;
+  recommendations: string[];
+  blockers?: string[];
+  completed_steps?: string[];
+}
+
+/**
+ * Conversation history message structure
+ */
+export interface ConversationHistoryMessage {
+  role: 'user' | 'assistant' | 'system';
+  content: string;
+  timestamp: string;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Pillar agent response structure
+ */
+export interface PillarAgentResponse {
+  content: string;
+  suggested_actions?: string[];
+  artifacts?: string[];
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * Pillar conversation structure
+ */
+export interface PillarConversation {
+  conversation_id: string;
+  pillar: string;
+  messages: ConversationHistoryMessage[];
+  started_at: string;
+  last_activity: string;
+}
+
 // ============================================
 // Operations API Manager Class
 // ============================================
@@ -342,40 +456,6 @@ export class OperationsAPIManager {
         error: error instanceof Error ? error.message : "Unknown error"
       };
     }
-  }
-
-  /**
-   * Optimized coexistence result types
-   */
-
-  /**
-   * Optimized SOP structure
-   */
-  interface OptimizedSOP {
-    sop_id: string;
-    content: string;
-    optimizations_applied: string[];
-    sections?: Array<{ title: string; content: string }>;
-  }
-
-  /**
-   * Optimized workflow structure
-   */
-  interface OptimizedWorkflow {
-    workflow_id: string;
-    name: string;
-    steps: Array<{ id: string; name: string; type: string }>;
-    optimizations_applied: string[];
-  }
-
-  /**
-   * Coexistence blueprint structure
-   */
-  interface CoexistenceBlueprintResult {
-    blueprint_id: string;
-    summary: string;
-    recommendations: string[];
-    visualization?: string;
   }
 
   /**
@@ -627,17 +707,6 @@ export class OperationsAPIManager {
   }
 
   /**
-   * Draft SOP from wizard conversation
-   */
-  interface WizardDraftSOP {
-    draft_id: string;
-    title: string;
-    content: string;
-    sections: Array<{ title: string; content: string }>;
-    status: 'draft' | 'review' | 'approved';
-  }
-
-  /**
    * Process wizard conversation (process_wizard_conversation intent)
    * 
    * Flow: Experience Plane → Runtime → Operations Realm
@@ -689,26 +758,6 @@ export class OperationsAPIManager {
         error: error instanceof Error ? error.message : "Unknown error"
       };
     }
-  }
-
-  /**
-   * Query result SOP structure
-   */
-  interface QueryResultSOP {
-    sop_id: string;
-    title: string;
-    content: string;
-    relevance_score?: number;
-  }
-
-  /**
-   * Query result workflow structure
-   */
-  interface QueryResultWorkflow {
-    workflow_id: string;
-    name: string;
-    steps: Array<{ id: string; name: string; type: string }>;
-    relevance_score?: number;
   }
 
   /**
@@ -766,17 +815,6 @@ export class OperationsAPIManager {
   }
 
   /**
-   * User intent analysis result
-   */
-  interface IntentAnalysisResult {
-    intent_type: string;
-    confidence: number;
-    suggested_pillar?: string;
-    suggested_actions?: string[];
-    parameters?: Record<string, unknown>;
-  }
-
-  /**
    * Analyze user intent (analyze_user_intent intent)
    * 
    * Flow: Experience Plane → Runtime → Operations Realm (Guide Agent)
@@ -821,17 +859,6 @@ export class OperationsAPIManager {
         error: error instanceof Error ? error.message : "Unknown error"
       };
     }
-  }
-
-  /**
-   * Journey guidance result
-   */
-  interface JourneyGuidanceResult {
-    current_phase: string;
-    progress_percentage: number;
-    recommendations: string[];
-    blockers?: string[];
-    completed_steps?: string[];
   }
 
   /**
@@ -888,16 +915,6 @@ export class OperationsAPIManager {
   }
 
   /**
-   * Conversation history message structure
-   */
-  interface ConversationHistoryMessage {
-    role: 'user' | 'assistant' | 'system';
-    content: string;
-    timestamp: string;
-    metadata?: Record<string, unknown>;
-  }
-
-  /**
    * Get conversation history (get_conversation_history intent)
    * 
    * Flow: Experience Plane → Runtime → Operations Realm (Guide Agent)
@@ -940,16 +957,6 @@ export class OperationsAPIManager {
         error: error instanceof Error ? error.message : "Unknown error"
       };
     }
-  }
-
-  /**
-   * Pillar agent response structure
-   */
-  interface PillarAgentResponse {
-    content: string;
-    suggested_actions?: string[];
-    artifacts?: string[];
-    metadata?: Record<string, unknown>;
   }
 
   /**
@@ -1004,17 +1011,6 @@ export class OperationsAPIManager {
         error: error instanceof Error ? error.message : "Unknown error"
       };
     }
-  }
-
-  /**
-   * Pillar conversation structure
-   */
-  interface PillarConversation {
-    conversation_id: string;
-    pillar: string;
-    messages: ConversationHistoryMessage[];
-    started_at: string;
-    last_activity: string;
   }
 
   /**

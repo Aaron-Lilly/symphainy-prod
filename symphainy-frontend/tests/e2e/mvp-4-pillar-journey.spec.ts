@@ -6,8 +6,8 @@
  * Including GuideAgent and pillar-specific chatbot interactions
  */
 
-// TEMPORARILY COMMENTED OUT - Frontend test IDs need to be implemented
-// import { test, expect } from '@playwright/test';
+// NOTE: Import enabled for tests below. Some individual tests are commented out.
+import { test, expect } from '@playwright/test';
 
 // ============================================
 // Test Configuration
@@ -64,111 +64,111 @@
 //     // Navigate to Insights Pillar
 //     await page.click('[data-testid="next-pillar-insights"]');
 //     await expect(page).toHaveURL('/insights');
-    
-    // ============================================
-    // 3. Insights Pillar: File Selection + 4 Analysis Cards
-    // ============================================
-    
-    // Verify Insights Pillar elements
-    await expect(page.locator('[data-testid="insights-pillar"]')).toBeVisible();
-    await expect(page.locator('[data-testid="file-selection-prompt"]')).toBeVisible();
-    
-    // Select file for analysis
-    await page.click('[data-testid="file-selector"]');
-    await page.click('[data-testid="select-file-sample.csv"]');
-    
-    // Verify 4 analysis cards are available
-    await expect(page.locator('[data-testid="anomaly-detection-card"]')).toBeVisible();
-    await expect(page.locator('[data-testid="eda-analysis-card"]')).toBeVisible();
-    await expect(page.locator('[data-testid="business-analysis-card"]')).toBeVisible();
-    await expect(page.locator('[data-testid="visualizations-card"]')).toBeVisible();
-    
-    // Execute Anomaly Detection
-    await page.click('[data-testid="anomaly-detection-card"]');
-    await expect(page.locator('[data-testid="anomaly-results"]')).toBeVisible();
-    
-    // Execute EDA Analysis
-    await page.click('[data-testid="eda-analysis-card"]');
-    await expect(page.locator('[data-testid="eda-results"]')).toBeVisible();
-    
-    // Execute Business Analysis
-    await page.click('[data-testid="business-analysis-card"]');
-    await expect(page.locator('[data-testid="business-results"]')).toBeVisible();
-    
-    // Execute Visualizations
-    await page.click('[data-testid="visualizations-card"]');
-    await expect(page.locator('[data-testid="visualization-chart"]')).toBeVisible();
-    
-    // Verify Insights Summary
-    await expect(page.locator('[data-testid="insights-summary"]')).toBeVisible();
-    await expect(page.locator('[data-testid="summary-visual"]')).toBeVisible();
-    
-    // Navigate to Operations Pillar
-    await page.click('[data-testid="next-pillar-operations"]');
-    await expect(page).toHaveURL('/operations');
-    
-    // ============================================
-    // 4. Operations Pillar: 3 Cards + Coexistence Blueprint
-    // ============================================
-    
-    // Verify Operations Pillar elements
-    await expect(page.locator('[data-testid="operations-pillar"]')).toBeVisible();
-    
-    // Verify 3 cards at top
-    await expect(page.locator('[data-testid="select-existing-files-card"]')).toBeVisible();
-    await expect(page.locator('[data-testid="upload-new-files-card"]')).toBeVisible();
-    await expect(page.locator('[data-testid="generate-from-scratch-card"]')).toBeVisible();
-    
-    // Select existing files option
-    await page.click('[data-testid="select-existing-files"]');
-    await page.click('[data-testid="select-file-sample.csv"]');
-    
-    // Generate workflow
-    await page.click('[data-testid="generate-workflow-button"]');
-    await expect(page.locator('[data-testid="workflow-generation-progress"]')).toBeVisible();
-    
-    // Wait for workflow generation completion
-    await expect(page.locator('[data-testid="workflow-visual"]')).toBeVisible();
-    await expect(page.locator('[data-testid="sop-document"]')).toBeVisible();
-    
-    // Generate coexistence blueprint
-    await page.click('[data-testid="generate-coexistence-blueprint"]');
-    await expect(page.locator('[data-testid="coexistence-blueprint"]')).toBeVisible();
-    await expect(page.locator('[data-testid="future-state-sop"]')).toBeVisible();
-    await expect(page.locator('[data-testid="future-state-workflow"]')).toBeVisible();
-    
-    // Navigate to Experience Pillar
-    await page.click('[data-testid="next-pillar-experience"]');
-    await expect(page).toHaveURL('/experience');
-    
-    // ============================================
-    // 5. Experience Pillar: Summary + Roadmap + POC Proposal
-    // ============================================
-    
-    // Verify Experience Pillar elements
-    await expect(page.locator('[data-testid="experience-pillar"]')).toBeVisible();
-    
-    // Verify summary outputs from other pillars
-    await expect(page.locator('[data-testid="content-pillar-summary"]')).toBeVisible();
-    await expect(page.locator('[data-testid="insights-pillar-summary"]')).toBeVisible();
-    await expect(page.locator('[data-testid="operations-pillar-summary"]')).toBeVisible();
-    
-    // Add additional context
-    await page.fill('[data-testid="additional-context-input"]', 'Additional business context for analysis');
-    await page.click('[data-testid="add-context-button"]');
-    
-    // Generate final analysis
-    await page.click('[data-testid="generate-final-analysis"]');
-    await expect(page.locator('[data-testid="analysis-generation-progress"]')).toBeVisible();
-    
-    // Verify final deliverables
-    await expect(page.locator('[data-testid="roadmap"]')).toBeVisible();
-    await expect(page.locator('[data-testid="poc-proposal"]')).toBeVisible();
-    
-    // Verify journey completion
-    await expect(page.locator('[data-testid="journey-complete"]')).toBeVisible();
-  });
-});
+//     
+//     // ============================================
+//     // 3. Insights Pillar: File Selection + 4 Analysis Cards
+//     // ============================================
+//     
+//     // Verify Insights Pillar elements
+//     await expect(page.locator('[data-testid="insights-pillar"]')).toBeVisible();
+//     await expect(page.locator('[data-testid="file-selection-prompt"]')).toBeVisible();
+//     
+//     // Select file for analysis
+//     await page.click('[data-testid="file-selector"]');
+//     await page.click('[data-testid="select-file-sample.csv"]');
+//     
+//     // Verify 4 analysis cards are available
+//     await expect(page.locator('[data-testid="anomaly-detection-card"]')).toBeVisible();
+//     await expect(page.locator('[data-testid="eda-analysis-card"]')).toBeVisible();
+//     await expect(page.locator('[data-testid="business-analysis-card"]')).toBeVisible();
+//     await expect(page.locator('[data-testid="visualizations-card"]')).toBeVisible();
+//     
+//     // Execute Anomaly Detection
+//     await page.click('[data-testid="anomaly-detection-card"]');
+//     await expect(page.locator('[data-testid="anomaly-results"]')).toBeVisible();
+//     
+//     // Execute EDA Analysis
+//     await page.click('[data-testid="eda-analysis-card"]');
+//     await expect(page.locator('[data-testid="eda-results"]')).toBeVisible();
+//     
+//     // Execute Business Analysis
+//     await page.click('[data-testid="business-analysis-card"]');
+//     await expect(page.locator('[data-testid="business-results"]')).toBeVisible();
+//     
+//     // Execute Visualizations
+//     await page.click('[data-testid="visualizations-card"]');
+//     await expect(page.locator('[data-testid="visualization-chart"]')).toBeVisible();
+//     
+//     // Verify Insights Summary
+//     await expect(page.locator('[data-testid="insights-summary"]')).toBeVisible();
+//     await expect(page.locator('[data-testid="summary-visual"]')).toBeVisible();
+//     
+//     // Navigate to Operations Pillar
+//     await page.click('[data-testid="next-pillar-operations"]');
+//     await expect(page).toHaveURL('/operations');
+//     
+//     // ============================================
+//     // 4. Operations Pillar: 3 Cards + Coexistence Blueprint
+//     // ============================================
+//     
+//     // Verify Operations Pillar elements
+//     await expect(page.locator('[data-testid="operations-pillar"]')).toBeVisible();
+//     
+//     // Verify 3 cards at top
+//     await expect(page.locator('[data-testid="select-existing-files-card"]')).toBeVisible();
+//     await expect(page.locator('[data-testid="upload-new-files-card"]')).toBeVisible();
+//     await expect(page.locator('[data-testid="generate-from-scratch-card"]')).toBeVisible();
+//     
+//     // Select existing files option
+//     await page.click('[data-testid="select-existing-files"]');
+//     await page.click('[data-testid="select-file-sample.csv"]');
+//     
+//     // Generate workflow
+//     await page.click('[data-testid="generate-workflow-button"]');
+//     await expect(page.locator('[data-testid="workflow-generation-progress"]')).toBeVisible();
+//     
+//     // Wait for workflow generation completion
+//     await expect(page.locator('[data-testid="workflow-visual"]')).toBeVisible();
+//     await expect(page.locator('[data-testid="sop-document"]')).toBeVisible();
+//     
+//     // Generate coexistence blueprint
+//     await page.click('[data-testid="generate-coexistence-blueprint"]');
+//     await expect(page.locator('[data-testid="coexistence-blueprint"]')).toBeVisible();
+//     await expect(page.locator('[data-testid="future-state-sop"]')).toBeVisible();
+//     await expect(page.locator('[data-testid="future-state-workflow"]')).toBeVisible();
+//     
+//     // Navigate to Experience Pillar
+//     await page.click('[data-testid="next-pillar-experience"]');
+//     await expect(page).toHaveURL('/experience');
+//     
+//     // ============================================
+//     // 5. Experience Pillar: Summary + Roadmap + POC Proposal
+//     // ============================================
+//     
+//     // Verify Experience Pillar elements
+//     await expect(page.locator('[data-testid="experience-pillar"]')).toBeVisible();
+//     
+//     // Verify summary outputs from other pillars
+//     await expect(page.locator('[data-testid="content-pillar-summary"]')).toBeVisible();
+//     await expect(page.locator('[data-testid="insights-pillar-summary"]')).toBeVisible();
+//     await expect(page.locator('[data-testid="operations-pillar-summary"]')).toBeVisible();
+//     
+//     // Add additional context
+//     await page.fill('[data-testid="additional-context-input"]', 'Additional business context for analysis');
+//     await page.click('[data-testid="add-context-button"]');
+//     
+//     // Generate final analysis
+//     await page.click('[data-testid="generate-final-analysis"]');
+//     await expect(page.locator('[data-testid="analysis-generation-progress"]')).toBeVisible();
+//     
+//     // Verify final deliverables
+//     await expect(page.locator('[data-testid="roadmap"]')).toBeVisible();
+//     await expect(page.locator('[data-testid="poc-proposal"]')).toBeVisible();
+//     
+//     // Verify journey completion
+//     await expect(page.locator('[data-testid="journey-complete"]')).toBeVisible();
+//   });
+// });
 
 // ============================================
 // GuideAgent Integration Tests
