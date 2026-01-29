@@ -1,0 +1,52 @@
+{
+  "file_name": "sample.csv",
+  "file_type": "text/csv",
+  "parse_result": {
+    "total_rows": 5,
+    "total_columns": 5,
+    "columns": ["id", "name", "email", "department", "salary"],
+    "column_types": {
+      "id": "integer",
+      "name": "string",
+      "email": "string",
+      "department": "string",
+      "salary": "integer"
+    },
+    "sample_data": {
+      "first_row": {
+        "id": 1,
+        "name": "John Doe",
+        "email": "john.doe@example.com",
+        "department": "Engineering",
+        "salary": 75000
+      },
+      "last_row": {
+        "id": 5,
+        "name": "Charlie Brown",
+        "email": "charlie.brown@example.com",
+        "department": "HR",
+        "salary": 60000
+      }
+    },
+    "statistics": {
+      "unique_departments": ["Engineering", "Marketing", "Sales", "HR"],
+      "salary_range": {
+        "min": 60000,
+        "max": 80000,
+        "avg": 70000
+      },
+      "department_counts": {
+        "Engineering": 2,
+        "Marketing": 1,
+        "Sales": 1,
+        "HR": 1
+      }
+    }
+  },
+  "quality_checks": {
+    "no_null_values": true,
+    "valid_email_format": true,
+    "positive_salaries": true,
+    "unique_ids": true
+  }
+}

@@ -1,0 +1,224 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  integration-tests:
+    runs-on: ubuntu-latest
+    
+    # Use docker compose for full infrastructure
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      arangodb:
+        image: arangodb:3.11
+        ports:
+          - 8530:8529
+        env:
+          ARANGO_ROOT_PASSWORD: test_password
+        options: >-
+          --health-cmd "wget --spider -q -O /dev/null http://127.0.0.1:8529/_api/version"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      
+      consul:
+        image: hashicorp/consul:latest
+        ports:
+          - 8501:8500
+        options: >-
+          --health-cmd "wget --spider -q -O /dev/null http://127.0.0.1:8500/v1/status/leader"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 3
+      
+      meilisearch:
+        image: getmeili/meilisearch:v1.5
+        ports:
+          - 7701:7700
+        env:
+          MEILI_MASTER_KEY: test_master_key
+          MEILI_ENV: development
+        options: >-
+          --health-cmd "wget --spider -q -O /dev/null http://127.0.0.1:7700/health"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 3
+      
+      gcs-emulator:
+        image: fsouza/fake-gcs-server:latest
+        ports:
+          - 9023:9023
+        # fake-gcs-server doesn't support standard health checks in options
+    
+    env:
+      # Test infrastructure configuration
+      TEST_USE_REAL_INFRASTRUCTURE: true
+      TEST_REDIS_HOST: localhost
+      TEST_REDIS_PORT: 6380
+      TEST_ARANGO_PORT: 8530
+      TEST_ARANGO_ROOT_PASSWORD: test_password
+      TEST_CONSUL_PORT: 8501
+      TEST_MEILISEARCH_PORT: 7701
+      TEST_MEILISEARCH_MASTER_KEY: test_master_key
+      TEST_GCS_EMULATOR_PORT: 9023
+      TEST_GCS_EMULATOR_HOST: http://localhost
+      STORAGE_EMULATOR_HOST: http://localhost:9023
+      
+      # Python configuration
+      PYTHONPATH: ${{ github.workspace }}
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r tests/requirements.txt
+    
+    - name: Wait for services to be ready
+      run: |
+        # Wait for GCS emulator (no health check in service options)
+        echo "Waiting for GCS emulator..."
+        timeout 60 bash -c 'until curl -s http://localhost:9023/storage/v1/b > /dev/null; do sleep 2; done'
+        echo "GCS emulator is ready"
+        
+        # Create test bucket
+        curl -X POST "http://localhost:9023/storage/v1/b?project=test-project" \
+          -H "Content-Type: application/json" \
+          -d '{"name": "symphainy-test-bucket"}' || true
+    
+    - name: Run integration tests
+      run: |
+        pytest tests/integration/ \
+          -v \
+          --tb=short \
+          -m "integration" \
+          --ignore=tests/integration/README.md \
+          --ignore=tests/integration/*.md \
+          -x  # Stop on first failure for faster feedback
+    
+    - name: Run infrastructure tests
+      run: |
+        pytest tests/infrastructure/ \
+          -v \
+          --tb=short \
+          -m "infrastructure" \
+          --ignore=tests/infrastructure/*.yml
+    
+    - name: Upload test results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: integration-test-results
+        path: |
+          test-results/
+          *.log
+        if-no-files-found: ignore
+
+  # Full stack E2E tests (requires building runtime container)
+  e2e-tests:
+    runs-on: ubuntu-latest
+    needs: integration-tests  # Only run if integration tests pass
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'  # Only on main branch
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+    
+    - name: Start test infrastructure
+      run: |
+        docker-compose -f docker-compose.test.yml up -d --build
+        
+        # Wait for all services
+        ./scripts/wait-for-services.sh --runtime
+    
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+    
+    - name: Install test dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -r tests/requirements.txt
+    
+    - name: Run E2E tests
+      env:
+        TEST_RUNTIME_HOST: localhost
+        TEST_RUNTIME_PORT: 8100
+        PYTHONPATH: ${{ github.workspace }}
+      run: |
+        pytest tests/e2e/ \
+          -v \
+          --tb=short \
+          -m "e2e" \
+          --ignore=tests/e2e/*.md
+    
+    - name: Collect logs on failure
+      if: failure()
+      run: |
+        docker-compose -f docker-compose.test.yml logs > docker-logs.txt
+        cat docker-logs.txt
+    
+    - name: Stop test infrastructure
+      if: always()
+      run: |
+        docker-compose -f docker-compose.test.yml down -v
+
+  # Validation tests - verify expected outputs match
+  validation-tests:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    
+    - name: Set up Python 3.10
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+        cache: 'pip'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pytest
+    
+    - name: Validate expected outputs are well-formed
+      run: |
+        python -c "
+        import json
+        from pathlib import Path
+        
+        expected_dir = Path('tests/expected')
+        for json_file in expected_dir.rglob('*.json'):
+            print(f'Validating {json_file}...')
+            with open(json_file) as f:
+                data = json.load(f)
+            print(f'  OK - {len(str(data))} chars')
+        print('All expected output files are valid JSON')
+        "
