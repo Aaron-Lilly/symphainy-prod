@@ -172,16 +172,105 @@ class AgentService:
     Agent Service - Agent registry and invocation.
     
     Wraps AgentRegistry from Agentic civic system.
+    Supports lazy agent creation - agents are instantiated on first use.
     """
     _agent_registry: Optional[Any] = None
     _agent_factory: Optional[Any] = None
+    _public_works: Optional[Any] = None
+    
+    # Mapping of agent IDs to agent classes for lazy instantiation
+    _AGENT_CLASSES: Dict[str, str] = field(default_factory=lambda: {
+        # Conversational/Liaison Agents
+        "guide_agent": "symphainy_platform.civic_systems.agentic.agents.guide_agent.GuideAgent",
+        "content_liaison_agent": "symphainy_platform.civic_systems.agentic.agents.content_liaison_agent.ContentLiaisonAgent",
+        "insights_liaison_agent": "symphainy_platform.civic_systems.agentic.agents.insights_liaison_agent.InsightsLiaisonAgent",
+        "operations_liaison_agent": "symphainy_platform.civic_systems.agentic.agents.operations_liaison_agent.OperationsLiaisonAgent",
+        "outcomes_liaison_agent": "symphainy_platform.civic_systems.agentic.agents.outcomes_liaison_agent.OutcomesLiaisonAgent",
+        "journey_liaison_agent": "symphainy_platform.civic_systems.agentic.agents.journey_liaison_agent.JourneyLiaisonAgent",
+        # Analysis Agents
+        "coexistence_analysis_agent": "symphainy_platform.civic_systems.agentic.agents.coexistence_analysis_agent.CoexistenceAnalysisAgent",
+        "business_analysis_agent": "symphainy_platform.civic_systems.agentic.agents.business_analysis_agent.BusinessAnalysisAgent",
+        "insights_eda_agent": "symphainy_platform.civic_systems.agentic.agents.insights_eda_agent.InsightsEDAAgent",
+        # Generation Agents
+        "sop_generation_agent": "symphainy_platform.civic_systems.agentic.agents.sop_generation_agent.SOPGenerationAgent",
+        "roadmap_generation_agent": "symphainy_platform.civic_systems.agentic.agents.roadmap_generation_agent.RoadmapGenerationAgent",
+        "blueprint_creation_agent": "symphainy_platform.civic_systems.agentic.agents.blueprint_creation_agent.BlueprintCreationAgent",
+        "poc_generation_agent": "symphainy_platform.civic_systems.agentic.agents.poc_generation_agent.POCGenerationAgent",
+        # Proposal/Synthesis Agents
+        "roadmap_proposal_agent": "symphainy_platform.civic_systems.agentic.agents.roadmap_proposal_agent.RoadmapProposalAgent",
+        "outcomes_synthesis_agent": "symphainy_platform.civic_systems.agentic.agents.outcomes_synthesis_agent.OutcomesSynthesisAgent",
+        # Extraction/Embedding Agents
+        "structured_extraction_agent": "symphainy_platform.civic_systems.agentic.agents.structured_extraction_agent.StructuredExtractionAgent",
+        "semantic_signal_extractor": "symphainy_platform.civic_systems.agentic.agents.semantic_signal_extractor.SemanticSignalExtractor",
+        "stateless_embedding_agent": "symphainy_platform.civic_systems.agentic.agents.stateless_embedding_agent.StatelessEmbeddingAgent",
+        # Workflow Agents
+        "workflow_optimization_agent": "symphainy_platform.civic_systems.agentic.agents.workflow_optimization_agent.WorkflowOptimizationAgentBase",
+        "workflow_optimization_specialist": "symphainy_platform.civic_systems.agentic.agents.workflow_optimization_specialist.WorkflowOptimizationSpecialist",
+    })
     
     def __post_init__(self):
         self._logger = get_logger("AgentService")
+        self._instantiated_agents: Dict[str, Any] = {}
+    
+    def _ensure_registry(self):
+        """Ensure agent registry is initialized."""
+        if not self._agent_registry:
+            from symphainy_platform.civic_systems.agentic.agent_registry import AgentRegistry
+            self._agent_registry = AgentRegistry()
+    
+    def _lazy_instantiate_agent(self, agent_id: str) -> Optional[Any]:
+        """
+        Lazily instantiate an agent by ID.
+        
+        Args:
+            agent_id: Agent identifier
+        
+        Returns:
+            Agent instance or None if not found
+        """
+        # Check if already instantiated
+        if agent_id in self._instantiated_agents:
+            return self._instantiated_agents[agent_id]
+        
+        # Check if we know how to create this agent
+        agent_class_path = self._AGENT_CLASSES.get(agent_id)
+        if not agent_class_path:
+            self._logger.warning(f"Unknown agent ID: {agent_id}")
+            return None
+        
+        try:
+            # Import the agent class
+            module_path, class_name = agent_class_path.rsplit(".", 1)
+            import importlib
+            module = importlib.import_module(module_path)
+            agent_class = getattr(module, class_name)
+            
+            # Instantiate the agent
+            agent = agent_class(
+                agent_id=agent_id,
+                public_works=self._public_works
+            )
+            
+            # Cache for future use
+            self._instantiated_agents[agent_id] = agent
+            
+            # Register in registry if available
+            self._ensure_registry()
+            if self._agent_registry:
+                # Use sync registration since we're in a sync context
+                # The agent will be available for future lookups
+                self._agent_registry._agents[agent_id] = agent
+            
+            self._logger.info(f"✅ Lazy-instantiated agent: {agent_id}")
+            return agent
+            
+        except Exception as e:
+            self._logger.error(f"Failed to instantiate agent {agent_id}: {e}", exc_info=True)
+            return None
     
     def get(self, agent_id: str) -> Optional[Any]:
         """
-        Get an agent by ID.
+        Get an agent by ID (with lazy instantiation).
         
         Args:
             agent_id: Agent identifier
@@ -189,10 +278,16 @@ class AgentService:
         Returns:
             Agent instance or None
         """
-        if not self._agent_registry:
-            raise RuntimeError("AgentRegistry not available. Check AgentService initialization.")
+        self._ensure_registry()
         
-        return self._agent_registry.get_agent(agent_id)
+        # Try to get from registry first
+        agent = self._agent_registry.get_agent(agent_id) if self._agent_registry else None
+        
+        # If not found, try lazy instantiation
+        if not agent:
+            agent = self._lazy_instantiate_agent(agent_id)
+        
+        return agent
     
     def get_by_type(self, agent_type: str) -> Optional[Any]:
         """
@@ -379,29 +474,29 @@ class ReasoningService:
             _huggingface_adapter=getattr(public_works, 'huggingface_adapter', None) if public_works else None
         )
         
-        # Initialize Agent service
+        # Initialize Agent service with lazy instantiation support
+        # Agents are created on-demand when invoked via ctx.reasoning.agents.invoke()
         agent_registry = None
         agent_factory = None
         
         try:
             from symphainy_platform.civic_systems.agentic.agent_registry import AgentRegistry
-            # AgentRegistry is typically a singleton or provided via service factory
-            # For now, we'll create one - in production this should be injected
             agent_registry = AgentRegistry()
-            self._logger.debug("✅ AgentRegistry initialized")
+            self._logger.debug("✅ AgentRegistry initialized (empty, agents will be lazy-loaded)")
         except Exception as e:
             self._logger.warning(f"Failed to initialize AgentRegistry: {e}")
         
         try:
             from symphainy_platform.civic_systems.agentic.agent_factory import AgentFactory
-            agent_factory = AgentFactory()
+            agent_factory = AgentFactory(agent_registry=agent_registry)
             self._logger.debug("✅ AgentFactory initialized")
         except Exception as e:
             self._logger.warning(f"Failed to initialize AgentFactory: {e}")
         
         self.agents = AgentService(
             _agent_registry=agent_registry,
-            _agent_factory=agent_factory
+            _agent_factory=agent_factory,
+            _public_works=public_works  # Pass public_works for lazy agent instantiation
         )
     
     def get_available_components(self) -> Dict[str, bool]:
