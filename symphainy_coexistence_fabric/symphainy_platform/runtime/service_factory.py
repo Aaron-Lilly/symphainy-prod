@@ -206,10 +206,12 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
     except ImportError as e:
         logger.debug(f"  Legacy Content import skipped: {e}")
     
-    # Insights Realm intent services
-    logger.info("  → Registering Insights Realm intent services...")
+    # Insights Capability intent services (Platform SDK Architecture)
+    # AI-powered analysis services use ctx.reasoning.agents for real LLM analysis
+    logger.info("  → Registering Insights Capability intent services...")
+    insights_count = 0
     try:
-        from ..realms.insights.intent_services import (
+        from ..capabilities.insights.intent_services import (
             AssessDataQualityService,
             InterpretDataSelfDiscoveryService,
             InterpretDataGuidedService,
@@ -220,19 +222,23 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
         )
         
         insights_services = [
+            # Data Quality
             ("assess_data_quality", AssessDataQualityService),
+            # AI-powered Interpretation (uses real agents)
             ("interpret_data_self_discovery", InterpretDataSelfDiscoveryService),
             ("interpret_data_guided", InterpretDataGuidedService),
+            # Analysis
             ("analyze_structured_data", AnalyzeStructuredDataService),
             ("analyze_unstructured_data", AnalyzeUnstructuredDataService),
+            # Visualization
             ("visualize_lineage", VisualizeLineageService),
             ("map_relationships", MapRelationshipsService),
         ]
         
         insights_count = sum(1 for intent, svc in insights_services if register_intent_service(intent, svc, "insights"))
-        logger.info(f"  ✅ Insights Realm: {insights_count} intent services registered")
+        logger.info(f"  ✅ Insights Capability: {insights_count} intent services registered")
     except ImportError as e:
-        logger.warning(f"  ⚠️ Insights Realm import error: {e}")
+        logger.warning(f"  ⚠️ Insights Capability import error: {e}")
         insights_count = 0
     
     # Operations Realm intent services
