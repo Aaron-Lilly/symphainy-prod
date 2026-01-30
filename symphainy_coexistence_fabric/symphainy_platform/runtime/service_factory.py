@@ -355,36 +355,49 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
         logger.warning(f"  ⚠️ Control Tower Realm import error: {e}")
         control_tower_count = 0
     
-    # Coexistence Realm intent services
-    logger.info("  → Registering Coexistence Realm intent services...")
+    # Coexistence Capability intent services (Platform SDK Architecture)
+    # KEY: Agent services now use REAL agents via ctx.reasoning.agents.invoke()
+    logger.info("  → Registering Coexistence Capability intent services...")
+    coexistence_count = 0
     try:
-        from ..realms.coexistence.intent_services import (
-            IntroducePlatformService,
-            ShowSolutionCatalogService,
-            NavigateToSolutionService,
+        from ..capabilities.coexistence.intent_services import (
             InitiateGuideAgentService,
+            IntroducePlatformService,
+            ListAvailableMCPToolsService,
+            NavigateToSolutionService,
             ProcessGuideAgentMessageService,
             RouteToLiaisonAgentService,
-            ListAvailableMCPToolsService,
-            CallOrchestratorMCPToolService
+            ShowSolutionCatalogService
         )
         
         coexistence_services = [
+            # Introduction
             ("introduce_platform", IntroducePlatformService),
             ("show_solution_catalog", ShowSolutionCatalogService),
+            # Navigation
             ("navigate_to_solution", NavigateToSolutionService),
+            # Guide Agent (REAL AI via ctx.reasoning)
             ("initiate_guide_agent", InitiateGuideAgentService),
             ("process_guide_agent_message", ProcessGuideAgentMessageService),
+            # Liaison Agent
             ("route_to_liaison_agent", RouteToLiaisonAgentService),
+            # MCP Tool Orchestration
             ("list_available_mcp_tools", ListAvailableMCPToolsService),
-            ("call_orchestrator_mcp_tool", CallOrchestratorMCPToolService),
         ]
         
         coexistence_count = sum(1 for intent, svc in coexistence_services if register_intent_service(intent, svc, "coexistence"))
-        logger.info(f"  ✅ Coexistence Realm: {coexistence_count} intent services registered")
+        logger.info(f"  ✅ Coexistence Capability: {coexistence_count} intent services registered (using REAL agents)")
     except ImportError as e:
-        logger.warning(f"  ⚠️ Coexistence Realm import error: {e}")
+        logger.warning(f"  ⚠️ Coexistence Capability import error: {e}")
         coexistence_count = 0
+    
+    # Legacy: call_orchestrator_mcp_tool (not yet rebuilt)
+    try:
+        from ..realms.coexistence.intent_services import CallOrchestratorMCPToolService
+        if register_intent_service("call_orchestrator_mcp_tool", CallOrchestratorMCPToolService, "coexistence"):
+            coexistence_count += 1
+    except ImportError:
+        pass
     
     total_handlers = content_count + legacy_content_count + insights_count + operations_count + outcomes_count + security_count + control_tower_count + coexistence_count
     logger.info(f"  ✅ IntentRegistry created with {total_handlers} intent services across all realms")
