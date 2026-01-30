@@ -190,6 +190,7 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
     new_content_count = 0
     try:
         from ..capabilities.content.intent_services import (
+            CreateDeterministicEmbeddingsService as NewCreateDeterministicEmbeddingsService,
             EchoService,
             IngestFileService as NewIngestFileService,
             ParseContentService as NewParseContentService
@@ -201,6 +202,7 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
             # Once validated, these will replace the legacy registrations
             ("ingest_file_v2", NewIngestFileService),
             ("parse_content_v2", NewParseContentService),
+            ("create_deterministic_embeddings_v2", NewCreateDeterministicEmbeddingsService),
         ]
         
         new_content_count = sum(1 for intent, svc in new_content_services if register_intent_service(intent, svc, "content"))

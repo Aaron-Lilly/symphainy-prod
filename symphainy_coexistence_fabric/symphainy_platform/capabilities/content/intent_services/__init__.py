@@ -12,14 +12,17 @@ Architecture:
 Rebuilt Services:
     - IngestFileService: Ingests files using ctx.platform.ingest_file()
     - ParseContentService: Parses uploaded files using ctx.platform.parse()
+    - CreateDeterministicEmbeddingsService: Creates schema fingerprints via ctx.platform
     - EchoService: Test service for platform wiring validation
 """
 
+from .create_deterministic_embeddings_service import CreateDeterministicEmbeddingsService
 from .echo_service import EchoService
 from .ingest_file_service import IngestFileService
 from .parse_content_service import ParseContentService
 
 __all__ = [
+    "CreateDeterministicEmbeddingsService",
     "EchoService",
     "IngestFileService",
     "ParseContentService",

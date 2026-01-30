@@ -293,6 +293,64 @@ class PlatformService:
             opts["copybook_reference"] = copybook_reference
         return await self.parse(file_reference, "mainframe", opts)
     
+    async def get_parsed_file(
+        self,
+        parsed_file_id: str,
+        tenant_id: str,
+        session_id: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get parsed file content by ID.
+        
+        Retrieves previously parsed content for further processing
+        (e.g., for creating deterministic embeddings).
+        
+        Args:
+            parsed_file_id: Parsed file identifier
+            tenant_id: Tenant identifier
+            session_id: Optional session identifier
+        
+        Returns:
+            Parsed content dict or None if not found
+        """
+        try:
+            # Use FileParserService from libraries
+            from symphainy_platform.foundations.libraries.parsing.file_parser_service import (
+                FileParserService
+            )
+            
+            service = FileParserService(public_works=self._public_works)
+            
+            # Create minimal context
+            from symphainy_platform.runtime.execution_context import ExecutionContext
+            from symphainy_platform.runtime.intent_model import Intent
+            from utilities import generate_event_id
+            
+            minimal_intent = Intent(
+                intent_type="get_parsed_file",
+                tenant_id=tenant_id,
+                session_id=session_id or "platform_sdk",
+                solution_id="platform_sdk",
+                parameters={"parsed_file_id": parsed_file_id}
+            )
+            
+            minimal_context = ExecutionContext(
+                execution_id=generate_event_id(),
+                intent=minimal_intent,
+                tenant_id=tenant_id,
+                session_id=session_id or "platform_sdk",
+                solution_id="platform_sdk"
+            )
+            
+            return await service.get_parsed_file(
+                parsed_file_id=parsed_file_id,
+                tenant_id=tenant_id,
+                context=minimal_context
+            )
+        except Exception as e:
+            self._logger.error(f"Failed to get parsed file: {e}")
+            return None
+    
     # ========================================================================
     # VISUALIZATION OPERATIONS
     # ========================================================================
@@ -348,7 +406,7 @@ class PlatformService:
         options: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Generate embeddings for content.
+        Generate semantic embeddings for content.
         
         Args:
             content: Text content to embed
@@ -380,6 +438,114 @@ class PlatformService:
                 "error": str(e),
                 "status": "failed"
             }
+    
+    async def create_deterministic_embeddings(
+        self,
+        parsed_file_id: str,
+        parsed_content: Dict[str, Any],
+        tenant_id: str,
+        session_id: str
+    ) -> Dict[str, Any]:
+        """
+        Create deterministic embeddings (schema fingerprints + pattern signatures).
+        
+        Deterministic embeddings capture structural patterns (schema) rather than
+        semantic meaning. They are idempotent - same input always produces same output.
+        
+        Args:
+            parsed_file_id: Parsed file identifier
+            parsed_content: Parsed file content
+            tenant_id: Tenant identifier
+            session_id: Session identifier
+        
+        Returns:
+            Dict with:
+                - deterministic_embedding_id: Embedding identifier
+                - schema_fingerprint: Hash of column structure
+                - pattern_signature: Statistical signature of data patterns
+                - schema: Extracted schema
+                - status: "success" or "failed"
+        """
+        try:
+            # Use DeterministicEmbeddingService from libraries
+            from symphainy_platform.foundations.libraries.embeddings.deterministic_embedding_service import (
+                DeterministicEmbeddingService
+            )
+            
+            # Create service with our public_works
+            service = DeterministicEmbeddingService(public_works=self._public_works)
+            
+            # Create a minimal context for the service
+            # Note: The library expects ExecutionContext, but we create a minimal one
+            from symphainy_platform.runtime.execution_context import ExecutionContext
+            from symphainy_platform.runtime.intent_model import Intent
+            
+            minimal_intent = Intent(
+                intent_type="create_deterministic_embeddings",
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id="platform_sdk",
+                parameters={"parsed_file_id": parsed_file_id}
+            )
+            
+            from utilities import generate_event_id
+            minimal_context = ExecutionContext(
+                execution_id=generate_event_id(),
+                intent=minimal_intent,
+                tenant_id=tenant_id,
+                session_id=session_id,
+                solution_id="platform_sdk"
+            )
+            
+            # Create deterministic embeddings
+            result = await service.create_deterministic_embeddings(
+                parsed_file_id=parsed_file_id,
+                parsed_content=parsed_content,
+                context=minimal_context
+            )
+            
+            return {
+                "deterministic_embedding_id": result.get("deterministic_embedding_id"),
+                "schema_fingerprint": result.get("schema_fingerprint"),
+                "pattern_signature": result.get("pattern_signature"),
+                "schema": result.get("schema"),
+                "status": "success"
+            }
+        except Exception as e:
+            self._logger.error(f"Deterministic embedding creation failed: {e}")
+            return {
+                "error": str(e),
+                "status": "failed"
+            }
+    
+    async def get_deterministic_embedding(
+        self,
+        embedding_id: str,
+        tenant_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get deterministic embedding by ID.
+        
+        Args:
+            embedding_id: Deterministic embedding identifier
+            tenant_id: Tenant identifier
+        
+        Returns:
+            Embedding data or None if not found
+        """
+        if not self._deterministic_compute:
+            self._logger.warning("DeterministicComputeAbstraction not available")
+            return None
+        
+        try:
+            embedding = await self._deterministic_compute.get_deterministic_embedding(
+                embedding_id=embedding_id,
+                tenant_id=tenant_id
+            )
+            return embedding
+        except Exception as e:
+            self._logger.error(f"Failed to get deterministic embedding: {e}")
+            return None
     
     # ========================================================================
     # INGESTION OPERATIONS
