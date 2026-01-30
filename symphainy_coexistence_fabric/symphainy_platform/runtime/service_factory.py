@@ -289,33 +289,37 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
         logger.warning(f"  ⚠️ Outcomes Realm import error: {e}")
         outcomes_count = 0
     
-    # Security Realm intent services
-    logger.info("  → Registering Security Realm intent services...")
+    # Security Capability intent services (Platform SDK Architecture)
+    logger.info("  → Registering Security Capability intent services...")
+    security_count = 0
     try:
-        from ..realms.security.intent_services import (
+        from ..capabilities.security.intent_services import (
             AuthenticateUserService,
-            CreateUserAccountService,
-            CreateSessionService,
-            ValidateAuthorizationService,
-            TerminateSessionService,
             CheckEmailAvailabilityService,
+            CreateSessionService,
+            CreateUserAccountService,
+            TerminateSessionService,
+            ValidateAuthorizationService,
             ValidateTokenService
         )
         
         security_services = [
+            # Authentication
             ("authenticate_user", AuthenticateUserService),
+            ("validate_token", ValidateTokenService),
+            # Registration
             ("create_user_account", CreateUserAccountService),
+            ("check_email_availability", CheckEmailAvailabilityService),
+            # Session Management
             ("create_session", CreateSessionService),
             ("validate_authorization", ValidateAuthorizationService),
             ("terminate_session", TerminateSessionService),
-            ("check_email_availability", CheckEmailAvailabilityService),
-            ("validate_token", ValidateTokenService),
         ]
         
         security_count = sum(1 for intent, svc in security_services if register_intent_service(intent, svc, "security"))
-        logger.info(f"  ✅ Security Realm: {security_count} intent services registered")
+        logger.info(f"  ✅ Security Capability: {security_count} intent services registered")
     except ImportError as e:
-        logger.warning(f"  ⚠️ Security Realm import error: {e}")
+        logger.warning(f"  ⚠️ Security Capability import error: {e}")
         security_count = 0
     
     # Control Tower Realm intent services
