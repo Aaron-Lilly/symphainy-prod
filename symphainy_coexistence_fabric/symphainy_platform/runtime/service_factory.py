@@ -241,58 +241,67 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
         logger.warning(f"  ⚠️ Insights Capability import error: {e}")
         insights_count = 0
     
-    # Operations Realm intent services
-    logger.info("  → Registering Operations Realm intent services...")
+    # Operations Capability intent services (Platform SDK Architecture)
+    # SOP and workflow services use real agents for AI generation
+    logger.info("  → Registering Operations Capability intent services...")
+    operations_count = 0
     try:
-        from ..realms.operations.intent_services import (
-            OptimizeProcessService,
+        from ..capabilities.operations.intent_services import (
             GenerateSOPService,
-            CreateWorkflowService,
-            AnalyzeCoexistenceService,
             GenerateSOPFromChatService,
-            SOPChatMessageService
+            SOPChatMessageService,
+            CreateWorkflowService,
+            OptimizeProcessService,
+            AnalyzeCoexistenceService
         )
         
         operations_services = [
-            ("optimize_process", OptimizeProcessService),
+            # SOP Generation (AI via SOPGenerationAgent)
             ("generate_sop", GenerateSOPService),
-            ("create_workflow", CreateWorkflowService),
-            ("analyze_coexistence", AnalyzeCoexistenceService),
             ("generate_sop_from_chat", GenerateSOPFromChatService),
             ("sop_chat_message", SOPChatMessageService),
+            # Workflow Management (AI via WorkflowOptimizationAgent)
+            ("create_workflow", CreateWorkflowService),
+            ("optimize_process", OptimizeProcessService),
+            # Coexistence Analysis (AI via CoexistenceAnalysisAgent)
+            ("analyze_coexistence", AnalyzeCoexistenceService),
         ]
         
         operations_count = sum(1 for intent, svc in operations_services if register_intent_service(intent, svc, "operations"))
-        logger.info(f"  ✅ Operations Realm: {operations_count} intent services registered")
+        logger.info(f"  ✅ Operations Capability: {operations_count} intent services registered")
     except ImportError as e:
-        logger.warning(f"  ⚠️ Operations Realm import error: {e}")
+        logger.warning(f"  ⚠️ Operations Capability import error: {e}")
         operations_count = 0
     
-    # Outcomes Realm intent services
-    logger.info("  → Registering Outcomes Realm intent services...")
+    # Outcomes Capability intent services (Platform SDK Architecture)
+    # Strategic synthesis services use real agents for AI generation
+    logger.info("  → Registering Outcomes Capability intent services...")
+    outcomes_count = 0
     try:
-        from ..realms.outcomes.intent_services import (
+        from ..capabilities.outcomes.intent_services import (
             SynthesizeOutcomeService,
             GenerateRoadmapService,
             CreatePOCService,
             CreateBlueprintService,
-            CreateSolutionService,
-            ExportArtifactService
+            ExportArtifactService,
+            CreateSolutionService
         )
         
         outcomes_services = [
+            # Synthesis (AI via respective agents)
             ("synthesize_outcome", SynthesizeOutcomeService),
             ("generate_roadmap", GenerateRoadmapService),
             ("create_poc", CreatePOCService),
             ("create_blueprint", CreateBlueprintService),
-            ("create_solution", CreateSolutionService),
+            # Export & Solution Creation
             ("export_artifact", ExportArtifactService),
+            ("create_solution", CreateSolutionService),
         ]
         
         outcomes_count = sum(1 for intent, svc in outcomes_services if register_intent_service(intent, svc, "outcomes"))
-        logger.info(f"  ✅ Outcomes Realm: {outcomes_count} intent services registered")
+        logger.info(f"  ✅ Outcomes Capability: {outcomes_count} intent services registered")
     except ImportError as e:
-        logger.warning(f"  ⚠️ Outcomes Realm import error: {e}")
+        logger.warning(f"  ⚠️ Outcomes Capability import error: {e}")
         outcomes_count = 0
     
     # Security Capability intent services (Platform SDK Architecture)
@@ -328,37 +337,41 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
         logger.warning(f"  ⚠️ Security Capability import error: {e}")
         security_count = 0
     
-    # Control Tower Realm intent services
-    logger.info("  → Registering Control Tower Realm intent services...")
+    # Control Tower Capability intent services (Platform SDK Architecture)
+    logger.info("  → Registering Control Tower Capability intent services...")
+    control_tower_count = 0
     try:
-        from ..realms.control_tower.intent_services import (
+        from ..capabilities.control_tower.intent_services import (
             GetPlatformStatisticsService,
             GetSystemHealthService,
             GetRealmHealthService,
             ListSolutionsService,
             GetSolutionStatusService,
+            ValidateSolutionService,
             GetPatternsService,
             GetCodeExamplesService,
-            GetDocumentationService,
-            ValidateSolutionService
+            GetDocumentationService
         )
         
         control_tower_services = [
+            # Platform Monitoring
             ("get_platform_statistics", GetPlatformStatisticsService),
             ("get_system_health", GetSystemHealthService),
             ("get_realm_health", GetRealmHealthService),
+            # Solution Management
             ("list_solutions", ListSolutionsService),
             ("get_solution_status", GetSolutionStatusService),
+            ("validate_solution", ValidateSolutionService),
+            # Developer Documentation
             ("get_patterns", GetPatternsService),
             ("get_code_examples", GetCodeExamplesService),
             ("get_documentation", GetDocumentationService),
-            ("validate_solution", ValidateSolutionService),
         ]
         
         control_tower_count = sum(1 for intent, svc in control_tower_services if register_intent_service(intent, svc, "control_tower"))
-        logger.info(f"  ✅ Control Tower Realm: {control_tower_count} intent services registered")
+        logger.info(f"  ✅ Control Tower Capability: {control_tower_count} intent services registered")
     except ImportError as e:
-        logger.warning(f"  ⚠️ Control Tower Realm import error: {e}")
+        logger.warning(f"  ⚠️ Control Tower Capability import error: {e}")
         control_tower_count = 0
     
     # Coexistence Capability intent services (Platform SDK Architecture)
