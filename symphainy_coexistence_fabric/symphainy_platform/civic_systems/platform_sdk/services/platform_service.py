@@ -603,3 +603,125 @@ class PlatformService:
             "store_artifact": self._artifact_storage is not None,
             "semantic": self._semantic_data is not None,
         }
+    
+    # ========================================================================
+    # REGISTRY ACCESS (Interim - for pending intents and lineage tracking)
+    # ========================================================================
+    # NOTE: These methods expose registry_abstraction for capability implementations
+    # that need pending intent and lineage tracking. In future, these should move
+    # to appropriate SDK (likely Data Steward for lineage, or new Intent Management).
+    
+    @property
+    def registry(self) -> Optional[Any]:
+        """
+        Access registry abstraction (interim).
+        
+        Used for:
+        - get_file_metadata
+        - get_pending_intents
+        - track_parsed_result
+        - update_intent_status
+        
+        NOTE: These operations should eventually move to appropriate SDKs.
+        """
+        if self._public_works:
+            return getattr(self._public_works, 'registry_abstraction', None)
+        return None
+    
+    async def get_file_metadata(
+        self,
+        file_id: str,
+        tenant_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Get file metadata from registry."""
+        registry = self.registry
+        if not registry:
+            return None
+        
+        try:
+            return await registry.get_file_metadata(
+                file_id=file_id,
+                tenant_id=tenant_id
+            )
+        except Exception as e:
+            self._logger.warning(f"Failed to get file metadata: {e}")
+            return None
+    
+    async def get_pending_intents(
+        self,
+        tenant_id: str,
+        target_artifact_id: str,
+        intent_type: str
+    ) -> List[Dict[str, Any]]:
+        """Get pending intents for artifact."""
+        registry = self.registry
+        if not registry:
+            return []
+        
+        try:
+            return await registry.get_pending_intents(
+                tenant_id=tenant_id,
+                target_artifact_id=target_artifact_id,
+                intent_type=intent_type
+            )
+        except Exception as e:
+            self._logger.warning(f"Failed to get pending intents: {e}")
+            return []
+    
+    async def update_intent_status(
+        self,
+        intent_id: str,
+        status: str,
+        tenant_id: str,
+        execution_id: str
+    ) -> bool:
+        """Update pending intent status."""
+        registry = self.registry
+        if not registry:
+            return False
+        
+        try:
+            await registry.update_intent_status(
+                intent_id=intent_id,
+                status=status,
+                tenant_id=tenant_id,
+                execution_id=execution_id
+            )
+            return True
+        except Exception as e:
+            self._logger.warning(f"Failed to update intent status: {e}")
+            return False
+    
+    async def track_parsed_result(
+        self,
+        parsed_file_id: str,
+        file_id: str,
+        parsed_file_reference: str,
+        parser_type: str,
+        parser_config: Dict[str, Any],
+        record_count: Optional[int],
+        status: str,
+        tenant_id: str,
+        session_id: str
+    ) -> bool:
+        """Track parsed result for lineage."""
+        registry = self.registry
+        if not registry:
+            return False
+        
+        try:
+            await registry.track_parsed_result(
+                parsed_file_id=parsed_file_id,
+                file_id=file_id,
+                parsed_file_reference=parsed_file_reference,
+                parser_type=parser_type,
+                parser_config=parser_config,
+                record_count=record_count,
+                status=status,
+                tenant_id=tenant_id,
+                session_id=session_id
+            )
+            return True
+        except Exception as e:
+            self._logger.warning(f"Failed to track parsed result: {e}")
+            return False

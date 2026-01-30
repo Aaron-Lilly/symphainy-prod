@@ -8,13 +8,15 @@ Architecture:
     - Services extend PlatformIntentService
     - Services receive PlatformContext (ctx) at execute time
     - Services access platform via ctx.platform, ctx.governance, ctx.reasoning
+
+Rebuilt Services:
+    - ParseContentService: Parses uploaded files using ctx.platform.parse()
 """
 
-# Intent services will be added here as capabilities are rebuilt
-# For now, we start with a test service to validate the wiring
-
 from .echo_service import EchoService
+from .parse_content_service import ParseContentService
 
 __all__ = [
     "EchoService",
+    "ParseContentService",
 ]

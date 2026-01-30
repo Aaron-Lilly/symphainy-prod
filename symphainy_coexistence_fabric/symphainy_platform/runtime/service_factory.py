@@ -189,10 +189,13 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
     logger.info("  → Registering Content Capability intent services (new architecture)...")
     new_content_count = 0
     try:
-        from ..capabilities.content.intent_services import EchoService
+        from ..capabilities.content.intent_services import EchoService, ParseContentService as NewParseContentService
         
         new_content_services = [
             ("echo", EchoService),
+            # Register new ParseContentService as "parse_content_v2" for side-by-side testing
+            # Once validated, this will replace the legacy "parse_content" registration
+            ("parse_content_v2", NewParseContentService),
         ]
         
         new_content_count = sum(1 for intent, svc in new_content_services if register_intent_service(intent, svc, "content"))
