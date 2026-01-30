@@ -9,10 +9,14 @@ Operations:
         - parse(file_reference, file_type, options) → Parse documents
         - parse_csv, parse_pdf, parse_excel, parse_word, parse_mainframe
     
+    Ingestion:
+        - ingest_file(file_data, ...) → Ingest uploaded files
+        - ingest_edi(edi_data, partner_id, ...) → Ingest EDI data
+        - ingest_api(api_payload, ...) → Ingest API payloads
+    
     Processing:
         - visualize(data, viz_type, options) → Generate visualizations
         - embed(content, model) → Generate embeddings
-        - ingest(source, source_type, options) → Ingest data
     
     Storage:
         - store_artifact(artifact_id, data, ...) → Store artifacts
@@ -26,6 +30,9 @@ Operations:
         - track_parsed_result(...) → Track parsing lineage
 
 Usage:
+    # Ingest a file
+    result = await ctx.platform.ingest_file(file_bytes, tenant_id, session_id, metadata)
+    
     # Parse a PDF
     result = await ctx.platform.parse(file_ref, file_type="pdf")
     
@@ -34,9 +41,6 @@ Usage:
     
     # Get pending intents for a file
     pending = await ctx.platform.get_pending_intents(tenant_id, file_id, "parse_content")
-    
-    # Track lineage
-    await ctx.platform.track_parsed_result(parsed_id, file_id, ...)
 """
 
 from dataclasses import dataclass, field
@@ -381,6 +385,216 @@ class PlatformService:
     # INGESTION OPERATIONS
     # ========================================================================
     
+    async def ingest_file(
+        self,
+        file_data: bytes,
+        tenant_id: str,
+        session_id: str,
+        source_metadata: Dict[str, Any],
+        options: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Ingest a file (upload type).
+        
+        Primary file ingestion method for direct uploads.
+        
+        Args:
+            file_data: File content as bytes
+            tenant_id: Tenant identifier
+            session_id: Session identifier
+            source_metadata: File metadata (ui_name, file_type, mime_type, etc.)
+            options: Ingestion options
+        
+        Returns:
+            Dict with:
+                - success: bool
+                - file_id: Artifact ID
+                - file_reference: State Surface reference
+                - storage_location: Where file is stored
+                - ingestion_metadata: Additional metadata
+                - status: "success" or "failed"
+                - error: Error message if failed
+        """
+        from symphainy_platform.foundations.public_works.protocols.ingestion_protocol import (
+            IngestionRequest as FullIngestionRequest,
+            IngestionType
+        )
+        
+        if not self._ingestion:
+            raise RuntimeError("IngestionAbstraction not available.")
+        
+        try:
+            request = FullIngestionRequest(
+                ingestion_type=IngestionType.UPLOAD,
+                tenant_id=tenant_id,
+                session_id=session_id,
+                source_metadata=source_metadata,
+                data=file_data,
+                options=options or {}
+            )
+            
+            result = await self._ingestion.ingest_data(request)
+            
+            if not result.success:
+                return {
+                    "success": False,
+                    "error": result.error,
+                    "status": "failed"
+                }
+            
+            return {
+                "success": True,
+                "file_id": result.file_id,
+                "file_reference": result.file_reference,
+                "storage_location": result.storage_location,
+                "ingestion_metadata": result.ingestion_metadata,
+                "status": "success"
+            }
+        except Exception as e:
+            self._logger.error(f"File ingestion failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "status": "failed"
+            }
+    
+    async def ingest_edi(
+        self,
+        edi_data: bytes,
+        tenant_id: str,
+        session_id: str,
+        partner_id: str,
+        source_metadata: Dict[str, Any],
+        options: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Ingest EDI data.
+        
+        Handles EDI protocol ingestion (AS2, SFTP, etc.).
+        
+        Args:
+            edi_data: EDI content as bytes
+            tenant_id: Tenant identifier
+            session_id: Session identifier
+            partner_id: Trading partner identifier
+            source_metadata: EDI metadata
+            options: Ingestion options
+        
+        Returns:
+            Dict with ingestion result
+        """
+        from symphainy_platform.foundations.public_works.protocols.ingestion_protocol import (
+            IngestionRequest as FullIngestionRequest,
+            IngestionType
+        )
+        
+        if not self._ingestion:
+            raise RuntimeError("IngestionAbstraction not available.")
+        
+        try:
+            # Add partner_id to metadata
+            metadata = {**source_metadata, "partner_id": partner_id}
+            
+            request = FullIngestionRequest(
+                ingestion_type=IngestionType.EDI,
+                tenant_id=tenant_id,
+                session_id=session_id,
+                source_metadata=metadata,
+                data=edi_data,
+                options=options or {}
+            )
+            
+            result = await self._ingestion.ingest_data(request)
+            
+            if not result.success:
+                return {
+                    "success": False,
+                    "error": result.error,
+                    "status": "failed"
+                }
+            
+            return {
+                "success": True,
+                "file_id": result.file_id,
+                "file_reference": result.file_reference,
+                "storage_location": result.storage_location,
+                "ingestion_metadata": result.ingestion_metadata,
+                "status": "success"
+            }
+        except Exception as e:
+            self._logger.error(f"EDI ingestion failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "status": "failed"
+            }
+    
+    async def ingest_api(
+        self,
+        api_payload: Dict[str, Any],
+        tenant_id: str,
+        session_id: str,
+        source_metadata: Dict[str, Any],
+        options: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Ingest API payload.
+        
+        Handles REST/GraphQL API payload ingestion.
+        
+        Args:
+            api_payload: API payload data
+            tenant_id: Tenant identifier
+            session_id: Session identifier
+            source_metadata: API metadata (endpoint, api_type, etc.)
+            options: Ingestion options
+        
+        Returns:
+            Dict with ingestion result
+        """
+        from symphainy_platform.foundations.public_works.protocols.ingestion_protocol import (
+            IngestionRequest as FullIngestionRequest,
+            IngestionType
+        )
+        
+        if not self._ingestion:
+            raise RuntimeError("IngestionAbstraction not available.")
+        
+        try:
+            request = FullIngestionRequest(
+                ingestion_type=IngestionType.API,
+                tenant_id=tenant_id,
+                session_id=session_id,
+                source_metadata=source_metadata,
+                api_payload=api_payload,
+                options=options or {}
+            )
+            
+            result = await self._ingestion.ingest_data(request)
+            
+            if not result.success:
+                return {
+                    "success": False,
+                    "error": result.error,
+                    "status": "failed"
+                }
+            
+            return {
+                "success": True,
+                "file_id": result.file_id,
+                "file_reference": result.file_reference,
+                "storage_location": result.storage_location,
+                "ingestion_metadata": result.ingestion_metadata,
+                "status": "success"
+            }
+        except Exception as e:
+            self._logger.error(f"API ingestion failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "status": "failed"
+            }
+    
     async def ingest(
         self,
         source: str,
@@ -390,11 +604,16 @@ class PlatformService:
         options: Optional[Dict[str, Any]] = None
     ) -> Dict[str, Any]:
         """
-        Ingest data from a source.
+        Generic ingest operation (legacy compatibility).
+        
+        For new code, prefer the specific methods:
+        - ingest_file() for uploads
+        - ingest_edi() for EDI
+        - ingest_api() for API payloads
         
         Args:
-            source: Source identifier (file path, API endpoint, etc.)
-            source_type: Type of source ("file", "api", "edi", etc.)
+            source: Source identifier
+            source_type: Type of source
             tenant_id: Tenant identifier
             session_id: Session identifier
             options: Ingestion options
@@ -406,15 +625,14 @@ class PlatformService:
             raise RuntimeError("IngestionAbstraction not available.")
         
         try:
-            request = IngestionRequest(
+            # Use simplified request for generic ingest
+            result = await self._ingestion.ingest(
                 source=source,
                 source_type=source_type,
                 tenant_id=tenant_id,
                 session_id=session_id,
                 options=options or {}
             )
-            
-            result = await self._ingestion.ingest(request)
             
             return {
                 "source": source,
@@ -616,8 +834,12 @@ class PlatformService:
             "visualize": self._visual_generation is not None,
             "embed": self._deterministic_compute is not None,
             "ingest": self._ingestion is not None,
+            "ingest_file": self._ingestion is not None,
+            "ingest_edi": self._ingestion is not None,
+            "ingest_api": self._ingestion is not None,
             "store_artifact": self._artifact_storage is not None,
             "semantic": self._semantic_data is not None,
+            "registry": self.registry is not None,
         }
     
     # ========================================================================
