@@ -245,28 +245,27 @@ class ControlRoomService:
         return {"status": "unknown", "available": False}
     
     async def _get_infrastructure_health(self) -> Dict[str, Any]:
-        """Get infrastructure health status."""
-        if not self.public_works:
-            return {"status": "unknown"}
-        
-        # Check Public Works adapters
+        """Get infrastructure health from genesis/pre-boot status (no direct adapter access)."""
+        try:
+            from symphainy_platform.bootstrap.pre_boot import get_pre_boot_status
+            status = get_pre_boot_status()
+        except ImportError:
+            return {"status": "unknown", "adapters": {}, "reason": "pre_boot not available"}
+        if not status or status.get("status") != "passed":
+            return {
+                "status": "unknown",
+                "adapters": {},
+                "reason": "pre-boot not yet run or did not pass",
+            }
+        # Build adapters_health from services_validated (genesis protocol status)
         adapters_health = {}
-        
-        # Check ArangoDB
-        if hasattr(self.public_works, 'arango_adapter') and self.public_works.arango_adapter:
-            adapters_health["arango"] = {"status": "healthy"}  # TODO: Actual health check
-        
-        # Check Redis
-        if hasattr(self.public_works, 'redis_adapter') and self.public_works.redis_adapter:
-            adapters_health["redis"] = {"status": "healthy"}  # TODO: Actual health check
-        
-        # Check GCS
-        if hasattr(self.public_works, 'gcs_adapter') and self.public_works.gcs_adapter:
-            adapters_health["gcs"] = {"status": "healthy"}  # TODO: Actual health check
-        
+        for svc in status.get("services_validated", []):
+            adapters_health[svc] = {"status": "healthy"}
+        if status.get("telemetry") == "checked":
+            adapters_health["telemetry"] = {"status": "healthy"}
         return {
             "adapters": adapters_health,
-            "status": "healthy" if adapters_health else "unknown"
+            "status": "healthy" if adapters_health else "unknown",
         }
     
     async def _get_system_health(self) -> Dict[str, Any]:

@@ -11,6 +11,13 @@ Downstream (e.g. Public Works) consumes only the config produced by Layer 1.
 from .platform_config import load_platform_config, acquire_env, build_canonical_config
 from .pre_boot import pre_boot_validate
 from .repo_root import get_repo_root
+from .lifecycle_hooks import (
+    startup_begin,
+    startup_complete,
+    shutdown_begin,
+    shutdown_complete,
+    crash_detected,
+)
 
 __all__ = [
     "load_platform_config",
@@ -18,4 +25,9 @@ __all__ = [
     "build_canonical_config",
     "pre_boot_validate",
     "get_repo_root",
+    "startup_begin",
+    "startup_complete",
+    "shutdown_begin",
+    "shutdown_complete",
+    "crash_detected",
 ]

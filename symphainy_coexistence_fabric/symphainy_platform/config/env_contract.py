@@ -96,9 +96,9 @@ class EnvContract(BaseModel):
         default=3000,
         description="Grafana port"
     )
-    OTEL_EXPORTER_OTLP_ENDPOINT: str = Field(
-        default="http://localhost:4317",
-        description="OpenTelemetry exporter endpoint"
+    OTEL_EXPORTER_OTLP_ENDPOINT: Optional[str] = Field(
+        default=None,
+        description="OpenTelemetry OTLP exporter endpoint (required; validated at boot)"
     )
     
     # Logging
@@ -153,6 +153,16 @@ class EnvContract(BaseModel):
         description="Meilisearch master key"
     )
     
+    @validator("OTEL_EXPORTER_OTLP_ENDPOINT")
+    def validate_otel_endpoint(cls, v):
+        """OTEL_EXPORTER_OTLP_ENDPOINT is required and must be non-empty."""
+        if v is None or (isinstance(v, str) and not v.strip()):
+            raise ValueError(
+                "OTEL_EXPORTER_OTLP_ENDPOINT is required. "
+                "Set it to your OTLP collector URL (e.g. http://localhost:4317 or http://otel-collector:4317)."
+            )
+        return v.strip() if isinstance(v, str) else v
+
     @validator("LOG_LEVEL")
     def validate_log_level(cls, v):
         """Validate log level."""
@@ -201,7 +211,7 @@ def get_env_contract() -> EnvContract:
         TRAEFIK_DASHBOARD_PORT=int(os.getenv("TRAEFIK_DASHBOARD_PORT", "8080")),
         TEMPO_PORT=int(os.getenv("TEMPO_PORT", "3200")),
         GRAFANA_PORT=int(os.getenv("GRAFANA_PORT", "3000")),
-        OTEL_EXPORTER_OTLP_ENDPOINT=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317"),
+        OTEL_EXPORTER_OTLP_ENDPOINT=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
         LOG_LEVEL=os.getenv("LOG_LEVEL", "INFO"),
         SUPABASE_URL=os.getenv("SUPABASE_URL"),
         SUPABASE_ANON_KEY=os.getenv("SUPABASE_PUBLISHABLE_KEY"),

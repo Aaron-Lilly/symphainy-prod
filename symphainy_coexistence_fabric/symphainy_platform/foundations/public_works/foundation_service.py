@@ -40,6 +40,14 @@ from .protocols.service_discovery_protocol import ServiceDiscoveryProtocol
 from .protocols.semantic_search_protocol import SemanticSearchProtocol
 from .protocols.auth_protocol import AuthenticationProtocol, TenancyProtocol
 from .protocols.file_storage_protocol import FileStorageProtocol
+from .protocols.artifact_storage_protocol import ArtifactStorageProtocol
+from .protocols.ingestion_protocol import IngestionProtocol
+from .protocols.semantic_data_protocol import SemanticDataProtocol
+from .protocols.event_publisher_protocol import EventPublisherProtocol
+from .protocols.visual_generation_protocol import VisualGenerationProtocol
+from .protocols.deterministic_embedding_storage_protocol import DeterministicEmbeddingStorageProtocol
+from .protocols.file_parsing_protocol import FileParsingProtocol
+from .document_parsing_router import DocumentParsingRouter
 
 # Layer 0: Additional Adapters
 from .adapters.meilisearch_adapter import MeilisearchAdapter
@@ -109,6 +117,10 @@ class PublicWorksFoundationService:
         # Layer 0: DuckDB Adapter
         self.duckdb_adapter: Optional[Any] = None  # DuckDBAdapter
         
+        # Layer 0: Telemetry Adapter (OpenTelemetry)
+        self.telemetry_adapter: Optional[Any] = None  # TelemetryAdapter
+        self.telemetry_abstraction: Optional[Any] = None  # exposed as telemetry_abstraction for NurseSDK / intent services
+        
         # Layer 1: Infrastructure Abstractions
         self.state_abstraction: Optional[StateManagementAbstraction] = None
         self.service_discovery_abstraction: Optional[ServiceDiscoveryAbstraction] = None
@@ -138,6 +150,7 @@ class PublicWorksFoundationService:
         self.data_model_processing_abstraction: Optional[DataModelProcessingAbstraction] = None
         self.workflow_processing_abstraction: Optional[WorkflowProcessingAbstraction] = None
         self.sop_processing_abstraction: Optional[SopProcessingAbstraction] = None
+        self._document_parsing_router: Optional[Any] = None  # DocumentParsingRouter (P4 unified surface)
         
         # Layer 1: Ingestion Abstractions
         self.ingestion_abstraction: Optional[Any] = None  # Will import IngestionAbstraction when needed
@@ -822,6 +835,12 @@ class PublicWorksFoundationService:
         if self.consul_adapter:
             self.consul_adapter.disconnect()
         
+        if self.telemetry_adapter and hasattr(self.telemetry_adapter, "shutdown"):
+            try:
+                self.telemetry_adapter.shutdown()
+            except Exception as e:
+                self.logger.warning(f"Telemetry adapter shutdown failed: {e}")
+        
         self._initialized = False
         self.logger.info("Public Works Foundation shut down")
     
@@ -949,10 +968,18 @@ class PublicWorksFoundationService:
     def get_sop_processing_abstraction(self) -> Optional[SopProcessingAbstraction]:
         """Get SOP processing abstraction (for Markdown files)."""
         return self.sop_processing_abstraction
+
+    def get_document_parsing(self) -> Optional[FileParsingProtocol]:
+        """
+        Get unified document parsing surface (P4). Single entry point; routes by parsing_type/file_type.
+        Prefer this over format-specific get_*_processing_abstraction() for callers that want one parse API.
+        """
+        return self._document_parsing_router
     
-    def get_visual_generation_abstraction(self) -> Optional[VisualGenerationAbstraction]:
+    def get_visual_generation_abstraction(self) -> Optional[VisualGenerationProtocol]:
         """Get Visual Generation abstraction."""
         return self.visual_generation_abstraction
+    
     # ============================================================================
     # Smart City Abstraction Access Methods
     # ============================================================================
@@ -993,21 +1020,21 @@ class PublicWorksFoundationService:
         """
         return self.file_storage_abstraction
     
-    def get_ingestion_abstraction(self) -> Optional[Any]:
+    def get_ingestion_abstraction(self) -> Optional[IngestionProtocol]:
         """
         Get ingestion abstraction (for Content Realm Ingestion Service).
         
         Returns:
-            Optional[IngestionAbstraction]: Ingestion abstraction or None
+            Optional[IngestionProtocol]: Ingestion abstraction or None
         """
         return self.ingestion_abstraction
     
-    def get_semantic_data_abstraction(self) -> Optional[Any]:
+    def get_semantic_data_abstraction(self) -> Optional[SemanticDataProtocol]:
         """
         Get semantic data abstraction (for Content Realm and Insights Realm).
         
         Returns:
-            Optional[SemanticDataAbstraction]: Semantic data abstraction or None
+            Optional[SemanticDataProtocol]: Semantic data abstraction or None
         """
         return self.semantic_data_abstraction
 
@@ -1018,12 +1045,12 @@ class PublicWorksFoundationService:
         """
         return self.supabase_file_adapter
     
-    def get_event_publisher_abstraction(self) -> Optional[Any]:
+    def get_event_publisher_abstraction(self) -> Optional[EventPublisherProtocol]:
         """
         Get event publisher abstraction (for Transactional Outbox).
         
         Returns:
-            Optional[EventPublisherAbstraction]: Event publisher abstraction or None
+            Optional[EventPublisherProtocol]: Event publisher abstraction or None
         """
         return self.event_publisher_abstraction
     
@@ -1045,15 +1072,34 @@ class PublicWorksFoundationService:
         """
         return self.supabase_adapter
     
-    def get_artifact_storage_abstraction(self) -> Optional[ArtifactStorageAbstraction]:
+    def get_artifact_storage_abstraction(self) -> Optional[ArtifactStorageProtocol]:
         """
         Get Artifact Storage abstraction.
         
         Returns:
-            Optional[ArtifactStorageAbstraction]: Artifact Storage abstraction or None
+            Optional[ArtifactStorageProtocol]: Artifact Storage abstraction or None
         """
         return self.artifact_storage_abstraction
-    
+
+    def get_registry_abstraction(self) -> Optional[Any]:
+        """
+        Get registry abstraction (Supabase-backed; lineage/artifact metadata).
+        Registry protocol deferred to Curator/Phase F.
+
+        Returns:
+            Optional[RegistryAbstraction]: Registry abstraction or None
+        """
+        return self.registry_abstraction
+
+    def get_redis_adapter(self) -> Optional[Any]:
+        """
+        Get Redis adapter (for WAL / streams and state backend).
+
+        Returns:
+            Optional[RedisAdapter]: Redis adapter or None
+        """
+        return self.redis_adapter
+
     def get_state_surface(self) -> Optional[Any]:
         """
         Get State Surface (for file retrieval).
@@ -1082,3 +1128,21 @@ class PublicWorksFoundationService:
             Optional[HuggingFaceAdapter]: HuggingFace adapter or None
         """
         return self.huggingface_adapter
+    
+    def get_telemetry_abstraction(self) -> Optional[Any]:
+        """
+        Get telemetry abstraction (OpenTelemetry) for NurseSDK and intent services.
+        
+        Returns:
+            Optional[TelemetryAdapter]: Telemetry adapter exposed as abstraction, or None if not available
+        """
+        return self.telemetry_abstraction
+    
+    def get_deterministic_compute_abstraction(self) -> Optional[DeterministicEmbeddingStorageProtocol]:
+        """
+        Get deterministic embedding storage abstraction (DuckDB-backed).
+        
+        Returns:
+            Optional[DeterministicEmbeddingStorageProtocol]: Deterministic embedding storage or None
+        """
+        return self.deterministic_compute_abstraction

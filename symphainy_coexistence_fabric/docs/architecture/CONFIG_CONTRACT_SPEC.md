@@ -56,12 +56,13 @@ The canonical config is a **dict** with the following keys. Nested blocks are us
 | **meilisearch_port** | int | Meilisearch port. |
 | **meilisearch_key** | str \| None | Meilisearch API key. |
 
-### 2.3 Flat keys — server
+### 2.3 Flat keys — server and telemetry
 
 | Canonical key | Type | Purpose |
 |---------------|------|--------|
 | **runtime_port** | int | Runtime HTTP server port. |
 | **log_level** | str | Log level (e.g. INFO). |
+| **otel_exporter_otlp_endpoint** | str | OpenTelemetry OTLP exporter endpoint (required; no default; pre-boot validates presence and reachability). Must be set via `OTEL_EXPORTER_OTLP_ENDPOINT`. |
 
 ### 2.4 Optional keys (not required for G3)
 
@@ -95,6 +96,7 @@ Env must be acquired per CONFIG_ACQUISITION_SPEC before reading. Then the builde
 | **meilisearch_key** | MEILI_MASTER_KEY | None | .env.secrets or .env |
 | **runtime_port** | RUNTIME_PORT | 8000 | .env or compose |
 | **log_level** | LOG_LEVEL | INFO | .env or compose |
+| **otel_exporter_otlp_endpoint** | OTEL_EXPORTER_OTLP_ENDPOINT | **Required; no default.** Boot fails if unset or unreachable. | .env.secrets or compose |
 
 ---
 
@@ -115,7 +117,7 @@ Env must be acquired per CONFIG_ACQUISITION_SPEC before reading. Then the builde
 
 ## 6. Alignment with PLATFORM_CONTRACT
 
-- **§3 Required Infrastructure:** The seven backing services (Redis, Arango, Consul, Supabase, GCS, Meilisearch, DuckDB) each have a defined canonical key or nested block and env mapping above. Pre-boot (G3) and Public Works use these keys to connect.
+- **§3 Required Infrastructure:** The eight backing services (Redis, Arango, Consul, Supabase, GCS, Meilisearch, DuckDB, Telemetry OTLP) each have a defined canonical key or nested block and env mapping above. Pre-boot (G3) and Public Works use these keys to connect.
 - **§4 One Source of Truth:** This spec **is** that source. Env is acquired per CONFIG_ACQUISITION_SPEC; then this contract defines the single structure built from that env. All adapters are created from this config.
 
 ---

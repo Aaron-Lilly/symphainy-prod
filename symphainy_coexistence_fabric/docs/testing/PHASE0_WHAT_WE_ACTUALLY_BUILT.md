@@ -95,3 +95,5 @@
 ---
 
 *This document is evidence-only. Fix recommendation is in ARANGO_REGISTRY_ABSTRACTION_SEAM.md.*
+
+**Follow-up (Meet in the Middle Step 2):** When pre-boot passes and boot completes, foundations behavior is documented in [STEP2_FOUNDATIONS_PROBE.md](STEP2_FOUNDATIONS_PROBE.md) and [WHY_FOUNDATIONS_WORK_AND_HOW_THEY_BEHAVE.md](../WHY_FOUNDATIONS_WORK_AND_HOW_THEY_BEHAVE.md).

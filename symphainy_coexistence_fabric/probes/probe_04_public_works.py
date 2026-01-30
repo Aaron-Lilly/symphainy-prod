@@ -46,7 +46,7 @@ def trace_abstractions():
 def trace_callers():
     """Who uses public_works / PublicWorksFoundationService (from grep evidence)."""
     return [
-        ("service_factory.py", "create_runtime_services", "public_works = PublicWorksFoundationService(config); state_abstraction, file_storage_abstraction, redis_adapter, registry_abstraction, artifact_storage_abstraction, file_storage passed to StateSurface, WAL, ELM"),
+        ("service_factory.py", "create_runtime_services", "public_works = PublicWorksFoundationService(config); get_state_abstraction(), get_file_storage_abstraction(), get_redis_adapter(), get_registry_abstraction(), get_artifact_storage_abstraction() passed to StateSurface, WAL, ELM, RuntimeServices"),
         ("state_surface.py", "StateSurface", "state_abstraction (StateManagementProtocol) from Public Works; used for retrieve_state, store_state"),
         ("agent_base.py", "AgentBase", "public_works.get_llm_adapter()"),
     ]

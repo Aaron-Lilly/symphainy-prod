@@ -128,27 +128,25 @@ class FileParserService:
         
         self.logger.info(f"Parsing type determined: {parsing_type} for file: {filename}")
         
-        # Get appropriate parsing abstraction
-        # Pass parse_options to _get_parsing_abstraction for Kreuzberg routing
-        parsing_abstraction = self._get_parsing_abstraction(
-            parsing_type, 
-            file_type_from_metadata,
-            parse_options or {}
-        )
-        if not parsing_abstraction:
-            raise ValueError(f"No parsing abstraction available for type: {parsing_type}")
+        # P4: Use unified document parsing surface (single protocol entry point)
+        document_parsing = self.public_works.get_document_parsing() if self.public_works else None
+        if not document_parsing:
+            raise ValueError("No document parsing surface available (get_document_parsing)")
         
-        # Create parsing request (include copybook_reference if provided)
+        # Create parsing request; options carry parsing_type/file_type for router
+        parse_opts = dict(parse_options or {})
+        parse_opts["parsing_type"] = parsing_type
+        parse_opts["file_type"] = file_type_from_metadata
         parsing_request = FileParsingRequest(
             file_reference=file_reference,
             filename=filename,
-            options=parse_options or {},
+            options=parse_opts,
             state_surface=context.state_surface,
             copybook_reference=copybook_reference
         )
         
-        # Parse file
-        parsing_result: FileParsingResult = await parsing_abstraction.parse_file(parsing_request)
+        # Parse file via unified surface (router delegates to correct parser)
+        parsing_result: FileParsingResult = await document_parsing.parse_file(parsing_request)
         
         if not parsing_result.success:
             raise RuntimeError(f"File parsing failed: {parsing_result.error}")

@@ -49,6 +49,7 @@ Each backing service is used for specific platform capabilities. Using the right
 | **GCS** | Blob storage (GCSAdapter); FileStorageAbstraction and ArtifactStorageAbstraction. | Actual file and artifact bytes; durable working materials and purpose-bound outcomes. | `GCS_PROJECT_ID`, `GCS_BUCKET_NAME`, `GCS_CREDENTIALS_JSON`. Must be reachable and authorized at boot. |
 | **Meilisearch** | Full-text and metadata search (SemanticSearchAbstraction); optional input to KnowledgeDiscoveryAbstraction. | Search and discovery over artifacts and metadata; "right tool" for search. | `MEILISEARCH_HOST` (or host from env), `MEILISEARCH_PORT`, `MEILI_MASTER_KEY`. Must be reachable at boot. |
 | **DuckDB** | Deterministic compute (DeterministicComputeAbstraction); storage for deterministic embeddings. | Content realm deterministic embeddings; analytical workload per north star ("DuckDB for deterministic, Arango for semantic"). | Config `duckdb.database_path`, `duckdb.read_only` or equivalent from env. Must be creatable/reachable at boot. |
+| **OpenTelemetry (OTLP)** | Tracing and metrics export (TelemetryAdapter); NurseSDK, intent services, execution lifecycle. | Observability, tracing, metrics; required for platform story. | `OTEL_EXPORTER_OTLP_ENDPOINT` (required; no default). Must be set and reachable at boot. |
 
 **Right tool for the right job (no removal without architectural change):**
 
@@ -59,6 +60,7 @@ Each backing service is used for specific platform capabilities. Using the right
 - **GCS:** Blob storage only. We do not use it for structured query or graph.
 - **Meilisearch:** Search and discovery. We do not use it as the system of record for state or lineage.
 - **DuckDB:** Deterministic embeddings and analytical workloads. We do not use it for semantic/graph or for hot state.
+- **OpenTelemetry (OTLP):** Tracing and metrics export only. Required for observability; we do not run the platform without a reachable OTLP endpoint at boot.
 
 **Nothing we don't need:** Each of the above backs a concrete abstraction and platform deliverable. If we remove one, we must either remove the capability or reassign it to another backing service and update this contract.
 

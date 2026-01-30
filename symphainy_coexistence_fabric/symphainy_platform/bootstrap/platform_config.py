@@ -130,6 +130,7 @@ def build_canonical_config() -> Dict[str, Any]:
         "meilisearch_key": os.getenv("MEILI_MASTER_KEY"),
         "runtime_port": _get_env_int("RUNTIME_PORT", 8000),
         "log_level": _get_env("LOG_LEVEL", "INFO"),
+        "otel_exporter_otlp_endpoint": _get_env("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip() or None,  # required; no default; pre-boot validates presence and reachability
         # Optional (not required for G3): LLM / capabilities
         "openai_api_key": os.getenv("OPENAI_API_KEY") or os.getenv("LLM_OPENAI_API_KEY"),
         "openai_base_url": os.getenv("OPENAI_BASE_URL"),

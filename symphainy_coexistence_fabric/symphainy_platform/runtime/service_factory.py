@@ -85,7 +85,7 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
     # Step 3: Create WriteAheadLog (for audit trail)
     logger.info("  → Creating WriteAheadLog...")
     wal = WriteAheadLog(
-        redis_adapter=public_works.redis_adapter
+        redis_adapter=public_works.get_redis_adapter()
     )
     logger.info("  ✅ WriteAheadLog created")
     
@@ -350,15 +350,15 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
         intent_registry=intent_registry,
         state_surface=state_surface,
         wal=wal,
-        artifact_storage=public_works.artifact_storage_abstraction,
+        artifact_storage=public_works.get_artifact_storage_abstraction(),
         # ... other dependencies
     )
     logger.info("  ✅ ExecutionLifecycleManager created")
-    
-    # Get abstractions from PublicWorksFoundationService
-    registry_abstraction = public_works.registry_abstraction
-    artifact_storage = public_works.artifact_storage_abstraction
-    file_storage = public_works.file_storage_abstraction
+
+    # Get abstractions via get_* (protocol-typed surface; no direct attr access)
+    registry_abstraction = public_works.get_registry_abstraction()
+    artifact_storage = public_works.get_artifact_storage_abstraction()
+    file_storage = public_works.get_file_storage_abstraction()
     
     # Build RuntimeServices container
     services = RuntimeServices(

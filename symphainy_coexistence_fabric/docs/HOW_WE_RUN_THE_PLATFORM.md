@@ -52,10 +52,10 @@ The **“mix”** was: we had **config/development.env** set up for **Mode A** (
 
 **Concrete steps:**
 
-1. **Env:** `.env.secrets` at repo root (Supabase, GCS, Arango password, etc.). Compose uses `env_file: .env.secrets` and `environment:` for service URLs (arango, redis, consul, meilisearch, DuckDB path).
+1. **Env:** `.env.secrets` at repo root (Supabase, GCS, Arango password, etc.). Compose uses `env_file: .env.secrets` and `environment:` for service URLs (arango, redis, consul, meilisearch, DuckDB path). **OTEL_EXPORTER_OTLP_ENDPOINT** is required (no default); set it to your OTLP collector (e.g. `http://otel-collector:4317` in Docker). Boot fails if unset or unreachable.
 2. **Start stack:**  
    ```bash
-   docker-compose up -d redis arango consul meilisearch
+   docker-compose up -d redis arango consul meilisearch otel-collector  # or your OTLP collector service
    docker-compose up -d runtime
    ```
    Or `docker-compose up -d` for the full stack. Pre-boot runs inside the runtime container; if it fails, fix the service or env and restart the runtime container.
