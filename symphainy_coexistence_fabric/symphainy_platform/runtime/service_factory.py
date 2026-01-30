@@ -150,15 +150,43 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
             logger.warning(f"    ⚠️ Failed to register {intent_type}: {e}")
             return False
     
-    # Content Realm intent services
-    logger.info("  → Registering Content Realm intent services...")
+    # Content Capability intent services (Platform SDK Architecture)
+    # These services use PlatformContext (ctx) for accessing platform capabilities
+    # They replace the legacy realm-based services with a cleaner architecture
+    logger.info("  → Registering Content Capability intent services...")
+    content_count = 0
     try:
-        from ..realms.content.intent_services import (
+        from ..capabilities.content.intent_services import (
+            CreateDeterministicEmbeddingsService,
+            EchoService,
             IngestFileService,
             ParseContentService,
-            CreateDeterministicEmbeddingsService,
+            SaveMaterializationService
+        )
+        
+        # Core content services using Platform SDK pattern
+        # Flow: ingest → save (materialize) → parse → embeddings
+        content_services = [
+            ("echo", EchoService),  # Test service for validating Platform SDK wiring
+            ("ingest_file", IngestFileService),
+            ("save_materialization", SaveMaterializationService),
+            ("parse_content", ParseContentService),
+            ("create_deterministic_embeddings", CreateDeterministicEmbeddingsService),
+        ]
+        
+        content_count = sum(1 for intent, svc in content_services if register_intent_service(intent, svc, "content"))
+        logger.info(f"  ✅ Content Capability: {content_count} intent services registered")
+    except ImportError as e:
+        logger.warning(f"  ⚠️ Content Capability import error: {e}")
+        content_count = 0
+    
+    # Legacy Content Realm intent services (for services not yet rebuilt)
+    # These will be migrated to Content Capability as we rebuild them
+    logger.info("  → Registering legacy Content Realm intent services...")
+    legacy_content_count = 0
+    try:
+        from ..realms.content.intent_services import (
             ExtractEmbeddingsService,
-            SaveMaterializationService,
             GetParsedFileService,
             RetrieveArtifactMetadataService,
             ListArtifactsService,
@@ -166,12 +194,8 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
             DeleteFileService
         )
         
-        content_services = [
-            ("ingest_file", IngestFileService),
-            ("parse_content", ParseContentService),
-            ("create_deterministic_embeddings", CreateDeterministicEmbeddingsService),
+        legacy_content_services = [
             ("extract_embeddings", ExtractEmbeddingsService),
-            ("save_materialization", SaveMaterializationService),
             ("get_parsed_file", GetParsedFileService),
             ("retrieve_artifact_metadata", RetrieveArtifactMetadataService),
             ("list_artifacts", ListArtifactsService),
@@ -179,40 +203,11 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
             ("delete_file", DeleteFileService),
         ]
         
-        content_count = sum(1 for intent, svc in content_services if register_intent_service(intent, svc, "content"))
-        logger.info(f"  ✅ Content Realm: {content_count} intent services registered")
+        legacy_content_count = sum(1 for intent, svc in legacy_content_services if register_intent_service(intent, svc, "content"))
+        logger.info(f"  ✅ Content Realm (legacy): {legacy_content_count} intent services registered")
     except ImportError as e:
         logger.warning(f"  ⚠️ Content Realm import error: {e}")
-        content_count = 0
-    
-    # Content Capability intent services (New Architecture - uses PlatformContext)
-    logger.info("  → Registering Content Capability intent services (new architecture)...")
-    new_content_count = 0
-    try:
-        from ..capabilities.content.intent_services import (
-            CreateDeterministicEmbeddingsService as NewCreateDeterministicEmbeddingsService,
-            EchoService,
-            IngestFileService as NewIngestFileService,
-            ParseContentService as NewParseContentService,
-            SaveMaterializationService as NewSaveMaterializationService
-        )
-        
-        new_content_services = [
-            ("echo", EchoService),
-            # Register new services as "_v2" for side-by-side testing
-            # Once validated, these will replace the legacy registrations
-            # Core content flow: ingest → save → parse → embeddings
-            ("ingest_file_v2", NewIngestFileService),
-            ("save_materialization_v2", NewSaveMaterializationService),
-            ("parse_content_v2", NewParseContentService),
-            ("create_deterministic_embeddings_v2", NewCreateDeterministicEmbeddingsService),
-        ]
-        
-        new_content_count = sum(1 for intent, svc in new_content_services if register_intent_service(intent, svc, "content"))
-        logger.info(f"  ✅ Content Capability (new): {new_content_count} intent services registered")
-    except ImportError as e:
-        logger.warning(f"  ⚠️ Content Capability import error: {e}")
-        new_content_count = 0
+        legacy_content_count = 0
     
     # Insights Realm intent services
     logger.info("  → Registering Insights Realm intent services...")
@@ -390,7 +385,7 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
         logger.warning(f"  ⚠️ Coexistence Realm import error: {e}")
         coexistence_count = 0
     
-    total_handlers = content_count + new_content_count + insights_count + operations_count + outcomes_count + security_count + control_tower_count + coexistence_count
+    total_handlers = content_count + legacy_content_count + insights_count + operations_count + outcomes_count + security_count + control_tower_count + coexistence_count
     logger.info(f"  ✅ IntentRegistry created with {total_handlers} intent services across all realms")
     
     # Step 4.5: Initialize Platform Solutions
