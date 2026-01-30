@@ -2,6 +2,8 @@
 
 **Purpose:** What you receive and what you do. When this handoff is complete, Team B implements the intent contracts and uses the Experience SDK; Takeoff exposes the runtime contracts that plug into that.
 
+**Canonical reference:** [PLATFORM_VISION_RECONCILIATION.md](PLATFORM_VISION_RECONCILIATION.md) is the canonical reference for vision ↔ implementation, boot, lifecycle, the Experience SDK boundary (hard invariant), and the architectural authority chain. Use it when aligning with the platform vision or resolving doc conflicts.
+
 ---
 
 ## What you're getting
@@ -14,6 +16,7 @@
 | 4 | Vision alignment summary | [docs/intent_contracts/VISION_ALIGNMENT_SUMMARY.md](intent_contracts/VISION_ALIGNMENT_SUMMARY.md) |
 | 5 | Runtime obligations (per journey) | [docs/intent_contracts/RUNTIME_OBLIGATIONS_INDEX.md](intent_contracts/RUNTIME_OBLIGATIONS_INDEX.md) |
 | 6 | Boot phases (Phi3 / Phi4) | [docs/architecture/BOOT_PHASES.md](architecture/BOOT_PHASES.md), [docs/architecture/INIT_ORDER_SPEC.md](architecture/INIT_ORDER_SPEC.md) |
+| 7 | Vision reconciliation (canonical) | [docs/PLATFORM_VISION_RECONCILIATION.md](PLATFORM_VISION_RECONCILIATION.md) |
 
 ---
 
@@ -23,6 +26,7 @@
 
 - You build capabilities and experiences that **consume** the Experience SDK (query_state, invoke_intent, trigger_journey, subscribe).
 - You implement intents against the **runtime contracts** (registration, execution, state, artifacts) in RUNTIME_CONTRACTS.md.
+- **Hard invariant:** No solution, agent, MCP server, or experience may directly access runtime internals, civic systems, or infrastructure. All access must flow through the Experience SDK or governed capability interfaces (see [PLATFORM_VISION_RECONCILIATION.md](PLATFORM_VISION_RECONCILIATION.md) §4).
 - You do **not** change the civic system or the Runtime contract; you only add capabilities/, experience/, and solutions packaging per [LANDING_AGENT_TASKS.md](LANDING_AGENT_TASKS.md).
 
 ---
@@ -51,3 +55,4 @@
 - **You:** Implement intent contracts; use the Experience SDK; build capabilities and experiences.
 - **We:** Expose and maintain the runtime contracts and the Experience SDK.
 - **Meet in the middle:** Experience SDK and runtime contracts are the handoff boundary.
+- **When docs conflict:** Platform Vision → INIT_ORDER_SPEC / BOOT_PHASES → Experience SDK Contract → Runtime Contracts. Executable truth wins; reconcile back into the vision (see PLATFORM_VISION_RECONCILIATION.md §8).
