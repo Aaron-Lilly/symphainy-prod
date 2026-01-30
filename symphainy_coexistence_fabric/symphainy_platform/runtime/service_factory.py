@@ -151,27 +151,38 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
             return False
     
     # Content Capability intent services (Platform SDK Architecture)
-    # These services use PlatformContext (ctx) for accessing platform capabilities
-    # They replace the legacy realm-based services with a cleaner architecture
+    # All Content services rebuilt to use PlatformContext (ctx)
     logger.info("  → Registering Content Capability intent services...")
     content_count = 0
     try:
         from ..capabilities.content.intent_services import (
+            ArchiveFileService,
             CreateDeterministicEmbeddingsService,
+            DeleteFileService,
             EchoService,
+            GetParsedFileService,
             IngestFileService,
+            ListArtifactsService,
             ParseContentService,
+            RetrieveArtifactMetadataService,
             SaveMaterializationService
         )
         
-        # Core content services using Platform SDK pattern
-        # Flow: ingest → save (materialize) → parse → embeddings
+        # All content services using Platform SDK pattern
         content_services = [
-            ("echo", EchoService),  # Test service for validating Platform SDK wiring
+            # Test service
+            ("echo", EchoService),
+            # Core content flow: ingest → save → parse → embeddings
             ("ingest_file", IngestFileService),
             ("save_materialization", SaveMaterializationService),
             ("parse_content", ParseContentService),
             ("create_deterministic_embeddings", CreateDeterministicEmbeddingsService),
+            # File management
+            ("get_parsed_file", GetParsedFileService),
+            ("retrieve_artifact_metadata", RetrieveArtifactMetadataService),
+            ("list_artifacts", ListArtifactsService),
+            ("archive_file", ArchiveFileService),
+            ("delete_file", DeleteFileService),
         ]
         
         content_count = sum(1 for intent, svc in content_services if register_intent_service(intent, svc, "content"))
@@ -180,34 +191,20 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
         logger.warning(f"  ⚠️ Content Capability import error: {e}")
         content_count = 0
     
-    # Legacy Content Realm intent services (for services not yet rebuilt)
-    # These will be migrated to Content Capability as we rebuild them
-    logger.info("  → Registering legacy Content Realm intent services...")
+    # Legacy extract_embeddings (not yet rebuilt - uses semantic embeddings)
     legacy_content_count = 0
     try:
-        from ..realms.content.intent_services import (
-            ExtractEmbeddingsService,
-            GetParsedFileService,
-            RetrieveArtifactMetadataService,
-            ListArtifactsService,
-            ArchiveFileService,
-            DeleteFileService
-        )
+        from ..realms.content.intent_services import ExtractEmbeddingsService
         
         legacy_content_services = [
             ("extract_embeddings", ExtractEmbeddingsService),
-            ("get_parsed_file", GetParsedFileService),
-            ("retrieve_artifact_metadata", RetrieveArtifactMetadataService),
-            ("list_artifacts", ListArtifactsService),
-            ("archive_file", ArchiveFileService),
-            ("delete_file", DeleteFileService),
         ]
         
         legacy_content_count = sum(1 for intent, svc in legacy_content_services if register_intent_service(intent, svc, "content"))
-        logger.info(f"  ✅ Content Realm (legacy): {legacy_content_count} intent services registered")
+        if legacy_content_count > 0:
+            logger.info(f"  ✅ Content (legacy): {legacy_content_count} intent services registered")
     except ImportError as e:
-        logger.warning(f"  ⚠️ Content Realm import error: {e}")
-        legacy_content_count = 0
+        logger.debug(f"  Legacy Content import skipped: {e}")
     
     # Insights Realm intent services
     logger.info("  → Registering Insights Realm intent services...")
