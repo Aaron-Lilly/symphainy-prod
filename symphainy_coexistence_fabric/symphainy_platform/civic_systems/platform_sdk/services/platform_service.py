@@ -1188,3 +1188,114 @@ class PlatformService:
         except Exception as e:
             self._logger.warning(f"Failed to track parsed result: {e}")
             return False
+    
+    # ========================================================================
+    # MATERIALIZATION OPERATIONS
+    # ========================================================================
+    
+    async def register_materialization(
+        self,
+        file_id: str,
+        boundary_contract_id: str,
+        tenant_id: str,
+        session_id: str,
+        user_id: str,
+        file_reference: str,
+        materialization_type: str = "full_artifact",
+        materialization_scope: Optional[Dict[str, Any]] = None,
+        materialization_backing_store: str = "gcs",
+        metadata: Optional[Dict[str, Any]] = None
+    ) -> bool:
+        """
+        Register materialization in the materialization index.
+        
+        Transitions a file from Working Material (pending) to Records of Fact (saved).
+        
+        Args:
+            file_id: File artifact identifier
+            boundary_contract_id: Boundary contract identifier
+            tenant_id: Tenant identifier
+            session_id: Session identifier
+            user_id: User identifier
+            file_reference: File reference string
+            materialization_type: Type of materialization
+            materialization_scope: Materialization scope
+            materialization_backing_store: Backing store (e.g., "gcs")
+            metadata: File metadata
+        
+        Returns:
+            True if registration succeeded
+        """
+        if not self._file_storage:
+            self._logger.warning("FileStorageAbstraction not available")
+            return False
+        
+        try:
+            if hasattr(self._file_storage, 'register_materialization'):
+                await self._file_storage.register_materialization(
+                    file_id=file_id,
+                    boundary_contract_id=boundary_contract_id,
+                    materialization_type=materialization_type,
+                    materialization_scope=materialization_scope or {},
+                    materialization_backing_store=materialization_backing_store,
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                    session_id=session_id,
+                    file_reference=file_reference,
+                    metadata=metadata or {}
+                )
+                self._logger.info(f"✅ Materialization registered: {file_id}")
+                return True
+            else:
+                self._logger.warning("FileStorageAbstraction missing register_materialization method")
+                return False
+        except Exception as e:
+            self._logger.error(f"Failed to register materialization: {e}")
+            return False
+    
+    async def create_pending_intent(
+        self,
+        intent_type: str,
+        target_artifact_id: str,
+        tenant_id: str,
+        session_id: str,
+        context: Optional[Dict[str, Any]] = None
+    ) -> Optional[str]:
+        """
+        Create a pending intent for later execution.
+        
+        Used to queue intents for asynchronous execution, e.g., creating a
+        pending parse_content intent after save_materialization.
+        
+        Args:
+            intent_type: Type of intent (e.g., "parse_content")
+            target_artifact_id: Artifact ID the intent targets
+            tenant_id: Tenant identifier
+            session_id: Session identifier
+            context: Intent context (e.g., ingestion_profile, file_type)
+        
+        Returns:
+            Pending intent ID if created, None otherwise
+        """
+        registry = self.registry
+        if not registry:
+            self._logger.warning("Registry not available for pending intent creation")
+            return None
+        
+        try:
+            if hasattr(registry, 'register_pending_intent'):
+                pending_intent_id = await registry.register_pending_intent(
+                    intent_type=intent_type,
+                    target_artifact_id=target_artifact_id,
+                    tenant_id=tenant_id,
+                    session_id=session_id,
+                    context=context or {}
+                )
+                self._logger.info(f"Created pending intent: {pending_intent_id}")
+                return pending_intent_id
+            else:
+                self._logger.warning("Registry missing register_pending_intent method")
+                return None
+        except Exception as e:
+            self._logger.warning(f"Failed to create pending intent: {e}")
+            return None

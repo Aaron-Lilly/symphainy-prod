@@ -193,14 +193,17 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
             CreateDeterministicEmbeddingsService as NewCreateDeterministicEmbeddingsService,
             EchoService,
             IngestFileService as NewIngestFileService,
-            ParseContentService as NewParseContentService
+            ParseContentService as NewParseContentService,
+            SaveMaterializationService as NewSaveMaterializationService
         )
         
         new_content_services = [
             ("echo", EchoService),
             # Register new services as "_v2" for side-by-side testing
             # Once validated, these will replace the legacy registrations
+            # Core content flow: ingest → save → parse → embeddings
             ("ingest_file_v2", NewIngestFileService),
+            ("save_materialization_v2", NewSaveMaterializationService),
             ("parse_content_v2", NewParseContentService),
             ("create_deterministic_embeddings_v2", NewCreateDeterministicEmbeddingsService),
         ]
