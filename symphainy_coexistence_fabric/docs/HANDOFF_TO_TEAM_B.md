@@ -2,6 +2,8 @@
 
 **Purpose:** What you receive and what you do. When this handoff is complete, Team B implements the intent contracts and uses the Experience SDK; Takeoff exposes the runtime contracts that plug into that.
 
+**Provisional handoff:** This handoff is **provisional**. We are still completing Public Works discovery (Phases C–F: protocols, 4-layer flow, service mapping, Curator boundary). The **target shape** is: you get access via **four services** on `ctx` (Governance, Reasoning, Experience, Platform), each exposing **protocol-typed** capabilities — not raw abstractions. The doc [PLATFORM_SDK_ABSTRACTS_FOR_B_TEAM.md](PLATFORM_SDK_ABSTRACTS_FOR_B_TEAM.md) describes that target and maps Platform capabilities to **protocols** so you can build with reasonable certainty. We will finalize the handoff after Phases C–F; until then, build against the protocols and service shape described there.
+
 **Canonical reference:** [PLATFORM_VISION_RECONCILIATION.md](PLATFORM_VISION_RECONCILIATION.md) is the canonical reference for vision ↔ implementation, boot, lifecycle, the Experience SDK boundary (hard invariant), and the architectural authority chain. Use it when aligning with the platform vision or resolving doc conflicts.
 
 ---
@@ -17,6 +19,8 @@
 | 5 | Runtime obligations (per journey) | [docs/intent_contracts/RUNTIME_OBLIGATIONS_INDEX.md](intent_contracts/RUNTIME_OBLIGATIONS_INDEX.md) |
 | 6 | Boot phases (Phi3 / Phi4) | [docs/architecture/BOOT_PHASES.md](architecture/BOOT_PHASES.md), [docs/architecture/INIT_ORDER_SPEC.md](architecture/INIT_ORDER_SPEC.md) |
 | 7 | Vision reconciliation (canonical) | [docs/PLATFORM_VISION_RECONCILIATION.md](PLATFORM_VISION_RECONCILIATION.md) |
+| 8 | Meet in the middle (Takeoff plan) | [docs/MEET_IN_THE_MIDDLE_PLAN.md](MEET_IN_THE_MIDDLE_PLAN.md) |
+| 9 | Platform SDK — abstractions exposed to B-team | [docs/PLATFORM_SDK_ABSTRACTS_FOR_B_TEAM.md](PLATFORM_SDK_ABSTRACTS_FOR_B_TEAM.md) |
 
 ---
 
