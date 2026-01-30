@@ -5,6 +5,7 @@ CTO Guidance: "Who wires the world together?"
 
 This module builds the runtime object graph:
 - Adapters → Foundation abstractions → StateSurface → ExecutionLifecycleManager → FastAPI routes
+- PlatformContextFactory → Intent Services (new architecture)
 
 Key Principles:
 1. Services are created once (in create_runtime_services)
@@ -31,6 +32,9 @@ from .wal import WriteAheadLog
 
 # Foundation service
 from ..foundations.public_works.foundation_service import PublicWorksFoundationService
+
+# Platform SDK - The front door for building on Symphainy
+from ..civic_systems.platform_sdk import PlatformContextFactory
 
 logger = get_logger(__name__)
 
@@ -89,6 +93,17 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
     )
     logger.info("  ✅ WriteAheadLog created")
     
+    # Step 3.5: Create PlatformContextFactory (Platform SDK)
+    # This is the front door for building on Symphainy - intent services
+    # receive PlatformContext (ctx) for accessing platform capabilities
+    logger.info("  → Creating PlatformContextFactory...")
+    platform_context_factory = PlatformContextFactory(
+        public_works=public_works,
+        state_surface=state_surface,
+        wal=wal
+    )
+    logger.info("  ✅ PlatformContextFactory created")
+    
     # Step 4: Create IntentRegistry (for intent handlers)
     logger.info("  → Creating IntentRegistry...")
     intent_registry = IntentRegistry()
@@ -98,16 +113,36 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
     # No orchestrators - Runtime handles orchestration via Sagas
     logger.info("  → Registering intent handlers from intent services...")
     
+    # Import PlatformIntentService for type checking
+    from ..civic_systems.platform_sdk import PlatformIntentService
+    
     # Helper function to register intent service
     def register_intent_service(intent_type: str, service_class, realm: str):
         """Register an intent service with the registry."""
         try:
-            service = service_class(public_works=public_works, state_surface=state_surface)
+            # Detect if this is a new-style PlatformIntentService
+            # PlatformIntentService is initialized with optional service_id
+            # Old-style BaseIntentService is initialized with public_works and state_surface
+            uses_platform_context = issubclass(service_class, PlatformIntentService)
+            
+            if uses_platform_context:
+                # New architecture: PlatformIntentService doesn't need public_works/state_surface
+                # It receives PlatformContext (ctx) at execution time
+                service = service_class(service_id=f"{realm}_{intent_type}_service")
+                logger.info(f"    📦 New architecture: {service_class.__name__} uses PlatformContext")
+            else:
+                # Legacy architecture: BaseIntentService receives public_works and state_surface
+                service = service_class(public_works=public_works, state_surface=state_surface)
+            
             intent_registry.register_intent(
                 intent_type=intent_type,
                 handler_name=f"{realm}_{intent_type}_service",
                 handler_function=service.execute,
-                metadata={"realm": realm, "service": service_class.__name__}
+                metadata={
+                    "realm": realm,
+                    "service": service_class.__name__,
+                    "uses_platform_context": uses_platform_context
+                }
             )
             logger.info(f"    ✅ Registered: {intent_type} → {service_class.__name__}")
             return True
@@ -149,6 +184,22 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
     except ImportError as e:
         logger.warning(f"  ⚠️ Content Realm import error: {e}")
         content_count = 0
+    
+    # Content Capability intent services (New Architecture - uses PlatformContext)
+    logger.info("  → Registering Content Capability intent services (new architecture)...")
+    new_content_count = 0
+    try:
+        from ..capabilities.content.intent_services import EchoService
+        
+        new_content_services = [
+            ("echo", EchoService),
+        ]
+        
+        new_content_count = sum(1 for intent, svc in new_content_services if register_intent_service(intent, svc, "content"))
+        logger.info(f"  ✅ Content Capability (new): {new_content_count} intent services registered")
+    except ImportError as e:
+        logger.warning(f"  ⚠️ Content Capability import error: {e}")
+        new_content_count = 0
     
     # Insights Realm intent services
     logger.info("  → Registering Insights Realm intent services...")
@@ -326,7 +377,7 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
         logger.warning(f"  ⚠️ Coexistence Realm import error: {e}")
         coexistence_count = 0
     
-    total_handlers = content_count + insights_count + operations_count + outcomes_count + security_count + control_tower_count + coexistence_count
+    total_handlers = content_count + new_content_count + insights_count + operations_count + outcomes_count + security_count + control_tower_count + coexistence_count
     logger.info(f"  ✅ IntentRegistry created with {total_handlers} intent services across all realms")
     
     # Step 4.5: Initialize Platform Solutions
@@ -351,6 +402,7 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
         state_surface=state_surface,
         wal=wal,
         artifact_storage=public_works.artifact_storage_abstraction,
+        platform_context_factory=platform_context_factory,
         # ... other dependencies
     )
     logger.info("  ✅ ExecutionLifecycleManager created")
@@ -371,7 +423,8 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
         wal=wal,
         intent_registry=intent_registry,
         solution_registry=solution_registry,
-        solution_services=solution_services
+        solution_services=solution_services,
+        platform_context_factory=platform_context_factory
     )
     
     logger.info("✅ Runtime object graph built successfully")
