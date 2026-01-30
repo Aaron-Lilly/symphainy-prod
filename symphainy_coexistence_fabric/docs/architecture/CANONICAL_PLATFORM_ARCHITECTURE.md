@@ -195,6 +195,8 @@ Implementation uses **Φ1–Φ4** (per [BOOT_PHASES.md](BOOT_PHASES.md)). The vi
 
 ## 5. Naming Conventions
 
+See also: [ADR_JOURNEY_OPERATIONS_OUTCOMES_NAMING.md](ADR_JOURNEY_OPERATIONS_OUTCOMES_NAMING.md)
+
 ### 5.1 Capability vs Experience Lens
 
 | Capability | Experience Lens | Relationship |
