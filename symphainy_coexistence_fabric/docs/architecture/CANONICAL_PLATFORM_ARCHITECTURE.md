@@ -9,8 +9,10 @@
 - [updated_platform_vision.md](../updated_platform_vision.md) — CTO north star
 - [solution_realm_refactoring_vision.md](../solution_realm_refactoring_vision.md) — Refactoring vision
 - [BOOT_PHASES.md](BOOT_PHASES.md) — Boot sequence (Φ1–Φ4)
-- [EXPERIENCE_SDK_CONTRACT.md](EXPERIENCE_SDK_CONTRACT.md) — Experience SDK boundary
+- [EXPERIENCE_SDK_CONTRACT.md](EXPERIENCE_SDK_CONTRACT.md) — Experience SDK boundary (adopted)
 - [RUNTIME_CONTRACTS.md](RUNTIME_CONTRACTS.md) — Runtime participation contracts
+
+**SDK Implementation:** `symphainy_platform/civic_systems/experience/sdk/experience_sdk.py`
 
 ---
 
