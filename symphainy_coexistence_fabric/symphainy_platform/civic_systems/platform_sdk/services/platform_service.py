@@ -5,12 +5,25 @@ Provides capability-oriented operations that wrap Public Works protocols.
 Primary purpose: enable infrastructure swappability while providing clean interfaces.
 
 Operations:
-    - parse(file_reference, file_type, options) → Parse documents
-    - analyze(data, analysis_type) → Data analysis
-    - visualize(data, viz_type, options) → Generate visualizations
-    - embed(content, model) → Generate embeddings
-    - ingest(source, source_type, options) → Ingest data
-    - store(artifact_id, data, options) → Store artifacts
+    Parsing:
+        - parse(file_reference, file_type, options) → Parse documents
+        - parse_csv, parse_pdf, parse_excel, parse_word, parse_mainframe
+    
+    Processing:
+        - visualize(data, viz_type, options) → Generate visualizations
+        - embed(content, model) → Generate embeddings
+        - ingest(source, source_type, options) → Ingest data
+    
+    Storage:
+        - store_artifact(artifact_id, data, ...) → Store artifacts
+        - retrieve_artifact(artifact_id, tenant_id) → Retrieve artifacts
+        - store_semantic / search_semantic → Semantic content operations
+    
+    Registry (file metadata, intents, lineage):
+        - get_file_metadata(file_id, tenant_id) → File metadata
+        - get_pending_intents(tenant_id, artifact_id, intent_type) → Pending intents
+        - update_intent_status(intent_id, status, ...) → Update intent status
+        - track_parsed_result(...) → Track parsing lineage
 
 Usage:
     # Parse a PDF
@@ -19,8 +32,11 @@ Usage:
     # Generate visualization
     viz = await ctx.platform.visualize(data, viz_type="chart")
     
-    # Ingest from API
-    result = await ctx.platform.ingest(api_endpoint, source_type="api")
+    # Get pending intents for a file
+    pending = await ctx.platform.get_pending_intents(tenant_id, file_id, "parse_content")
+    
+    # Track lineage
+    await ctx.platform.track_parsed_result(parsed_id, file_id, ...)
 """
 
 from dataclasses import dataclass, field
@@ -605,24 +621,24 @@ class PlatformService:
         }
     
     # ========================================================================
-    # REGISTRY ACCESS (Interim - for pending intents and lineage tracking)
+    # REGISTRY OPERATIONS (File metadata, pending intents, lineage tracking)
     # ========================================================================
-    # NOTE: These methods expose registry_abstraction for capability implementations
-    # that need pending intent and lineage tracking. In future, these should move
-    # to appropriate SDK (likely Data Steward for lineage, or new Intent Management).
+    # These operations provide capability builders with access to file metadata,
+    # pending intent management, and lineage tracking. They are legitimate
+    # Platform SDK operations - capability builders access them via ctx.platform
+    # rather than needing to navigate Civic Systems directly.
+    #
+    # The Platform SDK composes from underlying infrastructure (registry_abstraction)
+    # but presents a unified interface for capability development.
     
     @property
     def registry(self) -> Optional[Any]:
         """
-        Access registry abstraction (interim).
+        Access to underlying registry abstraction.
         
-        Used for:
-        - get_file_metadata
-        - get_pending_intents
-        - track_parsed_result
-        - update_intent_status
-        
-        NOTE: These operations should eventually move to appropriate SDKs.
+        Used internally by Platform SDK registry operations.
+        Capability builders should use the helper methods below rather than
+        accessing this directly.
         """
         if self._public_works:
             return getattr(self._public_works, 'registry_abstraction', None)
@@ -633,7 +649,19 @@ class PlatformService:
         file_id: str,
         tenant_id: str
     ) -> Optional[Dict[str, Any]]:
-        """Get file metadata from registry."""
+        """
+        Get file metadata.
+        
+        Retrieves metadata for a file including session_id, file_type, etc.
+        Used to resolve file references and understand file context.
+        
+        Args:
+            file_id: File identifier
+            tenant_id: Tenant identifier
+        
+        Returns:
+            File metadata dict or None if not found
+        """
         registry = self.registry
         if not registry:
             return None
@@ -653,7 +681,21 @@ class PlatformService:
         target_artifact_id: str,
         intent_type: str
     ) -> List[Dict[str, Any]]:
-        """Get pending intents for artifact."""
+        """
+        Get pending intents for an artifact.
+        
+        Retrieves pending intents that target a specific artifact.
+        Used to get context from earlier pipeline stages (e.g., ingestion
+        profile from ingest intent when parsing).
+        
+        Args:
+            tenant_id: Tenant identifier
+            target_artifact_id: Artifact ID the intents target
+            intent_type: Type of intent to filter by
+        
+        Returns:
+            List of pending intent dicts
+        """
         registry = self.registry
         if not registry:
             return []
@@ -675,7 +717,21 @@ class PlatformService:
         tenant_id: str,
         execution_id: str
     ) -> bool:
-        """Update pending intent status."""
+        """
+        Update pending intent status.
+        
+        Updates the status of a pending intent (e.g., to "in_progress" or "completed").
+        Used to track progress through multi-stage pipelines.
+        
+        Args:
+            intent_id: Intent identifier
+            status: New status ("pending", "in_progress", "completed", "failed")
+            tenant_id: Tenant identifier
+            execution_id: Current execution ID
+        
+        Returns:
+            True if update succeeded
+        """
         registry = self.registry
         if not registry:
             return False
@@ -704,7 +760,26 @@ class PlatformService:
         tenant_id: str,
         session_id: str
     ) -> bool:
-        """Track parsed result for lineage."""
+        """
+        Track parsed result for lineage.
+        
+        Records the parsing of a file for lineage tracking. Creates a
+        relationship between source file and parsed output.
+        
+        Args:
+            parsed_file_id: ID of the parsed output
+            file_id: ID of the source file
+            parsed_file_reference: Reference to parsed content
+            parser_type: Type of parser used
+            parser_config: Parser configuration
+            record_count: Number of records parsed (if applicable)
+            status: Parsing status
+            tenant_id: Tenant identifier
+            session_id: Session identifier
+        
+        Returns:
+            True if tracking succeeded
+        """
         registry = self.registry
         if not registry:
             return False
