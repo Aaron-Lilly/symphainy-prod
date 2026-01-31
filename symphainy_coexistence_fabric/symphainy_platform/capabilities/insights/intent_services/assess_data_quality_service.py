@@ -1,12 +1,15 @@
 """
 Assess Data Quality Service (Platform SDK)
 
-Assesses data quality across parsing, data, and source dimensions.
+AI-enhanced data quality assessment with intelligent recommendations.
+
+Uses structural checks for quality metrics and AI agents for 
+contextual recommendations.
 
 Contract: docs/intent_contracts/journey_insights_data_quality/intent_assess_data_quality.md
 """
 
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 
 from utilities import get_logger, generate_event_id
@@ -25,6 +28,8 @@ class AssessDataQualityService(PlatformIntentService):
     - Parsing quality (did parsing work correctly?)
     - Data quality (is the underlying data good?)
     - Source quality (copybook problems, data format issues)
+    
+    Uses AI for intelligent, contextual recommendations.
     """
     
     def __init__(self, service_id: str = "assess_data_quality_service"):
@@ -77,6 +82,9 @@ class AssessDataQualityService(PlatformIntentService):
             source_quality["confidence"] * 0.2
         )
         
+        # Identify issues
+        issues = self._identify_issues(parsing_quality, data_quality, source_quality)
+        
         # Build quality report
         quality_report = {
             "report_id": generate_event_id(),
@@ -89,10 +97,17 @@ class AssessDataQualityService(PlatformIntentService):
                 "data": data_quality,
                 "source": source_quality
             },
-            "issues": self._identify_issues(parsing_quality, data_quality, source_quality),
-            "recommendations": self._generate_recommendations(overall_confidence),
+            "issues": issues,
+            "recommendations": [],  # Will be populated below
             "assessed_at": datetime.utcnow().isoformat()
         }
+        
+        # Generate AI-powered recommendations
+        recommendations = await self._generate_recommendations(
+            ctx, overall_confidence, issues, parsing_quality, data_quality, source_quality
+        )
+        quality_report["recommendations"] = recommendations
+        quality_report["ai_enhanced"] = any(r.get("source") == "ai" for r in recommendations)
         
         self.logger.info(f"✅ Quality assessment complete: {quality_report['quality_grade']}")
         
@@ -104,7 +119,8 @@ class AssessDataQualityService(PlatformIntentService):
                 "type": "data_quality_assessed",
                 "event_id": generate_event_id(),
                 "quality_grade": quality_report["quality_grade"],
-                "overall_confidence": overall_confidence
+                "overall_confidence": overall_confidence,
+                "ai_enhanced": quality_report["ai_enhanced"]
             }]
         }
     
@@ -223,16 +239,120 @@ class AssessDataQualityService(PlatformIntentService):
         
         return issues
     
-    def _generate_recommendations(self, confidence: float) -> List[str]:
-        """Generate recommendations based on quality."""
+    async def _generate_recommendations(
+        self,
+        ctx: PlatformContext,
+        confidence: float,
+        issues: List[Dict[str, Any]],
+        parsing_quality: Dict[str, Any],
+        data_quality: Dict[str, Any],
+        source_quality: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate AI-powered recommendations based on quality assessment.
+        
+        Uses InsightsEDAAgent for contextual, actionable recommendations.
+        """
+        # Try AI-powered recommendations first
+        if ctx.reasoning and ctx.reasoning.agents and issues:
+            try:
+                agent_result = await ctx.reasoning.agents.invoke(
+                    "insights_eda_agent",
+                    params={
+                        "action": "recommend_quality_improvements",
+                        "overall_confidence": confidence,
+                        "issues": issues,
+                        "parsing_quality": parsing_quality,
+                        "data_quality": data_quality,
+                        "source_quality": source_quality
+                    },
+                    context={
+                        "tenant_id": ctx.tenant_id,
+                        "session_id": ctx.session_id
+                    }
+                )
+                
+                if agent_result.get("status") == "completed":
+                    result = agent_result.get("result", {})
+                    recommendations = result.get("recommendations", [])
+                    if recommendations:
+                        # Ensure each recommendation has source marked
+                        for rec in recommendations:
+                            if isinstance(rec, dict):
+                                rec["source"] = "ai"
+                            elif isinstance(rec, str):
+                                recommendations[recommendations.index(rec)] = {
+                                    "recommendation": rec,
+                                    "priority": "medium",
+                                    "source": "ai"
+                                }
+                        self.logger.info(f"✅ Got {len(recommendations)} AI recommendations")
+                        return recommendations
+                        
+            except Exception as e:
+                self.logger.warning(f"AI recommendation generation failed: {e}")
+        
+        # Fallback to rule-based recommendations
+        return self._generate_rule_based_recommendations(confidence, issues)
+    
+    def _generate_rule_based_recommendations(
+        self,
+        confidence: float,
+        issues: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Generate rule-based recommendations as fallback."""
         recommendations = []
         
+        # Based on issues
+        for issue in issues:
+            issue_type = issue.get("type")
+            severity = issue.get("severity", "medium")
+            
+            if issue_type == "parsing_errors":
+                recommendations.append({
+                    "recommendation": "Review and re-parse the file with corrected settings",
+                    "priority": "high",
+                    "issue_type": issue_type,
+                    "source": "rule_based"
+                })
+            elif issue_type == "incomplete_data":
+                recommendations.append({
+                    "recommendation": "Identify and fill missing data fields before analysis",
+                    "priority": "medium",
+                    "issue_type": issue_type,
+                    "source": "rule_based"
+                })
+            elif issue_type == "encoding_issue":
+                recommendations.append({
+                    "recommendation": "Convert file to UTF-8 encoding for better compatibility",
+                    "priority": "low",
+                    "issue_type": issue_type,
+                    "source": "rule_based"
+                })
+        
+        # Based on overall confidence
         if confidence < 0.7:
-            recommendations.append("Consider re-parsing the file with different settings")
-            recommendations.append("Review source data for formatting issues")
+            recommendations.append({
+                "recommendation": "Consider re-parsing the file with different settings",
+                "priority": "high",
+                "source": "rule_based"
+            })
+            recommendations.append({
+                "recommendation": "Review source data for formatting issues",
+                "priority": "medium",
+                "source": "rule_based"
+            })
         elif confidence < 0.9:
-            recommendations.append("Data is usable but may benefit from cleanup")
+            recommendations.append({
+                "recommendation": "Data is usable but may benefit from cleanup",
+                "priority": "low",
+                "source": "rule_based"
+            })
         else:
-            recommendations.append("Data quality is excellent - ready for analysis")
+            recommendations.append({
+                "recommendation": "Data quality is excellent - ready for analysis",
+                "priority": "info",
+                "source": "rule_based"
+            })
         
         return recommendations

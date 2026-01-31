@@ -1,12 +1,14 @@
 """
-Guided Discovery Service - Constrained Semantic Interpretation
+Guided Discovery Service - AI-Enhanced Constrained Semantic Interpretation
 
 Enabling service for guided discovery operations using user-provided guides.
 
 WHAT (Enabling Service Role): I interpret data using user-provided guides
-HOW (Enabling Service Implementation): I use guide fact patterns to constrain semantic reasoning
+HOW (Enabling Service Implementation): I use guide fact patterns to constrain semantic reasoning,
+    with OPTIONAL AI enhancement for intelligent suggestions and semantic matching.
 
 Key Principle: Constrained semantic interpretation - user-provided guides constrain discovery.
+AI Enhancement: Optional LLM-powered suggestions and semantic understanding.
 """
 
 import sys
@@ -18,36 +20,46 @@ if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
 from typing import Dict, Any, Optional, List
+import json
 
 from utilities import get_logger
 from symphainy_platform.runtime.execution_context import ExecutionContext
 from symphainy_platform.civic_systems.platform_sdk.guide_registry import GuideRegistry
 from .schema_matching_service import SchemaMatchingService
 from .semantic_matching_service import SemanticMatchingService
-from .pattern_validation_service import PatternValidationService
+from symphainy_platform.foundations.libraries.validation.pattern_validation_service import PatternValidationService
 
 
 class GuidedDiscoveryService:
     """
-    Guided Discovery Service - Constrained semantic interpretation.
+    Guided Discovery Service - AI-Enhanced Constrained semantic interpretation.
     
     Interprets data using user-provided guides (fact patterns + output templates).
+    
     Returns:
     - Matched entities (found in data, match guide)
     - Unmatched data (found in data, no guide match)
     - Missing expected (expected in guide, not found in data)
-    - Suggestions for unmatched/missing
+    - AI-powered suggestions for unmatched/missing (when enabled)
+    - Semantic interpretation explanation (when AI enabled)
+    
+    AI Enhancement Features:
+    - Intelligent suggestion generation using LLM reasoning
+    - Semantic entity matching beyond string comparison
+    - Interpretation explanations for why data matches or doesn't match
     """
     
-    def __init__(self, public_works: Optional[Any] = None):
+    def __init__(self, public_works: Optional[Any] = None, enable_ai: bool = True):
         """
         Initialize Guided Discovery Service.
         
         Args:
             public_works: Public Works Foundation Service (for accessing abstractions)
+            enable_ai: Whether to enable AI-powered suggestions and interpretation
         """
         self.logger = get_logger(self.__class__.__name__)
         self.public_works = public_works
+        self.enable_ai = enable_ai
         
         # Initialize Guide Registry
         supabase_adapter = None
@@ -65,6 +77,14 @@ class GuidedDiscoveryService:
         self.schema_matching_service = SchemaMatchingService(public_works=public_works)
         self.semantic_matching_service = SemanticMatchingService(public_works=public_works)
         self.pattern_validation_service = PatternValidationService(public_works=public_works)
+        
+        # LLM adapter for AI-powered features
+        self._llm_adapter = None
+        if public_works and enable_ai:
+            try:
+                self._llm_adapter = public_works.get_llm_adapter()
+            except Exception:
+                self.logger.warning("LLM adapter not available - AI features disabled")
     
     async def interpret_with_guide(
         self,
@@ -123,11 +143,11 @@ class GuidedDiscoveryService:
                 fact_pattern, matched_entities
             )
             
-            # Generate suggestions
+            # Generate AI-powered suggestions
             suggestions = []
             if matching_options.get("show_suggestions", True):
                 suggestions = await self._generate_suggestions(
-                    unmatched_data, missing_expected, fact_pattern
+                    unmatched_data, missing_expected, fact_pattern, context
                 )
             
             # Calculate confidence and coverage scores
@@ -139,6 +159,13 @@ class GuidedDiscoveryService:
                 matched_entities, output_template
             )
             
+            # Generate AI-powered interpretation summary if enabled
+            interpretation_summary = None
+            if self.enable_ai and matching_options.get("include_ai_summary", True):
+                interpretation_summary = await self._generate_interpretation_summary(
+                    matched_entities, unmatched_data, missing_expected, fact_pattern
+                )
+            
             return {
                 "interpretation": {
                     "matched_entities": matched_entities,
@@ -147,7 +174,9 @@ class GuidedDiscoveryService:
                     "suggestions": suggestions,
                     "confidence_score": confidence_score,
                     "coverage_score": coverage_score,
-                    "formatted_output": formatted_output
+                    "formatted_output": formatted_output,
+                    "ai_summary": interpretation_summary,
+                    "ai_enhanced": self.enable_ai and self._llm_adapter is not None
                 },
                 "guide_id": guide_id,
                 "parsed_file_id": parsed_file_id
@@ -287,18 +316,124 @@ class GuidedDiscoveryService:
         self,
         unmatched_data: List[Dict[str, Any]],
         missing_expected: List[Dict[str, Any]],
-        fact_pattern: Dict[str, Any]
-    ) -> List[str]:
+        fact_pattern: Dict[str, Any],
+        context: Optional[ExecutionContext] = None
+    ) -> List[Dict[str, Any]]:
         """
-        Generate suggestions for unmatched data and missing expected entities.
+        Generate AI-powered suggestions for unmatched data and missing expected entities.
+        
+        When AI is enabled, uses LLM reasoning to provide intelligent suggestions
+        explaining WHY data doesn't match and WHAT can be done about it.
         
         Args:
             unmatched_data: Unmatched data
             missing_expected: Missing expected entities
             fact_pattern: Guide fact pattern
+            context: Optional execution context
         
         Returns:
-            List of suggestions
+            List of suggestion dictionaries with explanations
+        """
+        # Try AI-powered suggestions first
+        if self.enable_ai and self._llm_adapter and (unmatched_data or missing_expected):
+            try:
+                ai_suggestions = await self._generate_ai_suggestions(
+                    unmatched_data, missing_expected, fact_pattern
+                )
+                if ai_suggestions:
+                    return ai_suggestions
+            except Exception as e:
+                self.logger.warning(f"AI suggestion generation failed: {e}")
+        
+        # Fallback to rule-based suggestions
+        return self._generate_rule_based_suggestions(unmatched_data, missing_expected)
+    
+    async def _generate_ai_suggestions(
+        self,
+        unmatched_data: List[Dict[str, Any]],
+        missing_expected: List[Dict[str, Any]],
+        fact_pattern: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate intelligent suggestions using LLM reasoning.
+        
+        Provides semantic understanding of WHY matches failed and intelligent
+        recommendations for resolution.
+        """
+        # Build context for LLM
+        expected_entities = fact_pattern.get("entities", [])
+        
+        prompt = f"""You are a data interpretation assistant analyzing why certain data didn't match expected patterns in a guide.
+
+**Expected Entities from Guide:**
+{json.dumps(expected_entities, indent=2)}
+
+**Unmatched Data (found in data but doesn't match guide):**
+{json.dumps(unmatched_data[:10], indent=2)}  
+
+**Missing Expected (expected in guide but not found in data):**
+{json.dumps(missing_expected[:10], indent=2)}
+
+Please provide intelligent suggestions as a JSON array. For each issue, explain:
+1. WHY the match likely failed (semantic reasoning)
+2. WHAT the user can do to resolve it (actionable recommendation)
+3. Whether this is a guide issue or a data issue
+
+Return JSON array with this structure:
+[
+  {{
+    "issue_type": "unmatched_data" or "missing_expected",
+    "entity": "entity name",
+    "reason": "Explanation of why the match failed",
+    "recommendation": "What the user should do",
+    "confidence": 0.0-1.0,
+    "source": "ai"
+  }}
+]"""
+
+        system_message = """You are a data interpretation expert. Analyze match failures between data and guides, 
+providing intelligent semantic reasoning for why matches failed and actionable recommendations."""
+
+        try:
+            response = await self._llm_adapter.create_completion(
+                prompt=prompt,
+                system_message=system_message,
+                model="gpt-4o-mini",
+                max_tokens=1500,
+                temperature=0.3,
+                response_format={"type": "json_object"}
+            )
+            
+            # Parse response
+            if isinstance(response, str):
+                result = json.loads(response)
+            elif isinstance(response, dict):
+                result = response.get("suggestions", response.get("choices", [{}])[0].get("message", {}).get("content", "[]"))
+                if isinstance(result, str):
+                    result = json.loads(result)
+            else:
+                result = []
+            
+            # Ensure it's a list
+            if isinstance(result, dict):
+                result = result.get("suggestions", [result])
+            
+            self.logger.info(f"✅ Generated {len(result)} AI-powered suggestions")
+            return result
+            
+        except Exception as e:
+            self.logger.warning(f"AI suggestion parsing failed: {e}")
+            return []
+    
+    def _generate_rule_based_suggestions(
+        self,
+        unmatched_data: List[Dict[str, Any]],
+        missing_expected: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Generate rule-based suggestions as fallback.
+        
+        Returns structured suggestions even without AI.
         """
         suggestions = []
         
@@ -306,19 +441,132 @@ class GuidedDiscoveryService:
         for unmatched in unmatched_data:
             entity_type = unmatched.get("entity_type")
             if entity_type:
-                suggestions.append(f"Could be '{entity_type}' entity - consider adding to guide")
+                suggestions.append({
+                    "issue_type": "unmatched_data",
+                    "entity": entity_type,
+                    "reason": f"Entity type '{entity_type}' found in data but not defined in guide",
+                    "recommendation": f"Consider adding '{entity_type}' to your guide's expected entities",
+                    "confidence": 0.6,
+                    "source": "rule_based"
+                })
             else:
-                suggestions.append("Could be a new entity type - consider adding to guide")
+                suggestions.append({
+                    "issue_type": "unmatched_data",
+                    "entity": "unknown",
+                    "reason": "Data element found with no entity type classification",
+                    "recommendation": "Review the unmatched data and consider adding new entity types to guide",
+                    "confidence": 0.4,
+                    "source": "rule_based"
+                })
         
         # Suggestions for missing expected
         for missing in missing_expected:
             expected_entity = missing.get("expected_entity")
-            suggestions.append(
-                f"Expected '{expected_entity}' entity not found - check if data contains this entity "
-                "or if guide needs adjustment"
-            )
+            suggestions.append({
+                "issue_type": "missing_expected",
+                "entity": expected_entity,
+                "reason": f"Expected entity '{expected_entity}' defined in guide but not found in data",
+                "recommendation": f"Check if data contains '{expected_entity}' under a different name, or adjust guide expectations",
+                "confidence": 0.6,
+                "source": "rule_based"
+            })
         
         return suggestions
+    
+    async def _generate_interpretation_summary(
+        self,
+        matched_entities: List[Dict[str, Any]],
+        unmatched_data: List[Dict[str, Any]],
+        missing_expected: List[Dict[str, Any]],
+        fact_pattern: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Generate an AI-powered interpretation summary explaining the overall results.
+        
+        This provides a human-readable explanation of what the interpretation found
+        and what it means in context.
+        """
+        if not self._llm_adapter:
+            return None
+        
+        try:
+            prompt = f"""You are a data interpretation expert. Summarize the results of matching data against a guide.
+
+**Matched Entities ({len(matched_entities)} found):**
+{json.dumps(matched_entities[:5], indent=2)}{"..." if len(matched_entities) > 5 else ""}
+
+**Unmatched Data ({len(unmatched_data)} items):**
+{json.dumps(unmatched_data[:5], indent=2)}{"..." if len(unmatched_data) > 5 else ""}
+
+**Missing Expected ({len(missing_expected)} items):**
+{json.dumps(missing_expected[:5], indent=2)}{"..." if len(missing_expected) > 5 else ""}
+
+**Guide Expected Entities:**
+{json.dumps(fact_pattern.get("entities", [])[:5], indent=2)}
+
+Please provide:
+1. A brief summary of what was found (2-3 sentences)
+2. The overall quality assessment (excellent/good/fair/poor)
+3. Key observations about the data-guide alignment
+4. Top 3 priority actions the user should take
+
+Return as JSON:
+{{
+  "summary": "Brief summary...",
+  "quality_assessment": "good",
+  "key_observations": ["observation1", "observation2"],
+  "priority_actions": ["action1", "action2", "action3"]
+}}"""
+
+            system_message = """You are a data interpretation expert providing actionable summaries 
+of guide-based data matching results. Be concise and actionable."""
+
+            response = await self._llm_adapter.create_completion(
+                prompt=prompt,
+                system_message=system_message,
+                model="gpt-4o-mini",
+                max_tokens=800,
+                temperature=0.3,
+                response_format={"type": "json_object"}
+            )
+            
+            # Parse response
+            if isinstance(response, str):
+                result = json.loads(response)
+            elif isinstance(response, dict):
+                content = response.get("choices", [{}])[0].get("message", {}).get("content", "{}")
+                result = json.loads(content) if isinstance(content, str) else content
+            else:
+                result = {}
+            
+            result["source"] = "ai"
+            self.logger.info("✅ Generated AI interpretation summary")
+            return result
+            
+        except Exception as e:
+            self.logger.warning(f"AI summary generation failed: {e}")
+            return {
+                "summary": f"Matched {len(matched_entities)} entities, {len(unmatched_data)} unmatched, {len(missing_expected)} missing",
+                "quality_assessment": self._assess_quality(len(matched_entities), len(unmatched_data), len(missing_expected)),
+                "key_observations": [],
+                "priority_actions": ["Review unmatched data manually"],
+                "source": "fallback"
+            }
+    
+    def _assess_quality(self, matched: int, unmatched: int, missing: int) -> str:
+        """Assess overall quality based on counts."""
+        total = matched + unmatched + missing
+        if total == 0:
+            return "unknown"
+        ratio = matched / total
+        if ratio >= 0.8:
+            return "excellent"
+        elif ratio >= 0.6:
+            return "good"
+        elif ratio >= 0.4:
+            return "fair"
+        else:
+            return "poor"
     
     async def _format_output(
         self,
