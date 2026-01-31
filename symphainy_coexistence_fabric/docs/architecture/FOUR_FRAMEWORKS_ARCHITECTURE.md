@@ -2,13 +2,15 @@
 
 **Status:** Canonical (January 2026)
 **Authors:** Team B (Landing) with CTO alignment
-**Purpose:** Define the strategic product architecture embedded in Symphainy's platform design
+**Purpose:** Define the strategic product architecture embedded in SymphAIny's platform design
+
+> **SymphAIny is the Intent-Driven Enterprise Operating System that transforms how organizations integrate, reason, and execute — using intent as the semantic kernel to modernize operations without rewrites and turn integration expertise into reusable products.**
 
 ---
 
 ## Executive Summary
 
-Symphainy's platform is organized around **Four Pre-configured Solution Frameworks** that represent different levels of platform maturity and client engagement:
+SymphAIny's platform is organized around **Four Pre-configured Solution Frameworks** that represent different levels of platform maturity and client engagement:
 
 | Framework | Delivery Model | Client Value |
 |-----------|---------------|--------------|
@@ -275,8 +277,56 @@ Every **Intent** produces artifacts in one of the Four Frameworks:
 
 ---
 
+## 9. Three-Layer Intent Model Mapping
+
+The Four Frameworks map to the **Three-Layer Intent Model** (see [THREE_LAYER_INTENT_MODEL.md](THREE_LAYER_INTENT_MODEL.md)):
+
+### Framework to Intent Layer Mapping
+
+| Framework | Primary Intent Layer | IP Ownership | Semantic Role |
+|-----------|---------------------|--------------|---------------|
+| **Content** | Connective | Platform (Product IP) | System ingestion → Semantic normalization |
+| **Insights** | Connective | Platform (Product IP) | Raw data → Semantic understanding |
+| **Operations** | Connective + Domain | Platform frameworks + Client implementation | Process choreography + Business workflows |
+| **Outcomes** | Domain | Client (Client IP) | Business deliverables (client value) |
+
+### Why This Mapping Matters
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  DOMAIN INTENTS (Client-Owned)                                  │
+│  └── Outcomes Framework: Business deliverables                  │
+│      └── POC implementations, operational transformations       │
+├─────────────────────────────────────────────────────────────────┤
+│  CONNECTIVE INTENTS (Platform-Owned, Extensible)                │
+│  ├── Operations Framework: Process choreography                 │
+│  │   └── Workflow patterns, SOP frameworks, migration           │
+│  ├── Insights Framework: Data understanding                     │
+│  │   └── Analysis patterns, quality frameworks, lineage         │
+│  └── Content Framework: System ingestion                        │
+│      └── Parsing patterns, embedding frameworks, normalization  │
+├─────────────────────────────────────────────────────────────────┤
+│  FOUNDATIONAL INTENTS (Platform-Owned, Core IP)                 │
+│  └── Runtime, Governance, Security, Observability               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Delivery Model Explained by Intent Layer
+
+| Framework | Delivery | Why |
+|-----------|----------|-----|
+| **Content** | Fully functional | Connective IP — platform owns the integration patterns |
+| **Insights** | Fully functional | Connective IP — platform owns the analysis patterns |
+| **Operations** | Teaser | Connective frameworks owned; Domain implementation is client-specific |
+| **Outcomes** | Teaser | Domain IP — clients own their business outcomes |
+
+**This is the infrastructure moat:** Content and Insights are reusable Connective Intent Packages that apply across industries (VLP, AAR, PSO, etc.).
+
+---
+
 ## References
 
+- [THREE_LAYER_INTENT_MODEL.md](THREE_LAYER_INTENT_MODEL.md) - The canonical intent classification
 - [PLATFORM_VISION_RECONCILIATION.md](PLATFORM_VISION_RECONCILIATION.md) - Platform vision alignment
 - [FOUR_SERVICE_MAPPING.md](FOUR_SERVICE_MAPPING.md) - Service architecture
 - [MEET_IN_THE_MIDDLE_PLAN.md](../MEET_IN_THE_MIDDLE_PLAN.md) - Team integration plan

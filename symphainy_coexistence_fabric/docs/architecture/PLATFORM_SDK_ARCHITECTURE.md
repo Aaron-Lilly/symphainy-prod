@@ -1,54 +1,86 @@
 # Platform SDK Architecture
 
 **Status:** Canonical (January 2026)  
-**Purpose:** Define the Platform SDK - the front door for building on Symphainy.
+**Purpose:** Define the Platform SDK - the Semantic Operating System Kernel for SymphAIny.
+
+> **SymphAIny is the Intent-Driven Enterprise Operating System that transforms how organizations integrate, reason, and execute — using intent as the semantic kernel to modernize operations without rewrites and turn integration expertise into reusable products.**
 
 ---
 
 ## Overview
 
-The Platform SDK provides the **unified execution context (`ctx`)** that intent services and capabilities use to interact with the platform. It is the intercept point between Team B's implementations and Team A's runtime/foundations.
+The Platform SDK is **not just an SDK** — it is the **Semantic Operating System Kernel** that:
+
+1. **Translates** civic protocols into Intent primitives
+2. **Defines** the Intent Language that all civic protocols compile into
+3. **Enables** Solutions, Journeys, and Intents as first-class computational objects
 
 ```
-         EXPERIENCE SURFACES
-         (UIs, dashboards, agents, MCP servers)
-                |
-                v
-        +-----------------+
-        | Experience SDK  |  <- External consumers use this
-        +-----------------+
-                |
-                v
-         INTENT CONTRACTS  
-         (capabilities/intent services)
-                |
-                v
-        +-----------------+
-        | Platform SDK    |  <- Internal consumers use ctx
-        +-----------------+
-                |
-                v
-      RUNTIME / CIVIC SYSTEMS / FOUNDATIONS
-      (Public Works, State Surface, WAL, Smart City)
+┌─────────────────────────────────────────────────────────────────┐
+│                        SOLUTIONS                                │
+│              (Productized meaning — client value)               │
+├─────────────────────────────────────────────────────────────────┤
+│                        JOURNEYS                                 │
+│                   (Orchestration logic)                         │
+├─────────────────────────────────────────────────────────────────┤
+│                         INTENTS                                 │
+│    Domain          │    Connective      │    Foundational       │
+│  (Client IP)       │   (Product IP)     │     (Core IP)         │
+├────────────────────┴────────────────────┴───────────────────────┤
+│              PLATFORM SDK — SEMANTIC OS KERNEL                  │
+│     ctx.governance │ ctx.reasoning │ ctx.interaction │          │
+│     ctx.execution  │ ctx.enabling                               │
+├─────────────────────────────────────────────────────────────────┤
+│                     CIVIC PROTOCOLS                             │
+│     Smart City  │  Agentic  │  Experience  │  Runtime           │
+├─────────────────────────────────────────────────────────────────┤
+│                   INFRASTRUCTURE LAYER                          │
+│     (Public Works — adapters, abstractions, protocols)          │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Four Services on ctx
+## Five Semantic Services on ctx
 
-When an intent service executes, it receives `PlatformContext` (`ctx`) with four services:
+When an intent service executes, it receives `PlatformContext` (`ctx`) with five semantic services:
 
-| Service | Purpose | What You Get |
-|---------|---------|--------------|
-| `ctx.platform` | Capability-oriented operations | parse, visualize, embed, ingest, store |
-| `ctx.governance` | Smart City SDKs (all 9 roles) | data_steward, auth, registry, search, policy, sessions, events, workflows, telemetry |
-| `ctx.reasoning` | Agentic | llm (completion, embeddings), agents (get, invoke, collaborate) |
-| `ctx.experience` | Experience metadata | Narrow surface for metadata |
+| Service | Semantic Role | What It Translates |
+|---------|--------------|-------------------|
+| `ctx.governance` | Governance Semantics | Policy, authority, trust → `assert_authority()`, `delegate()` |
+| `ctx.reasoning` | Reasoning Semantics | Thinking, planning, decision → `delegate()`, `plan()`, `decide()` |
+| `ctx.interaction` | Interaction Semantics | Perception, conversation → `present()`, `converse()`, `notify()` |
+| `ctx.execution` | Execution Semantics | Compute, storage, orchestration → `schedule()`, `store()`, `retrieve()` |
+| `ctx.enabling` | Intent Semantics | Meaning, composition, control → `compose()`, `resolve()`, `emit()` |
 
 Plus Runtime-provided resources:
 - `ctx.state_surface` — State storage/retrieval (Runtime owns)
 - `ctx.wal` — Write-ahead log (Runtime owns)
 - `ctx.artifacts` — Artifact registry (Runtime owns)
+
+### The Translation Pattern
+
+The Platform SDK translates low-level protocols into semantic primitives:
+
+```python
+# Instead of (low-level protocol):
+smart_city_sdk.check_role("EmergencyManager")
+
+# Intent sees (semantic primitive):
+ctx.governance.assert_authority("EmergencyResponse")
+
+# Instead of (low-level protocol):
+agentic_sdk.spawn_agent(config)
+
+# Intent sees (semantic primitive):
+ctx.reasoning.delegate("damage_assessment")
+
+# Instead of (low-level protocol):
+runtime.execute_in_container(task)
+
+# Intent sees (semantic primitive):
+ctx.execution.schedule("data_ingest")
+```
 
 ---
 
