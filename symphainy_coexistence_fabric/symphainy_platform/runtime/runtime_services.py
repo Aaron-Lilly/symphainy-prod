@@ -9,6 +9,7 @@ CTO Guidance: "Who keeps things alive?"
 - StateSurface must be singleton
 - ExecutionLifecycleManager must be singleton
 - Artifact registries must be stable
+- PlatformContextFactory must be singleton
 
 This object owns all of them.
 """
@@ -45,6 +46,9 @@ class RuntimeServices:
     intent_registry: Optional[Any] = None  # IntentRegistry
     solution_registry: Optional[Any] = None  # SolutionRegistry
     solution_services: Optional[Any] = None  # SolutionServices (all platform solutions)
+    
+    # Platform SDK (new architecture)
+    platform_context_factory: Optional[Any] = None  # PlatformContextFactory
     
     def __post_init__(self):
         """Validate that required services are present."""

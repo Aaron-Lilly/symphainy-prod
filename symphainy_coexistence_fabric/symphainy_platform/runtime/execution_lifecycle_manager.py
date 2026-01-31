@@ -71,7 +71,8 @@ class ExecutionLifecycleManager:
         materialization_policy_store: Optional[Any] = None,  # MaterializationPolicyStore
         artifact_storage: Optional[Any] = None,  # ArtifactStorageAbstraction
         solution_config: Optional[Dict[str, Any]] = None,
-        data_steward_sdk: Optional[Any] = None  # DataStewardSDK for boundary contract enforcement
+        data_steward_sdk: Optional[Any] = None,  # DataStewardSDK for boundary contract enforcement
+        platform_context_factory: Optional[Any] = None  # PlatformContextFactory for new architecture
     ):
         """
         Initialize execution lifecycle manager.
@@ -85,6 +86,7 @@ class ExecutionLifecycleManager:
             artifact_storage: Optional artifact storage abstraction
             solution_config: Optional solution-specific configuration
             data_steward_sdk: Optional Data Steward SDK for boundary contract enforcement
+            platform_context_factory: Optional PlatformContextFactory for new architecture
         """
         self.intent_registry = intent_registry
         self.state_surface = state_surface
@@ -94,11 +96,13 @@ class ExecutionLifecycleManager:
         self.artifact_storage = artifact_storage
         self.solution_config = solution_config or {}
         self.data_steward_sdk = data_steward_sdk
+        self.platform_context_factory = platform_context_factory
         self.logger = get_logger(self.__class__.__name__)
         self.clock = get_clock()
         
         # Debug: Log data_steward_sdk state at initialization
         self.logger.info(f"🔍 ExecutionLifecycleManager.__init__: data_steward_sdk type={type(data_steward_sdk)}, is None={data_steward_sdk is None}")
+        self.logger.info(f"🔍 ExecutionLifecycleManager.__init__: platform_context_factory available={platform_context_factory is not None}")
     
     async def execute(self, intent: Intent) -> ExecutionResult:
         """
@@ -360,7 +364,24 @@ class ExecutionLifecycleManager:
                         if hasattr(handler, 'realm_name'):
                             handler_span.set_attribute("realm.name", handler.realm_name)
                 
-                handler_result = await handler.handler_function(intent, context)
+                # Detect handler type and call appropriately
+                # New-style handlers: receive PlatformContext (ctx)
+                # Old-style handlers: receive (intent, context)
+                handler_metadata = handler.metadata or {}
+                is_platform_intent_service = handler_metadata.get("uses_platform_context", False)
+                
+                if is_platform_intent_service and self.platform_context_factory:
+                    # New architecture: Build PlatformContext and call with ctx
+                    self.logger.info(f"Executing handler with PlatformContext: {handler.handler_name}")
+                    platform_ctx = self.platform_context_factory.create_context(
+                        intent=intent,
+                        execution_id=execution_id,
+                        metadata=context.metadata
+                    )
+                    handler_result = await handler.handler_function(platform_ctx)
+                else:
+                    # Legacy architecture: call with (intent, context)
+                    handler_result = await handler.handler_function(intent, context)
                 
                 handler_span = trace.get_current_span() if OTEL_AVAILABLE and trace else None
                 if handler_span and hasattr(handler_span, 'add_event'):
