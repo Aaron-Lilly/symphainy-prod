@@ -528,8 +528,9 @@ class AgentBase:
             Non-executing artifact (proposal, blueprint, ranked options), or None if failed
         """
         if not self.collaboration_router:
-            self.logger.warning("Collaboration router not available")
-            return None
+            raise RuntimeError(
+                "Collaboration router not wired; cannot request contribution. Platform contract §8A."
+            )
         
         # Create contribution request
         contribution_request = ContributionRequest.create(

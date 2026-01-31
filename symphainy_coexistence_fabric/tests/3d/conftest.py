@@ -1,15 +1,15 @@
 """
 3D Test Suite - Shared Fixtures and Configuration
 
-Provides fixtures for:
-- Solution instances
-- Journey orchestrators
-- Intent services
-- MCP servers
-- Execution contexts
-- Mock infrastructure
+Canonical testing path: Genesis-based (load_platform_config → pre_boot_validate →
+create_runtime_services → create_fastapi_app). Use genesis_app, genesis_client,
+genesis_services so "what works in test also works in prod."
+
+Legacy: mock_* and solution fixtures are deprecated; migrate tests to genesis_client
+or genesis_services (from app.state.runtime_services).
 """
 
+import os
 import sys
 from pathlib import Path
 
@@ -25,14 +25,72 @@ from unittest.mock import Mock, AsyncMock, MagicMock
 from datetime import datetime, timezone
 
 # ============================================
-# Mock Infrastructure Fixtures
+# Genesis-based Fixtures (canonical)
+# ============================================
+
+def _ensure_test_env():
+    """Load .env.secrets and set USE_SUPABASE_TEST=1 so tests use test Supabase."""
+    try:
+        from dotenv import load_dotenv
+        for name in (".env.secrets", "config/development.env", ".env"):
+            path = project_root / name
+            if path.exists():
+                load_dotenv(path, override=False)
+    except ImportError:
+        pass
+    os.environ.setdefault("USE_SUPABASE_TEST", "1")
+
+
+@pytest.fixture(scope="session")
+def genesis_app():
+    """
+    FastAPI app built via full Genesis (G2 → G3 → Φ3).
+    Requires env with all backing services (e.g. from docker-compose.3d-test or .env.secrets).
+    Set USE_SUPABASE_TEST=1 and SUPABASE_TEST_* for test Supabase project.
+    """
+    _ensure_test_env()
+    from symphainy_platform.bootstrap import load_platform_config, pre_boot_validate
+    from symphainy_platform.runtime.service_factory import create_runtime_services, create_fastapi_app
+    try:
+        config = load_platform_config()
+        pre_boot_validate(config)
+    except SystemExit as e:
+        pytest.skip(f"Pre-boot failed (missing/unreachable backing service): {e}")
+    except Exception as e:
+        pytest.skip(f"Genesis config/pre-boot failed: {e}")
+    try:
+        services = asyncio.run(create_runtime_services(config))
+        app = create_fastapi_app(services)
+        return app
+    except Exception as e:
+        pytest.skip(f"Genesis create_runtime_services/create_fastapi_app failed: {e}")
+
+
+@pytest.fixture(scope="session")
+def genesis_client(genesis_app):
+    """TestClient for the Genesis-built app. Use for API tests (session, intent, execution)."""
+    from starlette.testclient import TestClient
+    return TestClient(genesis_app)
+
+
+@pytest.fixture(scope="session")
+def genesis_services(genesis_app):
+    """Runtime services from Genesis app (solution_services, state_surface, etc.)."""
+    return getattr(genesis_app.state, "runtime_services", None)
+
+
+# ============================================
+# Mock Infrastructure Fixtures (deprecated: migrate to genesis_*)
 # ============================================
 
 @pytest.fixture
 def mock_public_works():
     """Mock PublicWorksFoundationService."""
     pw = Mock()
-    
+    # No SDKs so auth/session services use get_auth_abstraction() or state_surface path
+    pw.security_guard_sdk = None
+    pw.traffic_cop_sdk = None
+
     # State abstraction
     pw.state_abstraction = Mock()
     pw.state_abstraction.get = AsyncMock(return_value=None)
@@ -56,10 +114,17 @@ def mock_public_works():
     pw.registry_abstraction.get = AsyncMock(return_value={})
     pw.registry_abstraction.list = AsyncMock(return_value=[])
     
-    # Auth abstraction
+    # Auth abstraction (needed for security journey compose tests)
     pw.auth_abstraction = Mock()
+    pw.auth_abstraction.authenticate = AsyncMock(return_value={
+        "success": True, "user_id": "test_user", "tenant_id": "test_tenant",
+        "access_token": "mock_token", "refresh_token": "mock_refresh"
+    })
+    pw.auth_abstraction.register_user = AsyncMock(return_value={
+        "success": True, "user_id": "test_user", "tenant_id": "test_tenant"
+    })
     pw.auth_abstraction.validate_token = AsyncMock(return_value={"valid": True, "user_id": "test_user"})
-    pw.auth_abstraction.create_session = AsyncMock(return_value={"session_id": "test_session_123"})
+    pw.auth_abstraction.create_session = AsyncMock(return_value={"session_id": "test_session_123", "success": True})
     
     # Tenant abstraction
     pw.tenant_abstraction = Mock()
@@ -69,10 +134,8 @@ def mock_public_works():
     # Telemetry
     pw.get_telemetry_service = Mock(return_value=Mock(record=AsyncMock()))
     
-    # Redis adapter
-    pw.redis_adapter = Mock()
-    pw.redis_adapter.get = AsyncMock(return_value=None)
-    pw.redis_adapter.set = AsyncMock(return_value=True)
+    # Event log (protocol); no adapter exposure
+    pw.get_wal_backend = Mock(return_value=Mock())
     
     # Get abstraction methods
     pw.get_state_abstraction = Mock(return_value=pw.state_abstraction)

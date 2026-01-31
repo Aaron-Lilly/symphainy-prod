@@ -6,6 +6,8 @@
 
 **Vision (current):** Public Works = Storage adapters (GCS, S3, FS), Compute adapters, Queue adapters, Network adapters. Guarantees: Uniform interfaces, Hot-swappable backends, Deterministic behavior.
 
+**Strategic fix plan:** [PUBLIC_WORKS_STRATEGIC_FIX_PLAN.md](../architecture/PUBLIC_WORKS_STRATEGIC_FIX_PLAN.md) — leak inventory, missing protocols, mega-protocol decomposition, five-slice ctx, DI pattern, Genesis alignment. All work is strategic-only; no short-term workarounds.
+
 ---
 
 ## Phase A — Adapter inventory
@@ -376,6 +378,7 @@ Trace: Layer 0 (Adapter) → Layer 1 (Abstraction) → Layer 2 (Protocol, when u
 
 - **Alignments:** Storage/Compute/Queue/Network adapters and 4-layer flow (Adapter → Abstraction → Protocol → Service) match the vision where protocols exist and get_* returns protocol type. Deterministic behavior and partial uniform interfaces (State, FileStorage, ServiceDiscovery, Auth, Tenant, SemanticSearch) are in place.
 - **Gaps:** Callers bound to concrete/direct attr; several get_* return concrete or Any; no RegistryProtocol/DeterministicComputeProtocol; parsing not a unified protocol surface; control_room_service bypass (direct adapter access); no four-service ctx in code; ownership of storage/state/registry vs ctx.platform to be reconciled.
+- **Seam probes:** [PLATFORM_SEAMS.md](testing/PLATFORM_SEAMS.md) documents Genesis→Public Works and Caller→Platform seams; [test_seam_genesis_gate.py](../../tests/3d/compliance/test_seam_genesis_gate.py) and [test_seam_section_8a_upstream.py](../../tests/3d/compliance/test_seam_section_8a_upstream.py) validate that Genesis does not progress when infra is missing and that upstream sees RuntimeError (§8A) when dependencies are missing.
 - **Refactor backlog:** P1 = done; P2 = done; P3 Part B = done; P3 Part A = four-service ctx deferred (Curator/Phase F); P4 = done (DocumentParsingRouter + get_document_parsing()); P5 = done; P6 = deferred. **Four-service mapping:** [FOUR_SERVICE_MAPPING.md](../architecture/FOUR_SERVICE_MAPPING.md) — suggested ctx.governance, ctx.reasoning, ctx.experience, ctx.platform + runtime substrate; adapter usage elsewhere noted. **Plain-language guide:** [PUBLIC_WORKS_REFACTOR_PLAIN_LANGUAGE.md](../PUBLIC_WORKS_REFACTOR_PLAIN_LANGUAGE.md) — what's broken and what we're doing for each item.
 
 ---

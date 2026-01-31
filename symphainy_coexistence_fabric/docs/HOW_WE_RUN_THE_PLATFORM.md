@@ -6,6 +6,49 @@
 
 ---
 
+## Current startup/deployment pattern (at a glance)
+
+Once the platform is **fully started** (recommended path: containers-only via `docker-compose up`), the following is running and where it runs.
+
+**Running in containers (same host / same compose network)**
+
+| Component | Where it runs | How it's started |
+|-----------|----------------|------------------|
+| **Redis** | Container `symphainy-redis` | `docker-compose` service `redis` (image redis:7-alpine). Port 6379. |
+| **ArangoDB** | Container `symphainy-arango` | `docker-compose` service `arango` (image arangodb:3.11). Port 8529. |
+| **Consul** | Container `symphainy-consul` | `docker-compose` service `consul`. Port 8500. |
+| **Meilisearch** | Container `symphainy-meilisearch` | `docker-compose` service `meilisearch` (image getmeili/meilisearch:v1.11). Port 7700. |
+| **Runtime** | Container `symphainy-runtime` | `docker-compose` service `runtime` (build from Dockerfile.runtime). Runs `python3 runtime_main.py`. Port 8000. Connects to redis, arango, consul, meilisearch by **service name**; gets Supabase, GCS, OTLP from env (see below). |
+| **Experience** | Container `symphainy-experience` | `docker-compose` service `experience` (same image, CMD `experience_main.py`). Port 8001. Talks to runtime and same infra. |
+| **Frontend** | Container `symphainy-frontend` | `docker-compose` service `frontend` (build from frontend repo). Port 3000. |
+| **Traefik** | Container `symphainy-traefik` | `docker-compose` service `traefik`. Port 80 (HTTP). Reverse proxy in front of runtime, experience, frontend. |
+
+**DuckDB** is not a separate process: it's an **embedded DB** used by the runtime for deterministic embeddings and analytical data. The runtime uses a **file path** (`DUCKDB_DATABASE_PATH`, default `/app/data/duckdb/main.duckdb`). **Persistence:** The runtime container mounts a named volume `duckdb_data:/app/data/duckdb` so key data persists across container restarts. On GKE (e.g. scale-to-zero), use a **PersistentVolumeClaim** mounted at the same path so data survives pod lifecycle.
+
+**Running in the cloud (not in your compose)**
+
+| Component | Where it runs | How the platform reaches it |
+|-----------|----------------|-----------------------------|
+| **Supabase** | Supabase Cloud (or your hosted project) | Runtime and experience get `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY` (and optional JWKS/issuer) from **`.env.secrets`** via compose `env_file`. |
+| **GCS** | Google Cloud Storage | Runtime gets `GCS_PROJECT_ID`, `GCS_BUCKET_NAME`, `GCS_CREDENTIALS_JSON` from **`.env.secrets`** via compose `env_file`. |
+| **Grafana (OTLP)** | Grafana Cloud | Runtime gets `OTEL_EXPORTER_OTLP_PROTOCOL`, `OTEL_EXPORTER_OTLP_ENDPOINT`, `OTEL_EXPORTER_OTLP_HEADERS` from **`.env.secrets`** via compose `env_file`. Telemetry is sent to Grafana Cloud; no OTLP collector container in our stack. |
+
+**Startup order**
+
+1. You run `docker-compose up -d` (or start infra first, then runtime/experience/frontend/traefik).
+2. Compose starts **redis, arango, consul, meilisearch** (and waits for healthchecks when other services `depends_on` them).
+3. **Runtime** starts; it receives env from compose (`env_file: .env.secrets` + `environment:`). Inside the container it runs **Genesis**: `load_platform_config()` → `pre_boot_validate(config)` → `create_runtime_services(config)` → `create_fastapi_app(services)` → uvicorn. Pre-boot checks **all eight** backing services: Redis, Arango, Consul, Meilisearch (containers), Supabase, GCS, DuckDB (path), Telemetry (Grafana Cloud). If any check fails, the process exits; otherwise the runtime is ready on port 8000.
+4. **Experience** starts after runtime is healthy; **frontend** and **Traefik** start and route traffic.
+
+**Where config comes from**
+
+- **Container URLs (redis, arango, consul, meilisearch):** Set in `docker-compose.yml` `environment:` for the runtime and experience (e.g. `REDIS_URL=redis://redis:6379`, `ARANGO_URL=http://arango:8529`, `MEILISEARCH_HOST=meilisearch`, `MEILISEARCH_PORT=7700`).
+- **Cloud and secrets (Supabase, GCS, Grafana, Arango password, etc.):** Set in **`.env.secrets`** at repo root. Compose injects them into the runtime and experience via `env_file: .env.secrets`.
+
+So: **containers run on your host (or VM); Supabase, GCS, and Grafana run in the cloud** and are used by the runtime/experience via env from `.env.secrets`.
+
+---
+
 ## 1. Genesis principles (unchanged by how you run)
 
 The **same protocol** runs every time:
@@ -52,7 +95,7 @@ The **“mix”** was: we had **config/development.env** set up for **Mode A** (
 
 **Concrete steps:**
 
-1. **Env:** `.env.secrets` at repo root (Supabase, GCS, Arango password, etc.). Compose uses `env_file: .env.secrets` and `environment:` for service URLs (arango, redis, consul, meilisearch, DuckDB path). **OTEL_EXPORTER_OTLP_ENDPOINT** is required (no default); set it to your OTLP collector (e.g. `http://otel-collector:4317` in Docker). Boot fails if unset or unreachable.
+1. **Env:** `.env.secrets` at repo root (Supabase, GCS, Arango password, etc.). Compose uses `env_file: .env.secrets` and `environment:` for service URLs (arango, redis, consul, meilisearch, DuckDB path). **Telemetry (OTLP):** required. For **Option C (Grafana Cloud)** set in `.env.secrets`: `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf`, `OTEL_EXPORTER_OTLP_ENDPOINT=https://...grafana.net/otlp`, and `OTEL_EXPORTER_OTLP_HEADERS=Authorization=Basic ...`. No otel-collector container needed. For self-hosted OTLP, set `OTEL_EXPORTER_OTLP_ENDPOINT` (e.g. `http://otel-collector:4317`). Boot fails if endpoint unset or unreachable.
 2. **Start stack:**  
    ```bash
    docker-compose up -d redis arango consul meilisearch otel-collector  # or your OTLP collector service
@@ -84,9 +127,9 @@ To add or change env for the runtime container, edit `docker-compose.yml` (e.g. 
 
 ---
 
-## 5. The seven backing services (G3) — where they come from
+## 5. The eight backing services (G3) — where they come from
 
-Pre-boot always checks the same seven; only *where* they run and *how* the runtime gets their URLs/hosts differs by mode.
+Pre-boot always checks the same eight; only *where* they run and *how* the runtime gets their URLs/hosts differs by mode.
 
 | Service    | Mode A (runtime on host)        | Mode B (runtime in Docker)     |
 |-----------|----------------------------------|---------------------------------|
@@ -97,8 +140,9 @@ Pre-boot always checks the same seven; only *where* they run and *how* the runti
 | Supabase  | `.env.secrets` (URL + keys) — **hosted** | Same (from `env_file` or compose) |
 | GCS       | `.env.secrets` (project, bucket, credentials) — **hosted** | Same |
 | DuckDB    | **Local:** `config/development.env` → `DUCKDB_DATABASE_PATH=./data/duckdb/main.duckdb` (host path; dir created on first run) | **Local:** runtime container has volume `duckdb_data:/app/data/duckdb`; `DUCKDB_DATABASE_PATH=/app/data/duckdb/main.duckdb` |
+| **Telemetry (OTLP)** | `.env.secrets`: `OTEL_EXPORTER_OTLP_ENDPOINT` (required). **Option C (Grafana Cloud):** also `OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf` and `OTEL_EXPORTER_OTLP_HEADERS`. Self-hosted: e.g. `http://localhost:4317`. | Same (from `env_file`). Option C: HTTPS endpoint + headers in `.env.secrets`; no collector container. |
 
-**Local (in Docker or on host):** Redis, Arango, Consul, Meilisearch, DuckDB. **Hosted (external):** Supabase, GCS. DuckDB is embedded (file-based); there is no “DuckDB server” container — the runtime uses a file path. For Mode A we use `DUCKDB_DATABASE_PATH=./data/duckdb/main.duckdb` in `config/development.env` (host path); for Mode B the runtime container has volume `duckdb_data:/app/data/duckdb`. Meilisearch and a DuckDB volume are in `docker-compose.yml`; `docker-compose up -d redis arango consul meilisearch` gives the four local *services*; DuckDB is just a volume mount for the runtime when it runs in Docker, or a host path when runtime runs on host.
+**Local (in Docker or on host):** Redis, Arango, Consul, Meilisearch, DuckDB. **Hosted (external):** Supabase, GCS. DuckDB is embedded (file-based); there is no “DuckDB server” container — the runtime uses a file path. For Mode A we use `DUCKDB_DATABASE_PATH=./data/duckdb/main.duckdb` in `config/development.env` (host path); for Mode B the runtime container has volume `duckdb_data:/app/data/duckdb`. Meilisearch and a DuckDB volume are in `docker-compose.yml`; `docker-compose up -d redis arango consul meilisearch` gives the four local *services*; DuckDB is just a volume mount for the runtime when it runs in Docker, or a host path when runtime runs on host. OTLP (telemetry) is required; with Option C it is satisfied by Grafana Cloud (no collector container).
 
 ---
 
@@ -117,11 +161,25 @@ No change to Genesis or to the bootstrap/pre-boot code — only clarity on *how*
 
 - **Containers-only (recommended for this project):**  
   `docker-compose up -d redis arango consul meilisearch` then `docker-compose up -d runtime` (or `up -d` for full stack).  
-  Env: Φ1 (compose + `.env.secrets`). No local pip/venv. Rebuild runtime after code changes: `docker-compose build runtime` (or `build --no-cache` when needed).
+  Env: Φ1 (compose + `.env.secrets`). No local pip/venv. **Deps:** Dockerfile.runtime uses `pip install -r requirements.txt`; keep `pyproject.toml` in sync for Poetry/local. **Telemetry:** Put `OTEL_EXPORTER_OTLP_*` (e.g. Grafana Cloud) in `.env.secrets`; compose `env_file` passes them into the runtime container. Rebuild runtime after code/dep changes: `docker-compose build runtime` (or `build --no-cache` when needed).
 
 - **Optional local dev (runtime on host):**  
-  `docker-compose up -d redis arango consul meilisearch` → create venv, `pip install -r requirements.txt` → `python runtime_main.py`.  
+  `docker-compose up -d redis arango consul meilisearch` → create venv, `pip install -r requirements.txt` (or `poetry install`) → `python runtime_main.py`.  
   Env: `.env.secrets` + `config/development.env` (localhost). Use only if you want faster iteration without image rebuilds.
 
 - **Pre-boot fails?**  
-  Fix the service or the config key the message names (e.g. Arango 401 → password in `.env.secrets`; Meilisearch connection refused → start meilisearch or fix host/port). Then restart the runtime container (or rerun if on host).
+  Fix the service or the config key the message names (e.g. Arango 401 → password in `.env.secrets`; Meilisearch connection refused → start meilisearch or fix host/port; Telemetry unreachable → check `OTEL_EXPORTER_OTLP_ENDPOINT` and for HTTPS use port 443). Then restart the runtime container (or rerun if on host).
+
+- **Testing Grafana Cloud OTLP:**  
+  Run `python3 scripts/test_grafana_cloud_otlp.py` from repo root (with `.env.secrets` containing `OTEL_EXPORTER_OTLP_*`). OpenTelemetry is required for the platform; the script runs the same pre-boot telemetry check (G3) and sends a test span to Grafana Cloud. Pytest: `tests/3d/startup/test_grafana_cloud_otlp.py` verifies the OTLP endpoint is reachable when env is set.
+
+---
+
+## 7.1 Genesis-aligned “what to do” (containers-only, no pip on host)
+
+| Step | Where | What |
+|------|--------|------|
+| **Install deps** | **Containers:** Dockerfile.runtime runs `pip install -r requirements.txt`. Rebuild image after adding deps: `docker-compose build runtime`. **Poetry/local:** Keep `pyproject.toml` in sync with `requirements.txt` (e.g. OpenTelemetry) so `poetry install` matches the image. | No `pip install` on host for Mode B. |
+| **Load .env.secrets** | **Containers:** Compose `env_file: .env.secrets` for runtime (and experience). Genesis Φ1 injects env before process starts; G2 builds config from that env. **Host (Mode A):** `load_platform_config()` → `acquire_env()` loads `.env.secrets` before G3/Φ3. | OTLP (Grafana Cloud) and other secrets in `.env.secrets`; compose passes them into the container. |
+| **Start app** | `docker-compose up -d redis arango consul meilisearch` then `docker-compose up -d runtime`. Pre-boot (G3) runs inside the runtime container; telemetry check uses port 443 for HTTPS endpoints. | Same genesis path: G2 → G3 → Φ3. |
+| **Tests (real genesis)** | Use 3d-test compose with `env_file` so runtime gets `.env.secrets` (including OTLP). Real genesis fixture: config → pre_boot_validate → create_runtime_services → app; test env must have OTEL_* set so pre_boot passes. | See [TESTING_STRATEGY_PLATFORM_CONTRACT.md](architecture/TESTING_STRATEGY_PLATFORM_CONTRACT.md) and real_infrastructure / contract tests. |

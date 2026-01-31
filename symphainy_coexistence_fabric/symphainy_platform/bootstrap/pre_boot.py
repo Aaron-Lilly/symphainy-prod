@@ -248,7 +248,8 @@ def _check_telemetry(config: Dict[str, Any]) -> str:
         host = parsed.hostname or "localhost"
         port = parsed.port
         if port is None:
-            port = 4317 if parsed.scheme in ("http", "https") else 4317
+            # HTTPS default is 443; HTTP/gRPC OTLP default is 4317
+            port = 443 if parsed.scheme == "https" else 4317
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(5)
         sock.connect((host, port))

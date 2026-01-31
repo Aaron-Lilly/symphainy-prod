@@ -236,8 +236,9 @@ class ExportArtifactService(BaseIntentService):
             Artifact data or None if not found
         """
         if not self.artifact_plane:
-            self.logger.warning("Artifact Plane not available")
-            return None
+            raise RuntimeError(
+                "Artifact plane not wired; cannot get artifact for export. Platform contract §8A."
+            )
         
         try:
             artifact_result = await self.artifact_plane.get_artifact(

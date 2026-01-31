@@ -107,8 +107,9 @@ class BaseOrchestrator:
             TelemetryRecord if Nurse SDK available, None otherwise
         """
         if not self.nurse_sdk:
-            self.logger.warning("Nurse SDK not available, skipping telemetry")
-            return None
+            raise RuntimeError(
+                "Nurse SDK not wired; cannot record telemetry. Platform contract §8A."
+            )
         
         try:
             telemetry_record = await self.nurse_sdk.record_telemetry(

@@ -18,11 +18,13 @@ project_root = Path(__file__).resolve().parents[5]
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from typing import Dict, Any, Optional, List, AsyncIterator
+from typing import Dict, Any, Optional, List, AsyncIterator, TYPE_CHECKING
 from dataclasses import dataclass
 
 from utilities import get_logger, get_clock
-from symphainy_platform.foundations.public_works.adapters.redis_adapter import RedisAdapter
+
+if TYPE_CHECKING:
+    from symphainy_platform.foundations.public_works.protocols.event_log_protocol import EventLogProtocol
 
 
 @dataclass
@@ -54,17 +56,19 @@ class PostOfficeSDK:
     
     def __init__(
         self,
-        redis_adapter: Optional[RedisAdapter] = None,
+        event_log: Optional["EventLogProtocol"] = None,
         policy_resolver: Optional[Any] = None  # Policy library (optional for MVP)
     ):
         """
         Initialize Post Office SDK.
-        
+
+        Uses EventLogProtocol (e.g. from public_works.get_wal_backend()); adapters must not escape Public Works.
+
         Args:
-            redis_adapter: Redis adapter (from Public Works) for event bus
+            event_log: Event log backend (from Public Works get_wal_backend()) for stream read
             policy_resolver: Optional policy resolver (for routing policies)
         """
-        self.redis_adapter = redis_adapter
+        self.event_log = event_log
         self.policy_resolver = policy_resolver
         self.logger = get_logger(self.__class__.__name__)
         self.clock = get_clock()
@@ -229,16 +233,16 @@ class PostOfficeSDK:
         Returns:
             List of event dictionaries
         """
-        if not self.redis_adapter:
-            self.logger.warning("Redis adapter not available, cannot get stream events")
-            return []
+        if not self.event_log:
+            raise RuntimeError(
+                "Event log not wired; cannot get stream events. Platform contract §8A."
+            )
         
         try:
-            # Read from Redis Stream
-            entries = await self.redis_adapter.xrange(
+            entries = await self.event_log.xrange(
                 stream_name=stream_name,
-                start_id=start_id,
-                end_id=end_id,
+                start=start_id,
+                end=end_id,
                 count=limit
             )
             

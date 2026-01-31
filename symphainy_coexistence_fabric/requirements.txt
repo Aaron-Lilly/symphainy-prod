@@ -42,3 +42,11 @@ PyYAML>=6.0.0  # YAML parsing for data model processing (JSON Schema, YAML schem
 # EDA and Excel (REQUIRED per platform contract §9.4)
 pandas>=2.0.0   # EDA analysis agent, Excel parsing (preferred path)
 openpyxl>=3.1.0  # Excel parsing (pandas read_excel engine)
+
+# OpenTelemetry (REQUIRED per platform contract - OTLP tracing/metrics/logs)
+opentelemetry-api>=1.20.0
+opentelemetry-sdk>=1.20.0
+opentelemetry-exporter-otlp-proto-grpc>=1.20.0
+opentelemetry-exporter-otlp-proto-http>=1.20.0
+opentelemetry-instrumentation-logging>=0.41b0
+opentelemetry-instrumentation-fastapi>=0.41b0

@@ -77,3 +77,5 @@
 - **Four services:** governance, reasoning, experience, platform. Map get_* as in §3; implement ctx when doing P3 Part A (after Curator/Phase F).
 - **Runtime substrate:** state, file_storage, artifact_storage, registry, redis (WAL). Keep as get_* injectables unless we add ctx.runtime as a bundle.
 - **Adapter usage:** WAL, TransactionalOutbox, DataBrain use adapters (Redis, Arango); acceptable if obtained via get_redis_adapter() / get_arango_adapter(). No need for more than four **capability** services; runtime does not require a 5th “service” for capabilities, only clear injectables for execution infrastructure.
+
+**See also:** [ANTI_PATTERNS_AND_DI_ASSESSMENT.md](ANTI_PATTERNS_AND_DI_ASSESSMENT.md) — DI container role, anti-patterns (abstractions vs protocols vs capability service), lineage split (Supabase vs Arango), and recommended probes.

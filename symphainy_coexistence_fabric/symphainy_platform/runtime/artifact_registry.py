@@ -229,9 +229,9 @@ class ArtifactRegistry:
                 return True
             
             if not self.state_abstraction:
-                self.logger.warning("State abstraction not available, using in-memory fallback")
-                self._memory_store[state_key] = artifact
-                return True
+                raise RuntimeError(
+                    "State abstraction not wired; cannot register artifact (use_memory=False). Platform contract §8A."
+                )
             
             # Store in State Surface (durable)
             success = await self.state_abstraction.store_state(
@@ -292,8 +292,9 @@ class ArtifactRegistry:
             if self.use_memory:
                 artifact_data = self._memory_store.get(state_key)
             elif not self.state_abstraction:
-                self.logger.warning("State abstraction not available, using in-memory fallback")
-                artifact_data = self._memory_store.get(state_key)
+                raise RuntimeError(
+                    "State abstraction not wired; cannot resolve artifact (use_memory=False). Platform contract §8A."
+                )
             else:
                 artifact_data = await self.state_abstraction.retrieve_state(state_key)
             
@@ -332,6 +333,11 @@ class ArtifactRegistry:
             self.logger.debug(f"Artifact resolved: {artifact_id} ({artifact_type})")
             return artifact
             
+        except RuntimeError as e:
+            if "Platform contract §8A" in str(e):
+                raise
+            self.logger.error(f"Failed to resolve artifact {artifact_id}: {e}", exc_info=True)
+            return None
         except Exception as e:
             self.logger.error(f"Failed to resolve artifact {artifact_id}: {e}", exc_info=True)
             return None
@@ -362,7 +368,9 @@ class ArtifactRegistry:
             if self.use_memory:
                 artifact = self._memory_store.get(state_key)
             elif not self.state_abstraction:
-                artifact = self._memory_store.get(state_key)
+                raise RuntimeError(
+                    "State abstraction not wired; cannot add materialization (use_memory=False). Platform contract §8A."
+                )
             else:
                 artifact_data = await self.state_abstraction.retrieve_state(state_key)
                 if artifact_data:
@@ -384,8 +392,9 @@ class ArtifactRegistry:
                 return True
             
             if not self.state_abstraction:
-                self._memory_store[state_key] = artifact
-                return True
+                raise RuntimeError(
+                    "State abstraction not wired; cannot add materialization (use_memory=False). Platform contract §8A."
+                )
             
             success = await self.state_abstraction.store_state(
                 state_id=state_key,
@@ -482,8 +491,9 @@ class ArtifactRegistry:
                 return True
             
             if not self.state_abstraction:
-                self._memory_store[state_key] = artifact
-                return True
+                raise RuntimeError(
+                    "State abstraction not wired; cannot update lifecycle (use_memory=False). Platform contract §8A."
+                )
             
             success = await self.state_abstraction.store_state(
                 state_id=state_key,

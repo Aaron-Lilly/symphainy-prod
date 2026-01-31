@@ -177,7 +177,9 @@ class ExtractEmbeddingsService(BaseIntentService):
     ) -> Optional[str]:
         """Get file_id from parsed result for lineage tracking."""
         if not self.public_works:
-            return None
+            raise RuntimeError(
+                "Public Works not wired; cannot get embedding. Platform contract §8A."
+            )
         
         registry = getattr(self.public_works, 'registry_abstraction', None)
         if not registry:
@@ -206,7 +208,9 @@ class ExtractEmbeddingsService(BaseIntentService):
     ) -> None:
         """Track embedding in registry for lineage."""
         if not self.public_works:
-            return
+            raise RuntimeError(
+                "Public Works not wired; cannot track embedding. Platform contract §8A."
+            )
         
         registry = getattr(self.public_works, 'registry_abstraction', None)
         if not registry:

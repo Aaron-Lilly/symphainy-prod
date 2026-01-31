@@ -64,59 +64,12 @@ class TextProcessingAbstraction:
                     timestamp=datetime.utcnow().isoformat()
                 )
             
-            # Text parsing is simple - can be done directly if no adapter
+            # Text parsing requires text adapter (no silent fallback per §8A)
             if not self.text_adapter:
-                # Direct text parsing (no adapter needed)
-                file_data = await state_surface.get_file(request.file_reference)
-                
-                if not file_data:
-                    return FileParsingResult(
-                        success=False,
-                        error=f"File not found: {request.file_reference}",
-                        timestamp=datetime.utcnow().isoformat()
-                    )
-                
-                # Try UTF-8 first, then fallback to latin-1
-                try:
-                    text_content = file_data.decode('utf-8')
-                except UnicodeDecodeError:
-                    text_content = file_data.decode('latin-1')
-                
-                # Extract paragraphs from text (deterministic split)
-                import re
-                para_texts = re.split(r'\n\s*\n', text_content)
-                paragraphs = [para.strip() for para in para_texts if para.strip()]
-                
-                # Build structure metadata for chunking service
-                structure = {
-                    "paragraphs": [
-                        {
-                            "paragraph_index": idx,
-                            "text": para
-                        }
-                        for idx, para in enumerate(paragraphs)
-                    ]
-                }
-                
-                # Build metadata (include structure, parsing_type)
-                metadata = {
-                    "parsing_type": "unstructured",
-                    "structure": structure,
-                    "file_type": "txt",
-                    "paragraph_count": len(paragraphs),
-                    "size": len(file_data)
-                }
-                
-                return FileParsingResult(
-                    success=True,
-                    text_content=text_content if text_content else None,
-                    structured_data=None,  # Plain text has no structured data
-                    metadata=metadata,
-                    parsing_type="unstructured",  # Explicit parsing type
-                    timestamp=datetime.utcnow().isoformat()
+                raise RuntimeError(
+                    "Text adapter not wired; cannot parse file. Platform contract §8A."
                 )
             
-            # Use adapter if provided
             file_data = await state_surface.get_file(request.file_reference)
             
             if not file_data:

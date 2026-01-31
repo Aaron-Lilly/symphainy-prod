@@ -21,8 +21,8 @@ class TestRealAuthenticationFlow:
     @pytest.mark.asyncio
     async def test_real_user_login(self, real_solutions, real_execution_context):
         """Test real user login."""
-        solutions = await real_solutions
-        context = await real_execution_context
+        solutions = real_solutions
+        context = real_execution_context
         security_solution = solutions.security
         journey = security_solution._journeys.get("authentication")
         if not journey:
@@ -45,8 +45,8 @@ class TestRealFileUploadFlow:
     @pytest.mark.asyncio
     async def test_real_file_upload(self, real_solutions, real_execution_context):
         """Test real file upload."""
-        solutions = await real_solutions
-        context = await real_execution_context
+        solutions = real_solutions
+        context = real_execution_context
         content_solution = solutions.content
         journey = content_solution.get_journey("file_upload_materialization")
         if not journey:
@@ -68,8 +68,8 @@ class TestRealFileParsing:
     @pytest.mark.asyncio
     async def test_real_parsing_quality(self, real_solutions, real_execution_context):
         """Test parsing returns meaningful content."""
-        solutions = await real_solutions
-        context = await real_execution_context
+        solutions = real_solutions
+        context = real_execution_context
         content_solution = solutions.content
         journey = content_solution.get_journey("file_parsing")
         if not journey:
@@ -92,8 +92,8 @@ class TestRealChatAgents:
     @pytest.mark.asyncio
     async def test_guide_agent_quality(self, real_solutions, real_execution_context):
         """Test GuideAgent generates real responses."""
-        solutions = await real_solutions
-        context = await real_execution_context
+        solutions = real_solutions
+        context = real_execution_context
         coexistence_solution = solutions.coexistence
         journey = coexistence_solution.get_journey("guide_agent")
         if not journey:
@@ -116,8 +116,8 @@ class TestRealNavigation:
     @pytest.mark.asyncio
     async def test_real_navigation(self, real_solutions, real_execution_context):
         """Test real navigation."""
-        solutions = await real_solutions
-        context = await real_execution_context
+        solutions = real_solutions
+        context = real_execution_context
         coexistence_solution = solutions.coexistence
         journey = coexistence_solution.get_journey("navigation")
         if not journey:

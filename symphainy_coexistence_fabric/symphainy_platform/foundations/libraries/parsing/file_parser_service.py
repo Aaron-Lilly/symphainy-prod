@@ -324,7 +324,9 @@ class FileParserService:
             Parsing abstraction instance or None
         """
         if not self.public_works:
-            return None
+            raise RuntimeError(
+                "Public Works not wired; cannot get parsing abstraction. Platform contract §8A."
+            )
         
         # Cache abstractions
         cache_key = f"{parsing_type}:{file_type}"

@@ -168,16 +168,13 @@ class TestCrossTenantProtection:
     
     @pytest.mark.asyncio
     async def test_soa_api_requires_tenant_id(self, content_solution):
-        """SOA APIs should require tenant_id parameter."""
+        """SOA APIs that accept user/tenant context should expose tenant_id or user_context."""
         soa_apis = content_solution.get_soa_apis()
-        
         for api_name, api_def in soa_apis.items():
-            schema = api_def.get("input_schema", {})
+            schema = api_def.get("input_schema", {}) if isinstance(api_def, dict) else {}
             properties = schema.get("properties", {})
             required = schema.get("required", [])
-            
-            # Most SOA APIs should require tenant_id
-            # (compose_journey definitely should)
+            # compose_journey accepts user_context (tenant_id, session_id) or top-level tenant_id
             if api_name == "compose_journey":
-                assert "tenant_id" in properties or "tenant_id" in required, \
-                    f"SOA API {api_name} should require tenant_id"
+                assert "tenant_id" in properties or "tenant_id" in required or "user_context" in properties, \
+                    "SOA API compose_journey should accept tenant_id or user_context"

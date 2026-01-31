@@ -67,76 +67,56 @@ def load_env_file(file_path: str) -> dict:
     return env_vars
 
 
+def _use_supabase_test() -> bool:
+    v = os.getenv("USE_SUPABASE_TEST", "").strip().lower()
+    return v in ("1", "true", "yes")
+
+
 def get_supabase_url() -> Optional[str]:
     """
-    Get Supabase URL with fallback to .env.secrets file.
-    
-    Returns:
-        Supabase URL or None
+    Get Supabase URL. When USE_SUPABASE_TEST=1, returns SUPABASE_TEST_URL.
     """
-    # Try environment variable first
-    url = os.getenv("SUPABASE_URL")
+    use_test = _use_supabase_test()
+    url = os.getenv("SUPABASE_TEST_URL" if use_test else "SUPABASE_URL") or os.getenv("SUPABASE_URL")
     if url:
         return url
-    
-    # Try loading from .env.secrets
     env_secrets = _find_env_secrets()
     if env_secrets:
         env_vars = load_env_file(str(env_secrets))
-        return env_vars.get("SUPABASE_URL")
-    
+        key = "SUPABASE_TEST_URL" if use_test else "SUPABASE_URL"
+        return env_vars.get(key) or env_vars.get("SUPABASE_URL")
     return None
 
 
 def get_supabase_anon_key() -> Optional[str]:
     """
-    Get Supabase anon key (uses SUPABASE_PUBLISHABLE_KEY).
-    
-    Uses SUPABASE_PUBLISHABLE_KEY (Supabase new naming convention).
-    Legacy names (SUPABASE_ANON_KEY, SUPABASE_KEY) are deprecated and no longer supported.
-    
-    Returns:
-        Supabase anon key or None
+    Get Supabase anon key. When USE_SUPABASE_TEST=1, returns SUPABASE_TEST_PUBLISHABLE_KEY.
     """
-    # Try environment variables (new Supabase naming only)
-    key = os.getenv("SUPABASE_PUBLISHABLE_KEY")
+    use_test = _use_supabase_test()
+    env_key = "SUPABASE_TEST_PUBLISHABLE_KEY" if use_test else "SUPABASE_PUBLISHABLE_KEY"
+    key = os.getenv(env_key) or os.getenv("SUPABASE_PUBLISHABLE_KEY")
     if key:
         return key
-    
-    # Try loading from .env.secrets
     env_secrets = _find_env_secrets()
     if env_secrets:
         env_vars = load_env_file(str(env_secrets))
-        return (
-            env_vars.get("SUPABASE_PUBLISHABLE_KEY")
-        )
-    
+        return env_vars.get(env_key) or env_vars.get("SUPABASE_PUBLISHABLE_KEY")
     return None
 
 
 def get_supabase_service_key() -> Optional[str]:
     """
-    Get Supabase service key (uses SUPABASE_SECRET_KEY).
-    
-    Uses SUPABASE_SECRET_KEY (Supabase new naming convention).
-    Legacy names (SUPABASE_SERVICE_KEY, SUPABASE_KEY) are deprecated and no longer supported.
-    
-    Returns:
-        Supabase service key or None
+    Get Supabase service key. When USE_SUPABASE_TEST=1, returns SUPABASE_TEST_SECRET_KEY.
     """
-    # Try environment variables (new Supabase naming only)
-    key = os.getenv("SUPABASE_SECRET_KEY")
+    use_test = _use_supabase_test()
+    env_key = "SUPABASE_TEST_SECRET_KEY" if use_test else "SUPABASE_SECRET_KEY"
+    key = os.getenv(env_key) or os.getenv("SUPABASE_SECRET_KEY")
     if key:
         return key
-    
-    # Try loading from .env.secrets
     env_secrets = _find_env_secrets()
     if env_secrets:
         env_vars = load_env_file(str(env_secrets))
-        return (
-            env_vars.get("SUPABASE_SECRET_KEY")
-        )
-    
+        return env_vars.get(env_key) or env_vars.get("SUPABASE_SECRET_KEY")
     return None
 
 

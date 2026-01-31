@@ -73,8 +73,9 @@ class AgentPostureRegistry:
             True if registration successful
         """
         if not self.supabase_adapter:
-            self.logger.warning("Supabase adapter not available, cannot register posture")
-            return False
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot register posture. Platform contract §8A."
+            )
         
         # Validate posture before registration
         is_valid, error = posture.validate()
@@ -145,8 +146,9 @@ class AgentPostureRegistry:
             AgentPosture instance, or None if not found
         """
         if not self.supabase_adapter:
-            self.logger.warning("Supabase adapter not available, cannot retrieve posture")
-            return None
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot retrieve posture. Platform contract §8A."
+            )
         
         try:
             # Try solution-specific first
@@ -230,8 +232,9 @@ class AgentPostureRegistry:
             List of AgentPosture instances
         """
         if not self.supabase_adapter:
-            self.logger.warning("Supabase adapter not available, cannot list postures")
-            return []
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot list postures. Platform contract §8A."
+            )
         
         try:
             # Query Supabase
@@ -280,8 +283,9 @@ class AgentPostureRegistry:
             True if update successful
         """
         if not self.supabase_adapter:
-            self.logger.warning("Supabase adapter not available, cannot update posture")
-            return False
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot update posture. Platform contract §8A."
+            )
         
         # Validate posture before update
         is_valid, error = posture.validate()
@@ -350,8 +354,9 @@ class AgentPostureRegistry:
             True if deletion successful
         """
         if not self.supabase_adapter:
-            self.logger.warning("Supabase adapter not available, cannot delete posture")
-            return False
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot delete posture. Platform contract §8A."
+            )
         
         try:
             # Delete filters

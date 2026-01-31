@@ -256,7 +256,9 @@ class ParseContentService(BaseIntentService):
         CTO guidance: ingestion_profile and file_type live with the pending intent.
         """
         if not self.public_works:
-            return None
+            raise RuntimeError(
+                "Public Works not wired; cannot get parsed content. Platform contract §8A."
+            )
         
         registry = getattr(self.public_works, 'registry_abstraction', None)
         if not registry:
@@ -319,7 +321,9 @@ class ParseContentService(BaseIntentService):
     ) -> None:
         """Update pending intent status."""
         if not self.public_works:
-            return
+            raise RuntimeError(
+                "Public Works not wired; cannot update intent status. Platform contract §8A."
+            )
         
         registry = getattr(self.public_works, 'registry_abstraction', None)
         if not registry:
@@ -351,7 +355,9 @@ class ParseContentService(BaseIntentService):
         Track parsed result in Supabase for lineage.
         """
         if not self.public_works:
-            return
+            raise RuntimeError(
+                "Public Works not wired; cannot track parsed result. Platform contract §8A."
+            )
         
         registry = getattr(self.public_works, 'registry_abstraction', None)
         if not registry:

@@ -152,8 +152,9 @@ class ListArtifactsService(BaseIntentService):
             List of file metadata dicts
         """
         if not self.public_works:
-            self.logger.warning("Public Works not available, returning empty list")
-            return []
+            raise RuntimeError(
+                "Public Works not wired; cannot list artifacts. Platform contract §8A."
+            )
         
         registry = getattr(self.public_works, 'registry_abstraction', None)
         if not registry:

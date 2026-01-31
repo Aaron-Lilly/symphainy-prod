@@ -676,8 +676,9 @@ class RuntimeAPI:
             Optional[bytes]: Visual image bytes or None if not found
         """
         if not self.artifact_storage:
-            self.logger.warning("Artifact storage not available")
-            return None
+            raise RuntimeError(
+                "Artifact storage not wired; cannot get visual. Platform contract §8A."
+            )
         
         return await self.artifact_storage.get_visual(
             visual_path=visual_path,

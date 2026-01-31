@@ -78,9 +78,9 @@ class MaterializationPolicyStore:
             return self._policy_cache[cache_key]
         
         if not self.supabase_adapter:
-            # Fallback to MVP permissive policy if no database
-            self.logger.warning("Supabase adapter not available, using MVP permissive policy")
-            return self._get_mvp_permissive_policy()
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot get materialization policy. Platform contract §8A."
+            )
         
         try:
             policy = None
@@ -319,8 +319,9 @@ class MaterializationPolicyStore:
             Policy ID (UUID string) or None if creation failed
         """
         if not self.supabase_adapter:
-            self.logger.warning("Supabase adapter not available, cannot create tenant policy")
-            return None
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot create tenant policy. Platform contract §8A."
+            )
         
         try:
             def to_uuid(value: Optional[str]) -> Optional[str]:

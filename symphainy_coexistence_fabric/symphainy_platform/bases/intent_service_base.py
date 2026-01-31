@@ -104,8 +104,9 @@ class BaseIntentService:
             TelemetryRecord if Nurse SDK available, None otherwise
         """
         if not self.nurse_sdk:
-            self.logger.warning("Nurse SDK not available, skipping telemetry")
-            return None
+            raise RuntimeError(
+                "Nurse SDK not wired; cannot record telemetry. Platform contract §8A."
+            )
         
         try:
             telemetry_record = await self.nurse_sdk.record_telemetry(
@@ -137,8 +138,9 @@ class BaseIntentService:
             True if registration successful
         """
         if not self.state_surface:
-            self.logger.error("State Surface not available, cannot register artifact")
-            return False
+            raise RuntimeError(
+                "State Surface not wired; cannot register artifact. Platform contract §8A."
+            )
         
         try:
             # Register artifact via State Surface

@@ -148,6 +148,50 @@ When this contract is satisfied and enforced:
 
 ---
 
+## 8A. No Silent Degradation at Runtime (At-Use Contract)
+
+**Purpose:** Prevent deadly anti-patterns where missing required dependencies are hidden by returning a value that can be mistaken for success or empty result. If the platform contract says a component requires a dependency, running without it is a **contract violation**. The correct response is **fail here** (raise), not "pretend we're OK."
+
+**Rule — No silent fallbacks for required dependencies:**
+
+1. **At boot (already in §2, §5):** If required infrastructure is missing, the process must not build the object graph; it must exit immediately with a clear error. No "continuing anyway."
+
+2. **At use (runtime):** If a component has a **required** dependency (e.g. TransactionalOutbox requires an event log backend; WAL requires an event log backend when not in memory-only test mode), and that dependency is None or missing when the component is used:
+   - The component **must raise immediately** with a clear, actionable message (e.g. `RuntimeError("TransactionalOutbox was not wired with an event log backend; platform contract violation.")`).
+   - The component **must not** return a value (e.g. `False`, empty list, default) that could be mistaken for "operation failed for a transient reason" or "no data." Silent fallbacks (e.g. "if no backend, return False" or "fallback to in-memory") in production code paths **violate this contract** and make failures impossible to diagnose.
+
+3. **Intent:** When the process is running after Genesis, every component that is **used** was built with its required dependencies present (composition root only wires them when dependencies exist). If a component is ever invoked with a missing required dependency, that is a **bug** (wiring error or contract violation); the system must **fail fast** so the bug is found and fixed, not hidden.
+
+**Examples of contract violations (forbidden):**
+
+- `if not self.event_log: return False` in TransactionalOutbox.add_event — **forbidden.** Use: `if not self.event_log: raise RuntimeError(...)`.
+- WAL "fallback to in-memory when Redis is None" in production — **forbidden** unless memory-only is an explicit, documented mode (e.g. single-process test). In production, WAL must be wired with event log backend or not built.
+- Any production code path that hides a missing required dependency by returning a value that callers could interpret as success or empty result — **forbidden.**
+
+**Testing:** Tests must not require or encourage silent fallbacks. See [TESTING_STRATEGY_PLATFORM_CONTRACT.md](TESTING_STRATEGY_PLATFORM_CONTRACT.md).
+
+---
+
+## 8B. Component Dependency Contract
+
+**Purpose:** Define how "this component requires X" is expressed and enforced so we cannot accidentally create components that run without their required dependencies.
+
+**Rule:**
+
+1. **Required dependency:** A component has a **required** dependency when the platform contract (this document or the component's documented contract) states that the component delivers a capability only when that dependency is present. Example: TransactionalOutbox delivers "atomic event publishing with state changes" only when it has an event log backend; therefore event_log is a required dependency.
+
+2. **Enforcement — exactly one of:**
+   - **(A) Composition root does not build the component without the dependency.** The composition root (e.g. service_factory, bootstrap) only instantiates the component when the dependency is available (e.g. only build TransactionalOutbox when get_wal_backend() returns non-None). Then at use time the dependency is never None.
+   - **(B) Component raises at first use if dependency is None.** If the component is ever constructed with a None required dependency (e.g. for testing with a fake injected later), the component must **raise** on first use (e.g. in add_event) with a clear message, not return or fall back.
+
+3. **No third option:** We do **not** allow "component runs without dependency and returns a value that hides the missing dependency." That is a contract violation (§8A).
+
+4. **Optional dependencies:** If a dependency is truly optional (documented as such), the component may handle None (e.g. skip a feature). Optional must be explicit and rare; the default is required.
+
+**Summary:** Required dependency missing at use time → raise. Never silently return or fall back. Composition root should wire so required dependencies are always present when the component is used; if they are not, fail fast.
+
+---
+
 ## 9. Solution, Journey, and Intent Requirements (Functional Capabilities)
 
 The platform contract must also capture what **solutions, journeys, and intents** require from Public Works and Civic so that the platform can actually deliver. This section maps downstream needs to abstractions, adapters, and capabilities. Nothing here is optional for the flows that use it—if an intent or journey requires a capability, that capability must be present and working when the contract holds.
@@ -299,6 +343,7 @@ This subsection captures additional capabilities or dependencies that could be m
 
 ## 10. References
 
+- [TESTING_STRATEGY_PLATFORM_CONTRACT.md](TESTING_STRATEGY_PLATFORM_CONTRACT.md) — testing strategy that reinforces this contract; prevents test-induced anti-patterns (§8A, §8B).
 - [HYBRID_CLOUD_VISION](../HYBRID_CLOUD_VISION.md) — deployment north star (Option C, three planes, phased evolution). Contract defines *what* we need; that doc defines *where* it runs.
 - [PLATFORM_INVENTORY](../testing/PLATFORM_INVENTORY.md) — what's in the platform vs what we need; superseded by this contract for "required."
 - [PATH_TO_WORKING_PLATFORM](../testing/PATH_TO_WORKING_PLATFORM.md) — roadmap (pre-boot → boot → first request → critical path); pre-boot must enforce this contract.

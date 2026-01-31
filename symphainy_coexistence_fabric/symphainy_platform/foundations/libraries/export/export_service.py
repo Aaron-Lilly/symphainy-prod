@@ -401,7 +401,9 @@ class ExportService:
     ) -> List[Dict[str, Any]]:
         """Collect validation rules from data quality assessments."""
         if not self.registry:
-            return []
+            raise RuntimeError(
+                "Registry not wired; cannot collect validation rules. Platform contract §8A."
+            )
         
         try:
             # Query quality assessments

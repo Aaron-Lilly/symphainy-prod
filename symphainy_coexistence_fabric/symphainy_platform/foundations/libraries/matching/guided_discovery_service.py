@@ -21,7 +21,6 @@ from typing import Dict, Any, Optional, List
 
 from utilities import get_logger
 from symphainy_platform.runtime.execution_context import ExecutionContext
-from symphainy_platform.civic_systems.platform_sdk.guide_registry import GuideRegistry
 from .schema_matching_service import SchemaMatchingService
 from .semantic_matching_service import SemanticMatchingService
 from .pattern_validation_service import PatternValidationService
@@ -49,16 +48,10 @@ class GuidedDiscoveryService:
         self.logger = get_logger(self.__class__.__name__)
         self.public_works = public_works
         
-        # Initialize Guide Registry
-        supabase_adapter = None
-        if public_works:
-            supabase_adapter = public_works.get_supabase_adapter()
-        
-        if GuideRegistry:
-            self.guide_registry = GuideRegistry(supabase_adapter=supabase_adapter)
-        else:
-            self.guide_registry = None
-            self.logger.warning("GuideRegistry not available")
+        # Use guide registry from Public Works (protocol; no adapter access)
+        self.guide_registry = public_works.get_guide_registry() if public_works else None
+        if not self.guide_registry:
+            self.logger.warning("Guide registry not available")
         
         # Initialize three-phase matching services
         # ARCHITECTURAL PRINCIPLE: Use Public Works abstractions for governed access

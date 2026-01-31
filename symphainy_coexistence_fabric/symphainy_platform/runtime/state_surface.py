@@ -80,8 +80,9 @@ class StateSurface:
             return self._memory_store.get(state_id)
         
         if not self.state_abstraction:
-            self.logger.warning("State abstraction not available, using in-memory fallback")
-            return self._memory_store.get(state_id)
+            raise RuntimeError(
+                "State abstraction not wired; cannot get execution state (use_memory=False). Platform contract §8A."
+            )
         
         try:
             state_data = await self.state_abstraction.retrieve_state(state_id)
@@ -116,9 +117,9 @@ class StateSurface:
             return True
         
         if not self.state_abstraction:
-            self.logger.warning("State abstraction not available, using in-memory fallback")
-            self._memory_store[state_id] = state
-            return True
+            raise RuntimeError(
+                "State abstraction not wired; cannot set execution state (use_memory=False). Platform contract §8A."
+            )
         
         try:
             success = await self.state_abstraction.store_state(
@@ -166,9 +167,9 @@ class StateSurface:
             return True
         
         if not self.state_abstraction:
-            self.logger.warning("State abstraction not available, using in-memory fallback")
-            self._memory_store[state_id] = state
-            return True
+            raise RuntimeError(
+                "State abstraction not wired; cannot store session state (use_memory=False). Platform contract §8A."
+            )
         
         try:
             success = await self.state_abstraction.store_state(
@@ -219,7 +220,9 @@ class StateSurface:
             return self._memory_store.get(state_id)
         
         if not self.state_abstraction:
-            return self._memory_store.get(state_id)
+            raise RuntimeError(
+                "State abstraction not wired; cannot get session state (use_memory=False). Platform contract §8A."
+            )
         
         try:
             state_data = await self.state_abstraction.retrieve_state(state_id)
@@ -253,8 +256,9 @@ class StateSurface:
             return True
         
         if not self.state_abstraction:
-            self._memory_store[state_id] = state
-            return True
+            raise RuntimeError(
+                "State abstraction not wired; cannot set session state (use_memory=False). Platform contract §8A."
+            )
         
         try:
             success = await self.state_abstraction.store_state(
@@ -293,7 +297,9 @@ class StateSurface:
             return self._memory_store.get(state_id)
         
         if not self.state_abstraction:
-            return self._memory_store.get(state_id)
+            raise RuntimeError(
+                "State abstraction not wired; cannot check idempotency (use_memory=False). Platform contract §8A."
+            )
         
         try:
             state_data = await self.state_abstraction.retrieve_state(state_id)
@@ -329,8 +335,9 @@ class StateSurface:
             return True
         
         if not self.state_abstraction:
-            self._memory_store[state_id] = result
-            return True
+            raise RuntimeError(
+                "State abstraction not wired; cannot store idempotency result (use_memory=False). Platform contract §8A."
+            )
         
         try:
             success = await self.state_abstraction.store_state(
@@ -378,8 +385,9 @@ class StateSurface:
             return True
         
         if not self.state_abstraction:
-            self._memory_store[state_id] = progress
-            return True
+            raise RuntimeError(
+                "State abstraction not wired; cannot track operation progress (use_memory=False). Platform contract §8A."
+            )
         
         try:
             success = await self.state_abstraction.store_state(
@@ -414,7 +422,9 @@ class StateSurface:
             return self._memory_store.get(state_id)
         
         if not self.state_abstraction:
-            return self._memory_store.get(state_id)
+            raise RuntimeError(
+                "State abstraction not wired; cannot get operation progress (use_memory=False). Platform contract §8A."
+            )
         
         try:
             progress_data = await self.state_abstraction.retrieve_state(state_id)
@@ -477,9 +487,9 @@ class StateSurface:
             return file_reference
         
         if not self.state_abstraction:
-            self.logger.warning("State abstraction not available, using in-memory fallback")
-            self._memory_store[state_id] = file_state
-            return file_reference
+            raise RuntimeError(
+                "State abstraction not wired; cannot store file reference (use_memory=False). Platform contract §8A."
+            )
         
         try:
             success = await self.state_abstraction.store_state(
@@ -570,7 +580,9 @@ class StateSurface:
             return self._memory_store.get(file_reference)
         
         if not self.state_abstraction:
-            return self._memory_store.get(file_reference)
+            raise RuntimeError(
+                "State abstraction not wired; cannot get file metadata (use_memory=False). Platform contract §8A."
+            )
         
         try:
             file_metadata = await self.state_abstraction.retrieve_state(file_reference)
