@@ -476,6 +476,88 @@ class KnowledgeDiscoveryAbstraction(KnowledgeDiscoveryProtocol):
             raise
     
     # ============================================================================
+    # NARROW PROTOCOL SURFACE (FullTextSearchProtocol / GraphQueryProtocol)
+    # Decomposed from mega KnowledgeDiscoveryProtocol; same impl, narrow type for callers.
+    # ============================================================================
+    
+    async def search(
+        self,
+        index: str,
+        query: str,
+        filters: Optional[Dict[str, Any]] = None,
+        limit: int = 10,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        """FullTextSearchProtocol: search index (delegates to search_meilisearch)."""
+        return await self.search_meilisearch(index, query, filters=filters, limit=limit, offset=offset)
+    
+    async def search_with_facets(
+        self,
+        index: str,
+        query: str,
+        facets: List[str],
+        limit: int = 10,
+    ) -> Dict[str, Any]:
+        """FullTextSearchProtocol: search with facets (delegates to search_meilisearch_with_facets)."""
+        return await self.search_meilisearch_with_facets(index, query, facets, limit=limit)
+    
+    async def get_analytics(
+        self,
+        index: str,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """FullTextSearchProtocol: get analytics (delegates to get_meilisearch_analytics)."""
+        return await self.get_meilisearch_analytics(index, start_date=start_date, end_date=end_date)
+    
+    async def track_event(
+        self,
+        index: str,
+        query: str,
+        results_count: int,
+        user_id: Optional[str] = None,
+    ) -> bool:
+        """FullTextSearchProtocol: track event (delegates to track_meilisearch_event)."""
+        return await self.track_meilisearch_event(index, query, results_count, user_id=user_id)
+    
+    async def search_graph(
+        self,
+        graph: str,
+        query: str,
+        similarity_threshold: float = 0.7,
+    ) -> List[Dict[str, Any]]:
+        """GraphQueryProtocol: search graph (delegates to search_arango_graph)."""
+        return await self.search_arango_graph(graph, query, similarity_threshold=similarity_threshold)
+    
+    async def get_neighbors(
+        self,
+        graph: str,
+        node_id: str,
+        collection_name: str,
+        max_depth: int = 2,
+    ) -> List[Dict[str, Any]]:
+        """GraphQueryProtocol: get neighbors (delegates to get_arango_graph_neighbors)."""
+        return await self.get_arango_graph_neighbors(graph, node_id, collection_name, max_depth=max_depth)
+    
+    async def find_path(
+        self,
+        graph: str,
+        start_id: str,
+        start_collection: str,
+        end_id: str,
+        end_collection: str,
+        max_paths: int = 5,
+    ) -> List[List[str]]:
+        """GraphQueryProtocol: find path (delegates to find_arango_graph_path)."""
+        return await self.find_arango_graph_path(
+            graph, start_id, start_collection, end_id, end_collection, max_paths=max_paths
+        )
+    
+    async def get_stats(self, graph: str) -> Dict[str, Any]:
+        """GraphQueryProtocol: get stats (delegates to get_arango_graph_stats)."""
+        return await self.get_arango_graph_stats(graph)
+    
+    # ============================================================================
     # HEALTH CHECK
     # ============================================================================
     

@@ -52,10 +52,10 @@ class EmbeddingService:
         self.logger = get_logger(self.__class__.__name__)
         self.public_works = public_works
         
-        # Get abstractions from Public Works
-        self.semantic_data_abstraction = None
+        # Get vector store from Public Works (narrow protocol; embedding agent only needs vector ops)
+        self.vector_store = None
         if public_works:
-            self.semantic_data_abstraction = public_works.get_semantic_data_abstraction()
+            self.vector_store = public_works.get_vector_store()
         
         # Create StatelessEmbeddingAgent for embedding generation (governed access)
         self.embedding_agent = None
@@ -221,13 +221,13 @@ class EmbeddingService:
             embeddings.append(embedding_doc)
         
         # 6. Store via SemanticDataAbstraction
-        if self.semantic_data_abstraction:
-            storage_result = await self.semantic_data_abstraction.store_semantic_embeddings(
+        if self.vector_store:
+            storage_result = await self.vector_store.store_semantic_embeddings(
                 embedding_documents=embeddings
             )
             self.logger.info(f"✅ Stored {storage_result.get('stored_count', 0)} semantic embeddings")
         else:
-            self.logger.warning("SemanticDataAbstraction not available - embeddings not stored")
+            self.logger.warning("Vector store not available - embeddings not stored")
         
         return {
             "embedding_id": content_id,
@@ -551,9 +551,9 @@ What does this column represent? Return ONLY a concise description (1-5 words)."
                 )
         
         # Store embeddings via SemanticDataAbstraction (if any succeeded)
-        if embedding_documents and self.semantic_data_abstraction:
+        if embedding_documents and self.vector_store:
             try:
-                storage_result = await self.semantic_data_abstraction.store_semantic_embeddings(
+                storage_result = await self.vector_store.store_semantic_embeddings(
                     embedding_documents=embedding_documents
                 )
                 self.logger.info(
@@ -573,8 +573,8 @@ What does this column represent? Return ONLY a concise description (1-5 words)."
                     if doc.get("chunk_id") in results["embedded_chunk_ids"]:
                         results["embedded_chunk_ids"].remove(doc.get("chunk_id"))
                 results["status"] = "failed"
-        elif embedding_documents and not self.semantic_data_abstraction:
-            self.logger.warning("SemanticDataAbstraction not available - embeddings not stored")
+        elif embedding_documents and not self.vector_store:
+            self.logger.warning("Vector store not available - embeddings not stored")
             # Mark as failed if storage abstraction not available
             for doc in embedding_documents:
                 results["failed_chunks"].append({
@@ -610,14 +610,14 @@ What does this column represent? Return ONLY a concise description (1-5 words)."
         
         CTO Principle: Idempotent - won't re-embed existing chunks
         """
-        if not self.semantic_data_abstraction:
+        if not self.vector_store:
             raise RuntimeError(
-                "Semantic data abstraction not wired; cannot check existing embeddings. Platform contract §8A."
+                "Vector store not wired; cannot check existing embeddings. Platform contract §8A."
             )
         
         try:
             # Query for existing embedding with matching criteria
-            existing_embeddings = await self.semantic_data_abstraction.get_semantic_embeddings(
+            existing_embeddings = await self.vector_store.get_semantic_embeddings(
                 filter_conditions={
                     "chunk_id": chunk_id,
                     "semantic_profile": semantic_profile,

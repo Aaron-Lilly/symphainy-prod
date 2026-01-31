@@ -15,9 +15,17 @@ Domain logic (embedding generation, semantic graph generation) belongs in Realm 
 from typing import Dict, Any, Optional, List, Any as AdapterType
 from utilities import get_logger
 from ..protocols.semantic_data_protocol import SemanticDataProtocol
+from ..protocols.vector_store_protocol import VectorStoreProtocol
+from ..protocols.semantic_graph_protocol import SemanticGraphProtocol
+from ..protocols.correlation_map_protocol import CorrelationMapProtocol
 
 
-class SemanticDataAbstraction(SemanticDataProtocol):
+class SemanticDataAbstraction(
+    SemanticDataProtocol,
+    VectorStoreProtocol,
+    SemanticGraphProtocol,
+    CorrelationMapProtocol,
+):
     """
     Semantic data abstraction - pure infrastructure.
     

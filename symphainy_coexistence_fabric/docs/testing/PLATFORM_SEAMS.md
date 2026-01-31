@@ -47,3 +47,5 @@
 | **Caller → Platform** | Any platform component method using a required dependency | Dependency wired → operation proceeds | Dependency missing → `RuntimeError` with "Platform contract §8A" |
 
 These seams are validated by probe tests so that megaprotocol refactors and 5 capability service composition proceed on proven behavior at the boundaries.
+
+**Full testing approach:** [PLATFORM_PROBE_APPROACH.md](PLATFORM_PROBE_APPROACH.md) — layered probe strategy to guarantee "from nothing to protocols" and "protocols only when infra exists; all other paths fail" (Genesis gate, protocol presence, caller §8A, no adapter leak).

@@ -192,6 +192,14 @@ When this contract is satisfied and enforced:
 
 ---
 
+## 8C. Protocol Stability (Public Works Protocols Are Locked)
+
+**Rule:** Public Works protocol method signatures (name, parameters, return shape) are **stable**. Do not change them in a breaking way without a deprecation path or a new protocol version. Additive changes (new optional parameters, new methods) are allowed if they do not break existing callers.
+
+**Registry:** [PROTOCOL_REGISTRY.md](PROTOCOL_REGISTRY.md) lists all Public Works protocols, their swap unit, and foundation getters. It is the canonical reference for protocol stability and for deciding which protocol to depend on (prefer narrow protocols over mega protocols where only one capability is needed).
+
+---
+
 ## 9. Solution, Journey, and Intent Requirements (Functional Capabilities)
 
 The platform contract must also capture what **solutions, journeys, and intents** require from Public Works and Civic so that the platform can actually deliver. This section maps downstream needs to abstractions, adapters, and capabilities. Nothing here is optional for the flows that use it—if an intent or journey requires a capability, that capability must be present and working when the contract holds.

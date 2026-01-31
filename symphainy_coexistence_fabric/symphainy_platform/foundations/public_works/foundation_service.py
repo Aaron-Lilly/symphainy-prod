@@ -43,6 +43,12 @@ from .protocols.file_storage_protocol import FileStorageProtocol
 from .protocols.artifact_storage_protocol import ArtifactStorageProtocol
 from .protocols.ingestion_protocol import IngestionProtocol
 from .protocols.semantic_data_protocol import SemanticDataProtocol
+from .protocols.vector_store_protocol import VectorStoreProtocol
+from .protocols.semantic_graph_protocol import SemanticGraphProtocol
+from .protocols.correlation_map_protocol import CorrelationMapProtocol
+from .protocols.full_text_search_protocol import FullTextSearchProtocol
+from .protocols.graph_query_protocol import GraphQueryProtocol
+from .protocols.knowledge_discovery_protocol import KnowledgeDiscoveryProtocol
 from .protocols.event_publisher_protocol import EventPublisherProtocol
 from .protocols.event_log_protocol import EventLogProtocol
 from .protocols.visual_generation_protocol import VisualGenerationProtocol
@@ -1061,6 +1067,47 @@ class PublicWorksFoundationService:
         """
         return self.semantic_data_abstraction
 
+    def get_vector_store(self) -> Optional[VectorStoreProtocol]:
+        """
+        Get vector store capability (embeddings storage and vector search).
+        Decomposed from SemanticDataProtocol; same implementation, narrow type.
+        """
+        return self.semantic_data_abstraction
+
+    def get_semantic_graph(self) -> Optional[SemanticGraphProtocol]:
+        """
+        Get semantic graph capability (nodes/edges storage and retrieval).
+        Decomposed from SemanticDataProtocol; same implementation, narrow type.
+        """
+        return self.semantic_data_abstraction
+
+    def get_correlation_map(self) -> Optional[CorrelationMapProtocol]:
+        """
+        Get correlation map capability (correlation map storage and retrieval).
+        Decomposed from SemanticDataProtocol; same implementation, narrow type.
+        """
+        return self.semantic_data_abstraction
+
+    def get_full_text_search(self) -> Optional[FullTextSearchProtocol]:
+        """
+        Get full-text search capability (search index, facets, analytics, events).
+        Decomposed from KnowledgeDiscoveryProtocol; same implementation, narrow type.
+        """
+        return self.knowledge_discovery_abstraction
+
+    def get_graph_query(self) -> Optional[GraphQueryProtocol]:
+        """
+        Get graph query capability (search graph, neighbors, path, stats).
+        Decomposed from KnowledgeDiscoveryProtocol; same implementation, narrow type.
+        """
+        return self.knowledge_discovery_abstraction
+
+    def get_knowledge_discovery_abstraction(self) -> Optional[KnowledgeDiscoveryProtocol]:
+        """
+        Get knowledge discovery abstraction (full mega surface).
+        Prefer get_full_text_search() or get_graph_query() when only one capability is needed.
+        """
+        return self.knowledge_discovery_abstraction
 
     def get_supabase_file_adapter(self) -> Optional[SupabaseFileAdapter]:
         """

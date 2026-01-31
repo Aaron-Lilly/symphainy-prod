@@ -6,7 +6,7 @@
 
 **References:** [ARCHITECTURE_NORTH_STAR.md](../ARCHITECTURE_NORTH_STAR.md) §10, §14.4; [updated_platform_vision.md](../updated_platform_vision.md); [FOUR_SERVICE_MAPPING.md](FOUR_SERVICE_MAPPING.md); [PUBLIC_WORKS_REALITY_MAP.md](../testing/PUBLIC_WORKS_REALITY_MAP.md); [BOOT_PHASES.md](BOOT_PHASES.md); [INIT_ORDER_SPEC.md](INIT_ORDER_SPEC.md).
 
-**Progress:** Phase A1–A3 done. A2: BoundaryContractStoreProtocol + BoundaryContractStoreBackend + get_boundary_contract_store(); DataStewardPrimitives/SDK wired in service_factory. TTL job uses boundary_contract_store + file_storage protocols. LineageProvenanceProtocol + ArangoLineageBackend + get_lineage_backend(); DataBrain takes lineage_backend (Arango-backed for execution provenance). A3: get_supabase_adapter() and get_arango_adapter() now raise RuntimeError; use protocol getters only.
+**Progress:** Phase A1–A3 done. A2: BoundaryContractStoreProtocol + BoundaryContractStoreBackend + get_boundary_contract_store(); DataStewardPrimitives/SDK wired in service_factory. TTL job uses boundary_contract_store + file_storage protocols. LineageProvenanceProtocol + ArangoLineageBackend + get_lineage_backend(); DataBrain takes lineage_backend (Arango-backed for execution provenance). A3: get_supabase_adapter() and get_arango_adapter() now raise RuntimeError; use protocol getters only. **Phase B (mega protocol decomposition):** SemanticData already had narrow getters (get_vector_store, get_semantic_graph, get_correlation_map); SemanticDataAbstraction now explicitly implements VectorStoreProtocol, SemanticGraphProtocol, CorrelationMapProtocol; EmbeddingAgent migrated to get_vector_store(). KnowledgeDiscovery decomposed: FullTextSearchProtocol + GraphQueryProtocol added; KnowledgeDiscoveryAbstraction implements both via delegation; foundation exposes get_full_text_search(), get_graph_query(), get_knowledge_discovery_abstraction().
 
 ---
 
@@ -175,7 +175,7 @@
 | **C** | Implement five-slice ctx | Define ctx type (e.g. PlatformContext) with governance, reasoning, experience, platform, runtime. Build ctx in composition root from Public Works. Map every get_* to a slice. |
 | **D** | DI: inject ctx into Runtime and Experience | Bootstrap builds ctx; runtime_main and experience_main receive ctx; attach app.state.ctx = ctx; migrate routes to Depends(get_ctx) and slice access. Remove per-service app.state keys from Experience. |
 | **E** | Genesis alignment | Update BOOT_PHASES, INIT_ORDER_SPEC, genesis_protocol (and related) so Φ3 outcome is ctx built and both Runtime and Experience receive ctx; all five slices first-class. |
-| **F** | Enforcement and cleanup | CI or grep: no file outside foundations/public_works/ imports adapter classes. Add "swap unit" comment to each protocol per strategic protocol rule. |
+| **F** | Enforcement and cleanup | CI or grep: no file outside foundations/public_works/ imports adapter classes. Add "swap unit" comment to each protocol per strategic protocol rule. **Protocols locked:** [PROTOCOL_REGISTRY.md](PROTOCOL_REGISTRY.md) + PLATFORM_CONTRACT §8C; no breaking signature changes without deprecation or new version. |
 
 **Dependencies:** A and B can be parallelized (leaks vs megas). C depends on A (ctx exposes protocol getters, no adapters). D depends on C (we need ctx to inject). E can be done alongside C–D (docs). F after A–D.
 
