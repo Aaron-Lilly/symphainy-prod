@@ -52,6 +52,7 @@ from .protocols.knowledge_discovery_protocol import KnowledgeDiscoveryProtocol
 from .protocols.event_publisher_protocol import EventPublisherProtocol
 from .protocols.event_log_protocol import EventLogProtocol
 from .protocols.visual_generation_protocol import VisualGenerationProtocol
+from .backends import create_event_log_backend
 from .protocols.deterministic_embedding_storage_protocol import DeterministicEmbeddingStorageProtocol
 from .protocols.file_parsing_protocol import FileParsingProtocol
 from .document_parsing_router import DocumentParsingRouter
@@ -162,7 +163,7 @@ class PublicWorksFoundationService:
         self._document_parsing_router: Optional[Any] = None  # DocumentParsingRouter (P4 unified surface)
         
         # Event log backend (EventLogProtocol) for WAL, Outbox, PostOffice — no adapter leak
-        self._wal_backend: Optional[Any] = None  # RedisStreamsEventLogBackend when Redis present
+        self._wal_backend: Optional[Any] = None  # EventLogProtocol when Redis present (from create_event_log_backend)
         
         # Layer 1: Ingestion Abstractions
         self.ingestion_abstraction: Optional[Any] = None  # Will import IngestionAbstraction when needed
@@ -495,9 +496,10 @@ class PublicWorksFoundationService:
         """Create all infrastructure abstractions (Layer 1)."""
         self.logger.info("Creating infrastructure abstractions...")
         
-        # Event log backend (protocol implementation; WAL/Outbox/PostOffice use this, not adapter)
-        if self.redis_adapter:
-            self._wal_backend = RedisStreamsEventLogBackend(self.redis_adapter)
+        # Event log backend (protocol implementation; WAL/Outbox/PostOffice use this)
+        # Use factory so we depend on protocol only, not concrete backend class
+        self._wal_backend = create_event_log_backend(self.redis_adapter)
+        if self._wal_backend:
             self.logger.info("Event log backend (WAL) created")
         
         # State management abstraction
