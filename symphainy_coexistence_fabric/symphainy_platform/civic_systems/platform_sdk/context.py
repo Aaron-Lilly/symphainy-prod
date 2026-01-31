@@ -226,8 +226,9 @@ class PlatformContextFactory:
     def _build_governance_service(self) -> Optional["GovernanceService"]:
         """Build GovernanceService from available resources."""
         if not self.public_works:
-            self._logger.warning("Public Works not available, GovernanceService will be limited")
-            return None
+            raise RuntimeError(
+                "Public Works not wired; cannot build GovernanceService. Platform contract §8A."
+            )
         
         try:
             from .services.governance_service import GovernanceService
@@ -239,8 +240,9 @@ class PlatformContextFactory:
     def _build_reasoning_service(self) -> Optional["ReasoningService"]:
         """Build ReasoningService from available resources."""
         if not self.public_works:
-            self._logger.warning("Public Works not available, ReasoningService will be limited")
-            return None
+            raise RuntimeError(
+                "Public Works not wired; cannot build ReasoningService. Platform contract §8A."
+            )
         
         try:
             from .services.reasoning_service import ReasoningService
@@ -252,8 +254,9 @@ class PlatformContextFactory:
     def _build_platform_service(self) -> Optional["PlatformService"]:
         """Build PlatformService from available resources."""
         if not self.public_works:
-            self._logger.warning("Public Works not available, PlatformService will be limited")
-            return None
+            raise RuntimeError(
+                "Public Works not wired; cannot build PlatformService. Platform contract §8A."
+            )
         
         try:
             from .services.platform_service import PlatformService

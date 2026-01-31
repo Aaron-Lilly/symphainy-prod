@@ -534,8 +534,9 @@ class PlatformService:
             Embedding data or None if not found
         """
         if not self._deterministic_compute:
-            self._logger.warning("DeterministicComputeAbstraction not available")
-            return None
+            raise RuntimeError(
+                "DeterministicComputeAbstraction not wired; cannot get deterministic embedding. Platform contract §8A."
+            )
         
         try:
             embedding = await self._deterministic_compute.get_deterministic_embedding(
@@ -1227,8 +1228,9 @@ class PlatformService:
             True if registration succeeded
         """
         if not self._file_storage:
-            self._logger.warning("FileStorageAbstraction not available")
-            return False
+            raise RuntimeError(
+                "FileStorageAbstraction not wired; cannot register materialization. Platform contract §8A."
+            )
         
         try:
             if hasattr(self._file_storage, 'register_materialization'):

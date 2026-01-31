@@ -312,8 +312,9 @@ class AgentService:
             List of agent metadata
         """
         if not self._agent_registry:
-            return []
-        
+            raise RuntimeError(
+                "Agent registry not wired; cannot list agents. Platform contract §8A."
+            )
         return self._agent_registry.list_agents()
     
     def list_types(self) -> List[str]:
@@ -324,8 +325,9 @@ class AgentService:
             List of agent type strings
         """
         if not self._agent_registry:
-            return []
-        
+            raise RuntimeError(
+                "Agent registry not wired; cannot list agent types. Platform contract §8A."
+            )
         return self._agent_registry.list_agent_types()
     
     async def invoke(

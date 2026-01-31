@@ -480,8 +480,9 @@ providing intelligent semantic reasoning for why matches failed and actionable r
         and what it means in context.
         """
         if not self._llm_adapter:
-            return None
-        
+            raise RuntimeError(
+                "LLM adapter not wired; cannot generate interpretation summary. Platform contract §8A."
+            )
         try:
             prompt = f"""You are a data interpretation expert. Summarize the results of matching data against a guide.
 
