@@ -480,8 +480,9 @@ class BoundaryContractStore:
             Contract ID (UUID string) or None if creation failed
         """
         if not self.supabase_adapter:
-            self.logger.warning("Supabase adapter not available, cannot create boundary contract")
-            return None
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot create boundary contract. Platform contract §8A."
+            )
         
         try:
             # Generate contract_id if not provided
@@ -522,7 +523,9 @@ class BoundaryContractStore:
             Contract dictionary or None if not found
         """
         if not self.supabase_adapter:
-            return None
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot get boundary contract. Platform contract §8A."
+            )
         
         try:
             # Convert string IDs to UUIDs (database expects UUIDs)
@@ -571,7 +574,9 @@ class BoundaryContractStore:
             Contract dictionary or None if not found
         """
         if not self.supabase_adapter:
-            return None
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot get boundary contract by ID. Platform contract §8A."
+            )
         
         try:
             # Convert string IDs to UUIDs (database expects UUIDs)
@@ -616,7 +621,9 @@ class BoundaryContractStore:
             True if update successful, False otherwise
         """
         if not self.supabase_adapter:
-            return False
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot update boundary contract. Platform contract §8A."
+            )
         
         try:
             # Convert string IDs to UUIDs (database expects UUIDs)

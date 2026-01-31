@@ -371,7 +371,9 @@ class StateManagementAbstraction(StateManagementProtocol):
             
             # Fall back to Redis
             if not self.redis_adapter:
-                return []
+                raise RuntimeError(
+                    "Redis adapter not wired; cannot list states. Platform contract §8A."
+                )
             
             # Scan Redis for matching keys
             pattern = f"{self.redis_prefix}*"

@@ -89,8 +89,9 @@ class CuratorService:
             
             # 1. Retrieve source artifact from Artifact Plane
             if not self.artifact_plane:
-                self.logger.error("Artifact Plane not available, cannot retrieve source artifact")
-                return None
+                raise RuntimeError(
+                    "Artifact plane not wired; cannot retrieve source artifact. Platform contract §8A."
+                )
             
             artifact = await self.artifact_plane.get_artifact(
                 artifact_id=artifact_id,
@@ -355,8 +356,9 @@ class CuratorService:
             Registry ID (UUID string) or None if creation failed
         """
         if not self.supabase_adapter:
-            self.logger.error("Supabase adapter not available, cannot create registry entry")
-            return None
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot create registry entry. Platform contract §8A."
+            )
         
         try:
             # Generate registry_id if not provided

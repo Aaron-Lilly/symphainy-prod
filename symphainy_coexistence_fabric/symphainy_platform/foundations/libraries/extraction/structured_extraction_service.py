@@ -22,7 +22,6 @@ from typing import Dict, Any, Optional, List, TYPE_CHECKING
 from utilities import get_logger
 from symphainy_platform.runtime.execution_context import ExecutionContext
 from symphainy_platform.realms.insights.models.extraction_config import ExtractionConfig
-from symphainy_platform.civic_systems.agentic.extraction_config_registry import ExtractionConfigRegistry
 
 # Avoid circular import - use TYPE_CHECKING for type hints, lazy import for runtime
 if TYPE_CHECKING:
@@ -49,12 +48,8 @@ class StructuredExtractionService:
         self.logger = get_logger(self.__class__.__name__)
         self.public_works = public_works
         
-        # Initialize ExtractionConfigRegistry
-        supabase_adapter = None
-        if public_works:
-            supabase_adapter = public_works.get_supabase_adapter()
-        
-        self.config_registry = ExtractionConfigRegistry(supabase_adapter=supabase_adapter)
+        # Use extraction config registry from Public Works (protocol; no adapter access)
+        self.config_registry = public_works.get_extraction_config_registry() if public_works else None
         
         # Lazy initialization of StructuredExtractionAgent (avoid circular import)
         self._extraction_agent = None

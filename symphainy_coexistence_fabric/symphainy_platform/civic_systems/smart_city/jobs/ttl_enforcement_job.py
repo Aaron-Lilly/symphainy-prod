@@ -21,38 +21,37 @@ project_root = Path(__file__).resolve().parents[5]
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, TYPE_CHECKING
 from datetime import datetime, timedelta
 from utilities import get_logger, get_clock
-import uuid
+
+if TYPE_CHECKING:
+    from symphainy_platform.foundations.public_works.protocols.boundary_contract_store_protocol import BoundaryContractStoreProtocol
+    from symphainy_platform.foundations.public_works.protocols.file_storage_protocol import FileStorageProtocol
 
 
 class TTLEnforcementJob:
     """
     TTL Enforcement Job - Automated purge of expired Working Materials.
-    
-    This job enforces TTL policies for Working Materials by:
-    - Finding expired materials (based on boundary contract materialization_expires_at)
-    - Validating lifecycle state (only purge if appropriate)
-    - Purging expired materials from GCS
-    - Updating boundary contract status
-    - Updating Records of Fact with source_expired_at
+
+    Uses BoundaryContractStoreProtocol and FileStorageProtocol (from Public Works);
+    adapters must not escape Public Works.
     """
     
     def __init__(
         self,
-        supabase_adapter: Optional[Any] = None,
-        gcs_adapter: Optional[Any] = None
+        boundary_contract_store: Optional["BoundaryContractStoreProtocol"] = None,
+        file_storage: Optional["FileStorageProtocol"] = None,
     ):
         """
         Initialize TTL Enforcement Job.
-        
+
         Args:
-            supabase_adapter: Supabase adapter for database operations
-            gcs_adapter: GCS adapter for purging expired materials
+            boundary_contract_store: Boundary contract store (from Public Works get_boundary_contract_store())
+            file_storage: File storage (from Public Works get_file_storage_abstraction()) for purging blobs
         """
-        self.supabase_adapter = supabase_adapter
-        self.gcs_adapter = gcs_adapter
+        self.boundary_contract_store = boundary_contract_store
+        self.file_storage = file_storage
         self.logger = get_logger(self.__class__.__name__)
         self.clock = get_clock()
     
@@ -122,21 +121,14 @@ class TTLEnforcementJob:
         Returns:
             List of expired boundary contracts
         """
+        if not self.boundary_contract_store:
+            raise RuntimeError(
+                "Boundary contract store not wired; cannot list expired contracts. Platform contract §8A."
+            )
         try:
-            # Query boundary contracts where materialization_expires_at < NOW()
-            # and contract_status is 'active'
-            response = self.supabase_adapter.service_client.table("data_boundary_contracts").select(
-                "*"
-            ).eq(
-                "contract_status", "active"
-            ).lt(
-                "materialization_expires_at", self.clock.now_iso()
-            ).execute()
-            
-            if response.data:
-                return response.data
-            return []
-            
+            return await self.boundary_contract_store.list_expired_contracts(
+                expired_before_iso=self.clock.now_iso()
+            )
         except Exception as e:
             self.logger.error(f"Failed to find expired contracts: {e}", exc_info=True)
             return []
@@ -164,18 +156,17 @@ class TTLEnforcementJob:
         # For MVP: Purge all expired materials
         # Production: Can add lifecycle state validation here
         
-        # 2. Purge expired material from GCS (if applicable)
+        # 2. Purge expired material from file storage (if applicable)
         if materialization_type in ["full_artifact", "partial_extraction"]:
-            if self.gcs_adapter and external_source_identifier:
+            if self.file_storage and external_source_identifier:
                 try:
-                    # Extract file path from external_source_identifier or contract metadata
                     file_path = self._extract_file_path(contract)
                     if file_path:
-                        await self._purge_from_gcs(file_path, tenant_id)
+                        await self._purge_from_storage(file_path, tenant_id)
                         results["materials_purged"] += 1
-                        self.logger.info(f"Purged expired material from GCS: {file_path}")
+                        self.logger.info(f"Purged expired material: {file_path}")
                 except Exception as e:
-                    self.logger.warning(f"Failed to purge from GCS: {e}")
+                    self.logger.warning(f"Failed to purge from storage: {e}")
         
         # 3. Update boundary contract status to "expired"
         try:
@@ -187,9 +178,9 @@ class TTLEnforcementJob:
         
         # 4. Update Records of Fact with source_expired_at if applicable
         source_file_id = contract.get("external_source_metadata", {}).get("file_id")
-        if source_file_id:
+        if source_file_id and self.boundary_contract_store:
             try:
-                updated_count = await self._update_records_of_fact(
+                updated_count = await self.boundary_contract_store.update_records_of_fact_expired(
                     source_file_id=source_file_id,
                     tenant_id=tenant_id,
                     expired_at=self.clock.now_iso()
@@ -222,108 +213,41 @@ class TTLEnforcementJob:
         
         return file_path
     
-    async def _purge_from_gcs(self, file_path: str, tenant_id: str) -> None:
+    async def _purge_from_storage(self, file_path: str, tenant_id: str) -> None:
         """
-        Purge expired material from GCS.
-        
+        Purge expired material via FileStorageProtocol.
+
         Args:
-            file_path: GCS file path
-            tenant_id: Tenant ID
+            file_path: Path (gs://bucket/path or blob path within default bucket)
+            tenant_id: Tenant ID (for logging)
         """
-        if not self.gcs_adapter:
-            self.logger.warning("GCS adapter not available, cannot purge from GCS")
+        if not self.file_storage:
+            self.logger.warning("File storage not available, cannot purge")
             return
-        
         try:
-            # Extract bucket and blob name from path
+            # FileStorageProtocol.delete_file(file_path): blob path within bucket
             if file_path.startswith("gs://"):
-                # Format: gs://bucket/path/to/file
+                # Use path after gs://bucket/ as blob path (assumes single default bucket)
                 parts = file_path.replace("gs://", "").split("/", 1)
-                if len(parts) == 2:
-                    bucket_name = parts[0]
-                    blob_name = parts[1]
-                    await self.gcs_adapter.delete_blob(bucket_name, blob_name)
-                    self.logger.info(f"Deleted blob from GCS: {bucket_name}/{blob_name}")
+                blob_path = parts[1] if len(parts) == 2 else file_path
             else:
-                # Assume it's a relative path, construct full path
-                # This would need tenant_id to construct proper path
-                self.logger.warning(f"Cannot purge from GCS: Invalid path format: {file_path}")
-                
+                blob_path = file_path
+            await self.file_storage.delete_file(blob_path)
+            self.logger.info(f"Deleted from storage: {blob_path}")
         except Exception as e:
-            self.logger.error(f"Failed to purge from GCS: {e}", exc_info=True)
+            self.logger.error(f"Failed to purge from storage: {e}", exc_info=True)
             raise
-    
+
     async def _update_contract_status(self, contract_id: str, tenant_id: str) -> None:
-        """
-        Update boundary contract status to "expired".
-        
-        Args:
-            contract_id: Contract ID
-            tenant_id: Tenant ID
-        """
+        """Update boundary contract status to expired via protocol."""
+        if not self.boundary_contract_store:
+            return
         try:
-            def to_uuid(value: Optional[str]) -> Optional[str]:
-                """Convert string to UUID."""
-                if not value:
-                    return None
-                try:
-                    return str(uuid.UUID(value))
-                except (ValueError, AttributeError):
-                    namespace = uuid.UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8')
-                    return str(uuid.uuid5(namespace, str(value)))
-            
-            self.supabase_adapter.service_client.table("data_boundary_contracts").update({
-                "contract_status": "expired",
-                "expired_at": self.clock.now_iso()
-            }).eq("contract_id", to_uuid(contract_id)).eq(
-                "tenant_id", to_uuid(tenant_id)
-            ).execute()
-            
+            await self.boundary_contract_store.update_contract_status_expired(
+                contract_id=contract_id,
+                tenant_id=tenant_id,
+                expired_at_iso=self.clock.now_iso()
+            )
         except Exception as e:
             self.logger.error(f"Failed to update contract status: {e}", exc_info=True)
             raise
-    
-    async def _update_records_of_fact(
-        self,
-        source_file_id: str,
-        tenant_id: str,
-        expired_at: str
-    ) -> int:
-        """
-        Update Records of Fact with source_expired_at.
-        
-        Args:
-            source_file_id: Source file ID
-            tenant_id: Tenant ID
-            expired_at: Expiration timestamp
-        
-        Returns:
-            Number of Records of Fact updated
-        """
-        try:
-            def to_uuid(value: Optional[str]) -> Optional[str]:
-                """Convert string to UUID."""
-                if not value:
-                    return None
-                try:
-                    return str(uuid.UUID(value))
-                except (ValueError, AttributeError):
-                    namespace = uuid.UUID('6ba7b810-9dad-11d1-80b4-00c04fd430c8')
-                    return str(uuid.uuid5(namespace, str(value)))
-            
-            # Update Records of Fact where source_file_id matches and source_expired_at is NULL
-            response = self.supabase_adapter.service_client.table("records_of_fact").update({
-                "source_expired_at": expired_at
-            }).eq("source_file_id", to_uuid(source_file_id)).eq(
-                "tenant_id", to_uuid(tenant_id)
-            ).is_(
-                "source_expired_at", "null"
-            ).execute()
-            
-            if response.data:
-                return len(response.data)
-            return 0
-            
-        except Exception as e:
-            self.logger.error(f"Failed to update Records of Fact: {e}", exc_info=True)
-            return 0

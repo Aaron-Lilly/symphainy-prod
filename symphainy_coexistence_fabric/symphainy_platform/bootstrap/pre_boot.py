@@ -3,7 +3,8 @@ Layer 2: Pre-boot validation.
 
 Consumes only the canonical config from Layer 1. For each required backing
 service (Redis, Arango, Consul, Supabase, GCS, Meilisearch, DuckDB), runs
-a minimal connectivity/readiness check. No Public Works or adapters.
+a minimal connectivity/readiness check. When configured, Telemetry (OTLP)
+is validated. No Public Works or adapters.
 On first failure: exit with a clear, actionable message.
 
 Aligned with PLATFORM_CONTRACT §5 (pre-boot validation).
@@ -11,8 +12,10 @@ Aligned with PLATFORM_CONTRACT §5 (pre-boot validation).
 
 import json
 import os
+import socket
 import sys
 from typing import Any, Dict
+from urllib.parse import urlparse
 
 # Optional: use get_logger from utilities if available
 try:
@@ -23,6 +26,17 @@ except ImportError:
         return logging.getLogger(name)
 
 logger = get_logger("bootstrap.pre_boot")
+
+# Last pre-boot result (set after pre_boot_validate succeeds). Used by Control Room for infrastructure health.
+_last_pre_boot_result: Dict[str, Any] = {}
+
+
+def get_pre_boot_status() -> Dict[str, Any]:
+    """
+    Return the last pre-boot validation result for use by Control Room / genesis status.
+    Keys: status ("passed" | "not_run"), services_validated (list), telemetry ("checked" | "skipped").
+    """
+    return dict(_last_pre_boot_result)
 
 
 def _fail(service: str, reason: str, hint: str) -> None:
@@ -216,6 +230,45 @@ def _check_duckdb(config: Dict[str, Any]) -> None:
         _fail("DuckDB", str(e), "Check DUCKDB_DATABASE_PATH and filesystem permissions.")
 
 
+def _check_telemetry(config: Dict[str, Any]) -> str:
+    """
+    Telemetry (OpenTelemetry OTLP): required; validate endpoint reachability.
+    Minimal check: TCP connect to OTLP endpoint host:port (default 4317 for gRPC).
+    Boot fails if endpoint is missing or unreachable.
+    """
+    endpoint = config.get("otel_exporter_otlp_endpoint") or (config.get("telemetry") or {}).get("otlp_endpoint")
+    if not endpoint:
+        _fail(
+            "Telemetry",
+            "otel_exporter_otlp_endpoint is missing",
+            "Set OTEL_EXPORTER_OTLP_ENDPOINT (e.g. http://localhost:4317) or add telemetry.otlp_endpoint to config.",
+        )
+    try:
+        parsed = urlparse(endpoint)
+        host = parsed.hostname or "localhost"
+        port = parsed.port
+        if port is None:
+            # HTTPS default is 443; HTTP/gRPC OTLP default is 4317
+            port = 443 if parsed.scheme == "https" else 4317
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5)
+        sock.connect((host, port))
+        sock.close()
+    except socket.gaierror as e:
+        _fail(
+            "Telemetry",
+            f"OTLP endpoint host unreachable: {e}",
+            f"Check OTEL_EXPORTER_OTLP_ENDPOINT ({endpoint}) and that the OTLP collector is running.",
+        )
+    except (OSError, socket.error) as e:
+        _fail(
+            "Telemetry",
+            str(e),
+            f"Check OTEL_EXPORTER_OTLP_ENDPOINT ({endpoint}) and that the OTLP collector is reachable on port {port}.",
+        )
+    return "checked"
+
+
 def pre_boot_validate(config: Dict[str, Any]) -> None:
     """
     Run pre-boot validation for all required backing services (Gate G3).
@@ -234,4 +287,13 @@ def pre_boot_validate(config: Dict[str, Any]) -> None:
     _check_duckdb(config)
     # Control plane
     _check_consul(config)
+    # Telemetry (required)
+    _check_telemetry(config)
+    # Store result for Control Room / genesis status
+    global _last_pre_boot_result
+    _last_pre_boot_result = {
+        "status": "passed",
+        "services_validated": ["redis", "arango", "supabase", "gcs", "meilisearch", "duckdb", "consul", "telemetry"],
+        "telemetry": "checked",
+    }
     logger.info("Pre-boot validation: all required services passed.")

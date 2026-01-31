@@ -17,7 +17,7 @@ from datetime import datetime
 
 from utilities import get_logger, get_clock, generate_event_id
 from .wal import WriteAheadLog, WALEventType
-from symphainy_platform.foundations.public_works.adapters.redis_adapter import RedisAdapter
+from symphainy_platform.foundations.public_works.protocols.event_log_protocol import EventLogProtocol
 
 
 @dataclass
@@ -67,17 +67,17 @@ class TransactionalOutbox:
     
     def __init__(
         self,
-        redis_adapter: RedisAdapter,
+        event_log: Optional[EventLogProtocol] = None,
         wal: Optional[WriteAheadLog] = None
     ):
         """
         Initialize transactional outbox.
-        
+
         Args:
-            redis_adapter: Redis adapter for outbox storage
+            event_log: Event log backend (protocol from Public Works; no adapter)
             wal: Optional WAL for audit logging
         """
-        self.redis_adapter = redis_adapter
+        self.event_log = event_log
         self.wal = wal
         self.logger = get_logger(self.__class__.__name__)
         self.clock = get_clock()
@@ -108,7 +108,15 @@ class TransactionalOutbox:
         
         Returns:
             True if event added successfully
+
+        Raises:
+            RuntimeError: If event_log was not wired (platform contract violation).
         """
+        if not self.event_log:
+            raise RuntimeError(
+                "TransactionalOutbox was not wired with an event log backend; "
+                "platform contract violation. Composition root must pass get_wal_backend() when building Outbox."
+            )
         try:
             event_id = generate_event_id()
             stream_name = self._get_stream_name(execution_id)
@@ -132,7 +140,7 @@ class TransactionalOutbox:
                 "published": "false",
             }
             
-            message_id = await self.redis_adapter.xadd(
+            message_id = await self.event_log.xadd(
                 stream_name,
                 fields,
                 maxlen=10000,  # Keep last 10k events per execution
@@ -173,11 +181,16 @@ class TransactionalOutbox:
         Returns:
             List of pending outbox events
         """
+        if not self.event_log:
+            raise RuntimeError(
+                "TransactionalOutbox was not wired with an event log backend; "
+                "platform contract §8A. Composition root must pass get_wal_backend() when building Outbox."
+            )
         try:
             stream_name = self._get_stream_name(execution_id)
             
             # Read all events from stream
-            events_data = await self.redis_adapter.xrange(
+            events_data = await self.event_log.xrange(
                 stream_name,
                 start="-",
                 end="+",
@@ -223,11 +236,16 @@ class TransactionalOutbox:
         Returns:
             True if marked successfully
         """
+        if not self.event_log:
+            raise RuntimeError(
+                "TransactionalOutbox was not wired with an event log backend; "
+                "platform contract violation. Composition root must pass get_wal_backend() when building Outbox."
+            )
         try:
             stream_name = self._get_stream_name(execution_id)
             
             # Read events to find the one to update
-            events_data = await self.redis_adapter.xrange(
+            events_data = await self.event_log.xrange(
                 stream_name,
                 start="-",
                 end="+",
@@ -243,7 +261,7 @@ class TransactionalOutbox:
                     
                     # Add updated event (Redis Streams are append-only, so we add a new entry)
                     # In production, you might want to use a different pattern (e.g., separate published stream)
-                    await self.redis_adapter.xadd(
+                    await self.event_log.xadd(
                         stream_name,
                         updated_fields,
                         maxlen=10000

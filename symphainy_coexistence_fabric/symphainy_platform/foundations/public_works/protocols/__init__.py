@@ -20,6 +20,8 @@ from .parsing_service_protocol import (
     WorkflowSOPParsingProtocol
 )
 
+from .event_log_protocol import EventLogProtocol
+
 __all__ = [
     "FileParsingRequest",
     "FileParsingResult",
@@ -30,4 +32,5 @@ __all__ = [
     "UnstructuredParsingProtocol",
     "HybridParsingProtocol",
     "WorkflowSOPParsingProtocol",
+    "EventLogProtocol",
 ]

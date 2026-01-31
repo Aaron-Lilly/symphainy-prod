@@ -27,7 +27,7 @@ The original Option C table did not mention Consul, GCS, or DuckDB. Our contract
 | **Consul** | Managed service discovery or self-hosted Consul | Contract requires service discovery. Option C: use managed discovery (e.g. GCP/Cloud Run discovery) or run Consul in a small control plane (e.g. GKE). |
 | **Supabase** | Supabase Cloud | Registry, auth, tenant, file metadata. |
 | **GCS** | GCP Cloud Storage (or S3) | Blob storage for files and artifacts. Option C doc didn’t list it; we need it. Supabase has storage; for scale/durability we use GCS. |
-| **Meilisearch** | Meilisearch Cloud | Full-text and metadata search. |
+| **Meilisearch** | **Default:** containerized (docker-compose `meilisearch`). **Option C:** Meilisearch Cloud. | Full-text and metadata search. |
 | **DuckDB** | Persistent volume (e.g. GKE PVC) or managed analytical store | Deterministic embeddings. No mainstream “DuckDB as a Service”; Option C = DuckDB on a volume, or later migrate to BigQuery/Snowflake etc. for that workload. |
 | **Telemetry** | Grafana Cloud (OTel/Tempo) or GCP Operations | Observability. |
 | **LLM / Embeddings** | Hugging Face Inference API / OpenAI / Anthropic / Replicate | Agents and semantic embeddings. |

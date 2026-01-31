@@ -27,6 +27,8 @@ Pre-boot validates **exactly** the seven backing services required by PLATFORM_C
 | **Meilisearch** | Full-text and metadata search |
 | **DuckDB** | Deterministic compute, deterministic embeddings |
 
+**Telemetry (OpenTelemetry OTLP):** When `otel_exporter_otlp_endpoint` is present in config, pre-boot validates OTLP endpoint reachability (TCP connect to host:port). When not configured, the check is skipped (optional). Telemetry is foundational and should be on the checklist when explicitly configured.
+
 **Out of scope for G3:** LLM endpoints, OCR/Cobrix containers, EDI config, and other “required when an intent runs” or Φ4/Φ5 capabilities. Blocking Φ3 on those would create an operational nightmare; see STEP0 §6 and PLATFORM_CONTRACT §9.
 
 ---
@@ -47,6 +49,8 @@ Order follows [HYBRID_CLOUD_VISION.md](../HYBRID_CLOUD_VISION.md): **Data Plane 
    Redis → ArangoDB → Supabase → GCS → Meilisearch → DuckDB  
 2. **Control Plane:**  
    Consul  
+3. **Telemetry:**  
+   OpenTelemetry OTLP (endpoint reachability)  
 
 This order is the same whether infra is self-hosted or managed (Option C). Option C only changes *where* services run; we still validate them in this order before starting the execution plane.
 
@@ -65,6 +69,7 @@ Each check is minimal: connect and/or one lightweight operation. No Public Works
 | **Meilisearch** | Reachable | `meilisearch_host`, `meilisearch_port`, `meilisearch_key` | GET `http://{host}:{port}/health` returns non-5xx |
 | **DuckDB** | DB path writable/readable | `config["duckdb"]` (database_path, read_only) | Connect and `SELECT 1` succeeds; if read_only, file must exist |
 | **Consul** | Reachable | `config["consul"]` (host, port, token) | e.g. `agent.self()` or equivalent API succeeds |
+| **Telemetry (OTLP)** | Required | `config["otel_exporter_otlp_endpoint"]` (must be set via `OTEL_EXPORTER_OTLP_ENDPOINT`; no default) | Endpoint non-empty and TCP connect to host:port (default 4317) succeeds |
 
 **Timeouts:** Use short timeouts (e.g. 5–10 seconds) per check so boot fails fast.
 
@@ -91,9 +96,9 @@ Each check is minimal: connect and/or one lightweight operation. No Public Works
 
 | Item | Rule |
 |------|------|
-| **Scope** | Seven backing services only (Redis, Arango, Consul, Supabase, GCS, Meilisearch, DuckDB). |
+| **Scope** | Eight required backing services (Redis, Arango, Consul, Supabase, GCS, Meilisearch, DuckDB, Telemetry OTLP). |
 | **Input** | Canonical config only; no env reads in pre-boot. |
-| **Order** | Data plane (Redis, Arango, Supabase, GCS, Meilisearch, DuckDB) then Consul. |
+| **Order** | Data plane (Redis, Arango, Supabase, GCS, Meilisearch, DuckDB) then Consul, then Telemetry (OTLP). |
 | **Failure** | First failure → exit process with one clear message; no partial init. |
 | **Placement** | After config build, before `create_runtime_services()`. |
 

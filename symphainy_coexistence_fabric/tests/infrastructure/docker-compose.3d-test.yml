@@ -39,27 +39,51 @@ services:
       timeout: 3s
       retries: 5
 
-  # Runtime Service
+  # Meilisearch for full-text/metadata search (same as main stack - containerized)
+  meilisearch:
+    image: getmeili/meilisearch:v1.11
+    ports:
+      - "7700:7700"
+    environment:
+      MEILI_MASTER_KEY: ${MEILI_MASTER_KEY:-}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7700/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # Runtime Service (env_file so OTLP/Telemetry and other secrets from .env.secrets for real genesis)
   runtime:
     build:
       context: ../..
       dockerfile: Dockerfile.runtime
+    env_file:
+      - ../../.env.secrets
     environment:
+      - USE_SUPABASE_TEST=1
       - REDIS_URL=redis://redis:6379
       - ARANGO_URL=http://arangodb:8529
       - ARANGO_ROOT_PASSWORD=test_password
       - CONSUL_HOST=consul
       - CONSUL_PORT=8500
+      - MEILISEARCH_HOST=meilisearch
+      - MEILISEARCH_PORT=7700
+      - DUCKDB_DATABASE_PATH=/app/data/duckdb/main.duckdb
       - RUNTIME_PORT=8000
       - LOG_LEVEL=DEBUG
     ports:
       - "8000:8000"
+    volumes:
+      - duckdb_data:/app/data/duckdb
     depends_on:
       redis:
         condition: service_healthy
       arangodb:
         condition: service_healthy
       consul:
+        condition: service_healthy
+      meilisearch:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -72,12 +96,17 @@ services:
     build:
       context: ../..
       dockerfile: Dockerfile.realms
+    env_file:
+      - ../../.env.secrets
     environment:
+      - USE_SUPABASE_TEST=1
       - REDIS_URL=redis://redis:6379
       - ARANGO_URL=http://arangodb:8529
       - ARANGO_ROOT_PASSWORD=test_password
       - CONSUL_HOST=consul
       - CONSUL_PORT=8500
+      - MEILISEARCH_HOST=meilisearch
+      - MEILISEARCH_PORT=7700
       - RUNTIME_URL=http://runtime:8000
       - EXPERIENCE_PORT=8001
       - LOG_LEVEL=DEBUG
@@ -86,11 +115,16 @@ services:
     depends_on:
       runtime:
         condition: service_healthy
+      meilisearch:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
       interval: 10s
       timeout: 5s
       retries: 10
+
+volumes:
+  duckdb_data:
 
 networks:
   default:

@@ -17,6 +17,13 @@ httpx = "^0.24.0"
 python-consul = "^1.1.0"
 duckdb = "^0.9.0"
 PyYAML = "^6.0.0"
+# OpenTelemetry (platform contract - OTLP tracing/metrics/logs; Grafana Cloud Option C)
+opentelemetry-api = "^1.20.0"
+opentelemetry-sdk = "^1.20.0"
+opentelemetry-exporter-otlp-proto-grpc = "^1.20.0"
+opentelemetry-exporter-otlp-proto-http = "^1.20.0"
+opentelemetry-instrumentation-logging = "^0.41b0"
+opentelemetry-instrumentation-fastapi = "^0.41b0"
 
 [tool.poetry.extras]
 as2 = ["pyas2lib>=1.4.4"]
@@ -64,4 +71,5 @@ markers = [
     "layer_civic: Probes Civic Systems / security / agents",
     "layer_solution_journey: Probes Solution / Journey / Realm implementation",
     "layer_e2e: Probes browser / E2E / horizontal journeys",
+    "contract: Platform contract / §8A silent degradation pattern scan",
 ]

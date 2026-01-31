@@ -144,8 +144,9 @@ class CuratorSDK:
             Registry ID (UUID string) or None if promotion failed
         """
         if not self.curator_service:
-            self.logger.warning("Curator Service not available, cannot promote to Platform DNA")
-            return None
+            raise RuntimeError(
+                "Curator service not wired; cannot promote to Platform DNA. Platform contract §8A."
+            )
         
         return await self.curator_service.promote_to_platform_dna(
             artifact_id=artifact_id,

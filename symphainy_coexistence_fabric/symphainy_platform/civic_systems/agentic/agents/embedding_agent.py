@@ -319,8 +319,9 @@ class EmbeddingService:
             Semantic meaning text
         """
         if not self.semantic_meaning_agent:
-            # Fallback to column name if agent not available
-            return f"Column: {column_name}"
+            raise RuntimeError(
+                "Semantic meaning agent not wired; cannot infer semantic meaning. Platform contract §8A."
+            )
         
         try:
             system_message = """You are a data analyst inferring the semantic meaning of database columns.
@@ -610,7 +611,9 @@ What does this column represent? Return ONLY a concise description (1-5 words)."
         CTO Principle: Idempotent - won't re-embed existing chunks
         """
         if not self.semantic_data_abstraction:
-            return False
+            raise RuntimeError(
+                "Semantic data abstraction not wired; cannot check existing embeddings. Platform contract §8A."
+            )
         
         try:
             # Query for existing embedding with matching criteria

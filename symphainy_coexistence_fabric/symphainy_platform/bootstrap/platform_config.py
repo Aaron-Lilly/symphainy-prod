@@ -102,9 +102,26 @@ def build_canonical_config() -> Dict[str, Any]:
     arango_database = _get_env("ARANGO_DATABASE") or _get_env("ARANGO_DB", "symphainy_platform")
     arango_password = os.getenv("ARANGO_PASS") or os.getenv("ARANGO_ROOT_PASSWORD") or ""
 
-    # Supabase: SUPABASE_PUBLISHABLE_KEY and SUPABASE_SECRET_KEY only (canonical keys supabase_anon_key, supabase_service_key)
-    supabase_anon_key = os.getenv("SUPABASE_PUBLISHABLE_KEY")
-    supabase_service_key = os.getenv("SUPABASE_SECRET_KEY")
+    # Supabase: use TEST vars when USE_SUPABASE_TEST=1 so tests hit test project without overriding prod vars
+    use_supabase_test = _get_env_bool("USE_SUPABASE_TEST", False)
+    if use_supabase_test:
+        supabase_url = os.getenv("SUPABASE_TEST_URL") or os.getenv("SUPABASE_URL")
+        supabase_anon_key = os.getenv("SUPABASE_TEST_PUBLISHABLE_KEY") or os.getenv("SUPABASE_PUBLISHABLE_KEY")
+        supabase_service_key = os.getenv("SUPABASE_TEST_SECRET_KEY") or os.getenv("SUPABASE_SECRET_KEY")
+        supabase_jwks_url = os.getenv("SUPABASE_TEST_JWKS_URL")
+        supabase_jwt_issuer = os.getenv("SUPABASE_TEST_JWT_ISSUER")
+        if not supabase_jwks_url and supabase_url:
+            base = (supabase_url or "").rstrip("/")
+            supabase_jwks_url = f"{base}/auth/v1/.well-known/jwks.json"
+        if not supabase_jwt_issuer and supabase_url:
+            base = (supabase_url or "").rstrip("/")
+            supabase_jwt_issuer = f"{base}/auth/v1"
+    else:
+        supabase_url = os.getenv("SUPABASE_URL")
+        supabase_anon_key = os.getenv("SUPABASE_PUBLISHABLE_KEY")
+        supabase_service_key = os.getenv("SUPABASE_SECRET_KEY")
+        supabase_jwks_url = os.getenv("SUPABASE_JWKS_URL")
+        supabase_jwt_issuer = os.getenv("SUPABASE_JWT_ISSUER")
 
     # Meilisearch
     meilisearch_port = _get_env_int("MEILISEARCH_PORT", 7700)
@@ -117,11 +134,11 @@ def build_canonical_config() -> Dict[str, Any]:
         "arango_username": arango_username,
         "arango_password": arango_password,
         "arango_database": arango_database,
-        "supabase_url": os.getenv("SUPABASE_URL"),
+        "supabase_url": supabase_url,
         "supabase_anon_key": supabase_anon_key,
         "supabase_service_key": supabase_service_key,
-        "supabase_jwks_url": os.getenv("SUPABASE_JWKS_URL"),
-        "supabase_jwt_issuer": os.getenv("SUPABASE_JWT_ISSUER"),
+        "supabase_jwks_url": supabase_jwks_url,
+        "supabase_jwt_issuer": supabase_jwt_issuer,
         "gcs_project_id": os.getenv("GCS_PROJECT_ID"),
         "gcs_bucket_name": os.getenv("GCS_BUCKET_NAME"),
         "gcs_credentials_json": os.getenv("GCS_CREDENTIALS_JSON"),
@@ -130,6 +147,7 @@ def build_canonical_config() -> Dict[str, Any]:
         "meilisearch_key": os.getenv("MEILI_MASTER_KEY"),
         "runtime_port": _get_env_int("RUNTIME_PORT", 8000),
         "log_level": _get_env("LOG_LEVEL", "INFO"),
+        "otel_exporter_otlp_endpoint": _get_env("OTEL_EXPORTER_OTLP_ENDPOINT", "").strip() or None,  # required; no default; pre-boot validates presence and reachability
         # Optional (not required for G3): LLM / capabilities
         "openai_api_key": os.getenv("OPENAI_API_KEY") or os.getenv("LLM_OPENAI_API_KEY"),
         "openai_base_url": os.getenv("OPENAI_BASE_URL"),

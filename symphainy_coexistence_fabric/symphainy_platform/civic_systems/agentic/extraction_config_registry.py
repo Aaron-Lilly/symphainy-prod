@@ -66,8 +66,9 @@ class ExtractionConfigRegistry:
             True if registration successful
         """
         if not self.supabase_adapter:
-            self.logger.warning("Supabase adapter not available, cannot register config")
-            return False
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot register config. Platform contract §8A."
+            )
         
         # Validate config before registration
         is_valid, error = config.validate()
@@ -126,7 +127,9 @@ class ExtractionConfigRegistry:
             ExtractionConfig instance, or None if not found
         """
         if not self.supabase_adapter:
-            return None
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot retrieve config. Platform contract §8A."
+            )
         
         try:
             # Query extraction_configs table
@@ -171,7 +174,9 @@ class ExtractionConfigRegistry:
             List of ExtractionConfig instances
         """
         if not self.supabase_adapter:
-            return []
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot list configs. Platform contract §8A."
+            )
         
         try:
             # Query extraction_configs table
@@ -220,8 +225,9 @@ class ExtractionConfigRegistry:
             True if update successful
         """
         if not self.supabase_adapter:
-            self.logger.warning("Supabase adapter not available, cannot update config")
-            return False
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot update config. Platform contract §8A."
+            )
         
         # Validate config before update
         is_valid, error = config.validate()
@@ -277,8 +283,9 @@ class ExtractionConfigRegistry:
             True if deletion successful
         """
         if not self.supabase_adapter:
-            self.logger.warning("Supabase adapter not available, cannot delete config")
-            return False
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot delete config. Platform contract §8A."
+            )
         
         try:
             result = await self.supabase_adapter.execute_rls_policy(

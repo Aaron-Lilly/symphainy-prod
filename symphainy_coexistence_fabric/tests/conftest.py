@@ -1,12 +1,11 @@
 """
 Root test conftest – shared fixtures for all test trees.
 
-E2E demo paths (tests/e2e/demo_paths/) need the same solution and execution_context
-fixtures as 3d tests. This module loads tests/3d/conftest.py and re-exports those
-fixtures so pytest discovers them when running tests/e2e/ (3d directory name is not
-a valid Python module, so we cannot use pytest_plugins = ["tests.3d.conftest"]).
+Canonical testing path: Genesis-based (genesis_app, genesis_client, genesis_services).
+Use these so "what works in test also works in prod."
 
-Contract: E2E and 3d share fixture definitions from tests/3d/conftest.py.
+E2E demo paths (tests/e2e/demo_paths/) load tests/3d/conftest.py and get the same
+fixtures. Contract: E2E and 3d share fixture definitions from tests/3d/conftest.py.
 See docs/testing/stability_gravity_reports/20260129_e2e_fixture_scope.md.
 """
 
@@ -25,7 +24,12 @@ _mod = importlib.util.module_from_spec(_spec)
 sys.modules["conftest_3d"] = _mod
 _spec.loader.exec_module(_mod)
 
-# Re-export fixtures so pytest discovers them when running tests/e2e/
+# Canonical Genesis-based fixtures (preferred)
+genesis_app = _mod.genesis_app
+genesis_client = _mod.genesis_client
+genesis_services = _mod.genesis_services
+
+# Legacy mock/solution fixtures (deprecated: migrate to genesis_client or genesis_services)
 mock_public_works = _mod.mock_public_works
 mock_state_surface = _mod.mock_state_surface
 mock_solution_registry = _mod.mock_solution_registry

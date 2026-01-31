@@ -113,7 +113,8 @@ So: **single source of “what we need” for boot** is currently the code (Runt
 
 ## 4. Env vars (env_contract.py)
 
-- **With defaults (assumed available locally):** REDIS_URL, ARANGO_URL, ARANGO_ROOT_PASSWORD, RUNTIME_PORT, SMART_CITY_PORT, REALMS_PORT, REDIS_PORT, ARANGO_PORT, CONSUL_HOST, CONSUL_PORT, TRAEFIK_*, TEMPO_PORT, GRAFANA_PORT, OTEL_EXPORTER_OTLP_ENDPOINT, LOG_LEVEL, MEILISEARCH_PORT.
+- **With defaults (assumed available locally):** REDIS_URL, ARANGO_URL, ARANGO_ROOT_PASSWORD, RUNTIME_PORT, SMART_CITY_PORT, REALMS_PORT, REDIS_PORT, ARANGO_PORT, CONSUL_HOST, CONSUL_PORT, TRAEFIK_*, TEMPO_PORT, GRAFANA_PORT, LOG_LEVEL, MEILISEARCH_PORT.
+- **Required (no default; validated at boot):** OTEL_EXPORTER_OTLP_ENDPOINT.
 - **Optional (feature flags / integrations):** CONSUL_TOKEN, SUPABASE_*, GCS_*, MEILI_MASTER_KEY.
 
 In practice, for **current** boot to succeed we need Arango, Supabase (DB + file), and GCS configured; Redis/Consul are optional in code but WAL and state benefit from Redis. Env contract does not mark “required for boot” explicitly; that’s only in code and this doc.

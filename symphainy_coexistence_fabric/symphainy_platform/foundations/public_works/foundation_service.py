@@ -40,6 +40,15 @@ from .protocols.service_discovery_protocol import ServiceDiscoveryProtocol
 from .protocols.semantic_search_protocol import SemanticSearchProtocol
 from .protocols.auth_protocol import AuthenticationProtocol, TenancyProtocol
 from .protocols.file_storage_protocol import FileStorageProtocol
+from .protocols.artifact_storage_protocol import ArtifactStorageProtocol
+from .protocols.ingestion_protocol import IngestionProtocol
+from .protocols.semantic_data_protocol import SemanticDataProtocol
+from .protocols.event_publisher_protocol import EventPublisherProtocol
+from .protocols.event_log_protocol import EventLogProtocol
+from .protocols.visual_generation_protocol import VisualGenerationProtocol
+from .protocols.deterministic_embedding_storage_protocol import DeterministicEmbeddingStorageProtocol
+from .protocols.file_parsing_protocol import FileParsingProtocol
+from .document_parsing_router import DocumentParsingRouter
 
 # Layer 0: Additional Adapters
 from .adapters.meilisearch_adapter import MeilisearchAdapter
@@ -109,6 +118,10 @@ class PublicWorksFoundationService:
         # Layer 0: DuckDB Adapter
         self.duckdb_adapter: Optional[Any] = None  # DuckDBAdapter
         
+        # Layer 0: Telemetry Adapter (OpenTelemetry)
+        self.telemetry_adapter: Optional[Any] = None  # TelemetryAdapter
+        self.telemetry_abstraction: Optional[Any] = None  # exposed as telemetry_abstraction for NurseSDK / intent services
+        
         # Layer 1: Infrastructure Abstractions
         self.state_abstraction: Optional[StateManagementAbstraction] = None
         self.service_discovery_abstraction: Optional[ServiceDiscoveryAbstraction] = None
@@ -117,6 +130,8 @@ class PublicWorksFoundationService:
         self.semantic_data_abstraction: Optional[Any] = None  # SemanticDataAbstraction
         self.deterministic_compute_abstraction: Optional[Any] = None  # DeterministicComputeAbstraction
         self.registry_abstraction: Optional[Any] = None  # RegistryAbstraction
+        self._boundary_contract_store: Optional[Any] = None  # BoundaryContractStoreProtocol
+        self._lineage_backend: Optional[Any] = None  # LineageProvenanceProtocol (Arango-backed)
         self.auth_abstraction: Optional[AuthAbstraction] = None
         self.tenant_abstraction: Optional[TenantAbstraction] = None
         self.file_storage_abstraction: Optional[FileStorageAbstraction] = None
@@ -138,6 +153,10 @@ class PublicWorksFoundationService:
         self.data_model_processing_abstraction: Optional[DataModelProcessingAbstraction] = None
         self.workflow_processing_abstraction: Optional[WorkflowProcessingAbstraction] = None
         self.sop_processing_abstraction: Optional[SopProcessingAbstraction] = None
+        self._document_parsing_router: Optional[Any] = None  # DocumentParsingRouter (P4 unified surface)
+        
+        # Event log backend (EventLogProtocol) for WAL, Outbox, PostOffice — no adapter leak
+        self._wal_backend: Optional[Any] = None  # RedisStreamsEventLogBackend when Redis present
         
         # Layer 1: Ingestion Abstractions
         self.ingestion_abstraction: Optional[Any] = None  # Will import IngestionAbstraction when needed
@@ -470,6 +489,11 @@ class PublicWorksFoundationService:
         """Create all infrastructure abstractions (Layer 1)."""
         self.logger.info("Creating infrastructure abstractions...")
         
+        # Event log backend (protocol implementation; WAL/Outbox/PostOffice use this, not adapter)
+        if self.redis_adapter:
+            self._wal_backend = RedisStreamsEventLogBackend(self.redis_adapter)
+            self.logger.info("Event log backend (WAL) created")
+        
         # State management abstraction
         self.state_abstraction = StateManagementAbstraction(
             redis_adapter=self.redis_adapter,
@@ -548,6 +572,18 @@ class PublicWorksFoundationService:
                 supabase_adapter=self.supabase_adapter
             )
             self.logger.info("Registry abstraction created")
+            # Extraction config registry (protocol; adapter stays inside Public Works)
+            from symphainy_platform.civic_systems.agentic.extraction_config_registry import ExtractionConfigRegistry
+            self._extraction_config_registry = ExtractionConfigRegistry(supabase_adapter=self.supabase_adapter)
+            self.logger.info("Extraction config registry created")
+            # Guide registry (protocol; adapter stays inside Public Works)
+            from symphainy_platform.civic_systems.platform_sdk.guide_registry import GuideRegistry
+            self._guide_registry = GuideRegistry(supabase_adapter=self.supabase_adapter)
+            self.logger.info("Guide registry created")
+            # Boundary contract store (protocol; adapter stays inside Public Works)
+            from .backends.boundary_contract_store_backend import BoundaryContractStoreBackend
+            self._boundary_contract_store = BoundaryContractStoreBackend(supabase_adapter=self.supabase_adapter)
+            self.logger.info("Boundary contract store created")
         else:
             self.logger.warning("Registry abstraction not created (Supabase adapter missing)")
         
@@ -822,6 +858,12 @@ class PublicWorksFoundationService:
         if self.consul_adapter:
             self.consul_adapter.disconnect()
         
+        if self.telemetry_adapter and hasattr(self.telemetry_adapter, "shutdown"):
+            try:
+                self.telemetry_adapter.shutdown()
+            except Exception as e:
+                self.logger.warning(f"Telemetry adapter shutdown failed: {e}")
+        
         self._initialized = False
         self.logger.info("Public Works Foundation shut down")
     
@@ -949,10 +991,18 @@ class PublicWorksFoundationService:
     def get_sop_processing_abstraction(self) -> Optional[SopProcessingAbstraction]:
         """Get SOP processing abstraction (for Markdown files)."""
         return self.sop_processing_abstraction
+
+    def get_document_parsing(self) -> Optional[FileParsingProtocol]:
+        """
+        Get unified document parsing surface (P4). Single entry point; routes by parsing_type/file_type.
+        Prefer this over format-specific get_*_processing_abstraction() for callers that want one parse API.
+        """
+        return self._document_parsing_router
     
-    def get_visual_generation_abstraction(self) -> Optional[VisualGenerationAbstraction]:
+    def get_visual_generation_abstraction(self) -> Optional[VisualGenerationProtocol]:
         """Get Visual Generation abstraction."""
         return self.visual_generation_abstraction
+    
     # ============================================================================
     # Smart City Abstraction Access Methods
     # ============================================================================
@@ -993,21 +1043,21 @@ class PublicWorksFoundationService:
         """
         return self.file_storage_abstraction
     
-    def get_ingestion_abstraction(self) -> Optional[Any]:
+    def get_ingestion_abstraction(self) -> Optional[IngestionProtocol]:
         """
         Get ingestion abstraction (for Content Realm Ingestion Service).
         
         Returns:
-            Optional[IngestionAbstraction]: Ingestion abstraction or None
+            Optional[IngestionProtocol]: Ingestion abstraction or None
         """
         return self.ingestion_abstraction
     
-    def get_semantic_data_abstraction(self) -> Optional[Any]:
+    def get_semantic_data_abstraction(self) -> Optional[SemanticDataProtocol]:
         """
         Get semantic data abstraction (for Content Realm and Insights Realm).
         
         Returns:
-            Optional[SemanticDataAbstraction]: Semantic data abstraction or None
+            Optional[SemanticDataProtocol]: Semantic data abstraction or None
         """
         return self.semantic_data_abstraction
 
@@ -1018,42 +1068,111 @@ class PublicWorksFoundationService:
         """
         return self.supabase_file_adapter
     
-    def get_event_publisher_abstraction(self) -> Optional[Any]:
+    def get_event_publisher_abstraction(self) -> Optional[EventPublisherProtocol]:
         """
         Get event publisher abstraction (for Transactional Outbox).
         
         Returns:
-            Optional[EventPublisherAbstraction]: Event publisher abstraction or None
+            Optional[EventPublisherProtocol]: Event publisher abstraction or None
         """
         return self.event_publisher_abstraction
     
     def get_arango_adapter(self) -> Optional[Any]:
         """
-        Get ArangoDB adapter (for lineage tracking and embeddings).
-        
-        Returns:
-            Optional[ArangoAdapter]: ArangoDB adapter or None
+        BREAKING: Adapters must not escape Public Works.
+        Use get_lineage_backend() for DataBrain execution provenance.
         """
-        return self.arango_adapter
-    
+        raise RuntimeError(
+            "get_arango_adapter() is not part of the public API. "
+            "Use get_lineage_backend() for lineage/provenance. Adapters must not escape Public Works."
+        )
+
     def get_supabase_adapter(self) -> Optional[SupabaseAdapter]:
         """
-        Get Supabase adapter (for lineage tracking).
-        
-        Returns:
-            Optional[SupabaseAdapter]: Supabase adapter or None
+        BREAKING: Adapters must not escape Public Works.
+        Use get_boundary_contract_store(), get_extraction_config_registry(), get_guide_registry(), or get_registry_abstraction().
         """
-        return self.supabase_adapter
+        raise RuntimeError(
+            "get_supabase_adapter() is not part of the public API. "
+            "Use get_boundary_contract_store(), get_extraction_config_registry(), get_guide_registry(), or get_registry_abstraction(). Adapters must not escape Public Works."
+        )
     
-    def get_artifact_storage_abstraction(self) -> Optional[ArtifactStorageAbstraction]:
+    def get_artifact_storage_abstraction(self) -> Optional[ArtifactStorageProtocol]:
         """
         Get Artifact Storage abstraction.
         
         Returns:
-            Optional[ArtifactStorageAbstraction]: Artifact Storage abstraction or None
+            Optional[ArtifactStorageProtocol]: Artifact Storage abstraction or None
         """
         return self.artifact_storage_abstraction
-    
+
+    def get_registry_abstraction(self) -> Optional[Any]:
+        """
+        Get registry abstraction (Supabase-backed; lineage/artifact metadata).
+        Registry protocol deferred to Curator/Phase F.
+
+        Returns:
+            Optional[RegistryAbstraction]: Registry abstraction or None
+        """
+        return self.registry_abstraction
+
+    def get_extraction_config_registry(self) -> Optional[Any]:
+        """
+        Get extraction config registry (protocol). Adapter stays inside Public Works.
+
+        Returns:
+            Optional[ExtractionConfigRegistryProtocol]: Extraction config registry or None
+        """
+        return self._extraction_config_registry
+
+    def get_guide_registry(self) -> Optional[Any]:
+        """
+        Get guide registry (protocol). Adapter stays inside Public Works.
+
+        Returns:
+            Optional[GuideRegistryProtocol]: Guide registry or None
+        """
+        return self._guide_registry
+
+    def get_boundary_contract_store(self) -> Optional[Any]:
+        """
+        Get boundary contract store (protocol). Adapter stays inside Public Works.
+
+        Returns:
+            Optional[BoundaryContractStoreProtocol]: Boundary contract store or None
+        """
+        return self._boundary_contract_store
+
+    def get_lineage_backend(self) -> Optional[Any]:
+        """
+        Get lineage backend (protocol). Arango-backed for DataBrain execution provenance.
+        Artifact lineage lives in Supabase; this is for runtime execution provenance.
+
+        Returns:
+            Optional[LineageProvenanceProtocol]: Lineage backend or None
+        """
+        return self._lineage_backend
+
+    def get_redis_adapter(self) -> Optional[Any]:
+        """
+        BREAKING: Adapters must not escape Public Works.
+        Use get_wal_backend() for WAL/Outbox/event log; state uses get_state_abstraction().
+        """
+        raise RuntimeError(
+            "get_redis_adapter() is not part of the public API. "
+            "Use get_wal_backend() for event log, or get_state_abstraction() for state. Adapters must not escape Public Works."
+        )
+
+    def get_wal_backend(self) -> Optional[EventLogProtocol]:
+        """
+        Get event log backend (protocol) for WAL, TransactionalOutbox, PostOfficeSDK.
+        Callers must not receive adapters; they receive this protocol implementation.
+
+        Returns:
+            Optional[EventLogProtocol]: Event log backend or None if Redis not available
+        """
+        return self._wal_backend
+
     def get_state_surface(self) -> Optional[Any]:
         """
         Get State Surface (for file retrieval).
@@ -1082,3 +1201,21 @@ class PublicWorksFoundationService:
             Optional[HuggingFaceAdapter]: HuggingFace adapter or None
         """
         return self.huggingface_adapter
+    
+    def get_telemetry_abstraction(self) -> Optional[Any]:
+        """
+        Get telemetry abstraction (OpenTelemetry) for NurseSDK and intent services.
+        
+        Returns:
+            Optional[TelemetryAdapter]: Telemetry adapter exposed as abstraction, or None if not available
+        """
+        return self.telemetry_abstraction
+    
+    def get_deterministic_compute_abstraction(self) -> Optional[DeterministicEmbeddingStorageProtocol]:
+        """
+        Get deterministic embedding storage abstraction (DuckDB-backed).
+        
+        Returns:
+            Optional[DeterministicEmbeddingStorageProtocol]: Deterministic embedding storage or None
+        """
+        return self.deterministic_compute_abstraction

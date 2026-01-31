@@ -96,9 +96,9 @@ class EnvContract(BaseModel):
         default=3000,
         description="Grafana port"
     )
-    OTEL_EXPORTER_OTLP_ENDPOINT: str = Field(
-        default="http://localhost:4317",
-        description="OpenTelemetry exporter endpoint"
+    OTEL_EXPORTER_OTLP_ENDPOINT: Optional[str] = Field(
+        default=None,
+        description="OpenTelemetry OTLP exporter endpoint (required; validated at boot)"
     )
     
     # Logging
@@ -153,6 +153,16 @@ class EnvContract(BaseModel):
         description="Meilisearch master key"
     )
     
+    @validator("OTEL_EXPORTER_OTLP_ENDPOINT")
+    def validate_otel_endpoint(cls, v):
+        """OTEL_EXPORTER_OTLP_ENDPOINT is required and must be non-empty."""
+        if v is None or (isinstance(v, str) and not v.strip()):
+            raise ValueError(
+                "OTEL_EXPORTER_OTLP_ENDPOINT is required. "
+                "Set it to your OTLP collector URL (e.g. http://localhost:4317 or http://otel-collector:4317)."
+            )
+        return v.strip() if isinstance(v, str) else v
+
     @validator("LOG_LEVEL")
     def validate_log_level(cls, v):
         """Validate log level."""
@@ -201,13 +211,13 @@ def get_env_contract() -> EnvContract:
         TRAEFIK_DASHBOARD_PORT=int(os.getenv("TRAEFIK_DASHBOARD_PORT", "8080")),
         TEMPO_PORT=int(os.getenv("TEMPO_PORT", "3200")),
         GRAFANA_PORT=int(os.getenv("GRAFANA_PORT", "3000")),
-        OTEL_EXPORTER_OTLP_ENDPOINT=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "http://localhost:4317"),
+        OTEL_EXPORTER_OTLP_ENDPOINT=os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"),
         LOG_LEVEL=os.getenv("LOG_LEVEL", "INFO"),
-        SUPABASE_URL=os.getenv("SUPABASE_URL"),
-        SUPABASE_ANON_KEY=os.getenv("SUPABASE_PUBLISHABLE_KEY"),
-        SUPABASE_SERVICE_KEY=os.getenv("SUPABASE_SECRET_KEY"),
-        SUPABASE_JWKS_URL=os.getenv("SUPABASE_JWKS_URL"),
-        SUPABASE_JWT_ISSUER=os.getenv("SUPABASE_JWT_ISSUER"),
+        SUPABASE_URL=supabase_url,
+        SUPABASE_ANON_KEY=supabase_anon,
+        SUPABASE_SERVICE_KEY=supabase_service,
+        SUPABASE_JWKS_URL=supabase_jwks,
+        SUPABASE_JWT_ISSUER=supabase_issuer,
         GCS_PROJECT_ID=os.getenv("GCS_PROJECT_ID"),
         GCS_BUCKET_NAME=os.getenv("GCS_BUCKET_NAME"),
         GCS_CREDENTIALS_JSON=os.getenv("GCS_CREDENTIALS_JSON"),

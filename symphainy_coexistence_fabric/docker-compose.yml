@@ -95,6 +95,7 @@ services:
     env_file:
       - .env.secrets
     environment:
+      - USE_SUPABASE_TEST=${USE_SUPABASE_TEST:-0}
       - REDIS_URL=${REDIS_URL:-redis://redis:6379}
       - ARANGO_URL=${ARANGO_URL:-http://arango:8529}
       - ARANGO_ROOT_PASSWORD=${ARANGO_ROOT_PASSWORD:-test_password}
@@ -105,7 +106,10 @@ services:
       - MEILISEARCH_HOST=meilisearch
       - MEILISEARCH_PORT=7700
       - RUNTIME_PORT=8000
+      - DUCKDB_DATABASE_PATH=/app/data/duckdb/main.duckdb
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+    volumes:
+      - duckdb_data:/app/data/duckdb
     depends_on:
       redis:
         condition: service_healthy
@@ -149,6 +153,7 @@ services:
       - .env.secrets
     environment:
       # Force container-network URLs so experience always reaches infra when run in compose
+      - USE_SUPABASE_TEST=${USE_SUPABASE_TEST:-0}
       - REDIS_URL=redis://redis:6379
       - ARANGO_URL=http://arango:8529
       - ARANGO_ROOT_PASSWORD=${ARANGO_ROOT_PASSWORD:-test_password}

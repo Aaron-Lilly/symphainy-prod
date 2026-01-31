@@ -335,8 +335,9 @@ class DeterministicEmbeddingService:
             Embedding document or None
         """
         if not self.deterministic_compute_abstraction:
-            self.logger.warning("DeterministicComputeAbstraction not available")
-            return None
+            raise RuntimeError(
+                "DeterministicComputeAbstraction not wired; cannot get embedding. Platform contract §8A."
+            )
         
         try:
             # Get via abstraction (governed access)

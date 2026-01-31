@@ -134,7 +134,9 @@ class ServiceDiscoveryAbstraction(ServiceDiscoveryProtocol):
         """
         try:
             if not self.consul_adapter:
-                return []
+                raise RuntimeError(
+                    "Consul adapter not wired; cannot discover service. Platform contract §8A."
+                )
             
             services = self.consul_adapter.discover_service(service_name)
             
@@ -168,7 +170,9 @@ class ServiceDiscoveryAbstraction(ServiceDiscoveryProtocol):
         """
         try:
             if not self.consul_adapter:
-                return False
+                raise RuntimeError(
+                    "Consul adapter not wired; cannot deregister service. Platform contract §8A."
+                )
             
             success = self.consul_adapter.deregister_service(service_id)
             if success:
@@ -191,7 +195,9 @@ class ServiceDiscoveryAbstraction(ServiceDiscoveryProtocol):
         """
         try:
             if not self.consul_adapter:
-                return {}
+                raise RuntimeError(
+                    "Consul adapter not wired; cannot get service health. Platform contract §8A."
+                )
             
             return self.consul_adapter.get_service_health(service_name)
             

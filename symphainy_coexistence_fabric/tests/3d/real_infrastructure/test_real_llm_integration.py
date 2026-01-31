@@ -88,8 +88,8 @@ class TestRealGuideAgentLLM:
         if not _has_llm_api_key():
             pytest.skip("LLM API keys not configured")
         
-        solutions = await real_solutions
-        context = await real_execution_context
+        solutions = real_solutions
+        context = real_execution_context
         coexistence_solution = solutions.coexistence
         
         journey = coexistence_solution.get_journey("guide_agent")

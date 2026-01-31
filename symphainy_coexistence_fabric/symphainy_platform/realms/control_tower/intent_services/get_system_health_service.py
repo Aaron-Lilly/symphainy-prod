@@ -116,13 +116,12 @@ class GetSystemHealthService(BaseIntentService):
         """Check infrastructure component health."""
         components = {}
         
-        # Check Redis via Public Works
+        # Check Redis via Public Works (event log protocol only; no adapter access)
         try:
-            if self.public_works and hasattr(self.public_works, 'redis_adapter'):
-                redis = self.public_works.redis_adapter
-                if redis:
-                    # Try a ping
-                    components["redis"] = {"status": "healthy", "latency_ms": 1}
+            if self.public_works:
+                wal = self.public_works.get_wal_backend()
+                if wal:
+                    components["redis"] = {"status": "healthy"}
                 else:
                     components["redis"] = {"status": "unavailable"}
             else:
@@ -130,12 +129,12 @@ class GetSystemHealthService(BaseIntentService):
         except Exception as e:
             components["redis"] = {"status": "error", "error": str(e)}
         
-        # Check Postgres via Public Works
+        # Check Postgres via Public Works (no adapter exposure; use registry/abstraction if available)
         try:
-            if self.public_works and hasattr(self.public_works, 'postgres_adapter'):
-                pg = self.public_works.postgres_adapter
-                if pg:
-                    components["postgres"] = {"status": "healthy", "latency_ms": 5}
+            if self.public_works and hasattr(self.public_works, "get_registry_abstraction"):
+                reg = self.public_works.get_registry_abstraction()
+                if reg:
+                    components["postgres"] = {"status": "healthy"}
                 else:
                     components["postgres"] = {"status": "unavailable"}
             else:

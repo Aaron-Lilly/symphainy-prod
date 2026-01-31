@@ -85,8 +85,9 @@ class AgenticTelemetryService:
             True if recording successful
         """
         if not self.supabase_adapter:
-            self.logger.debug("Supabase adapter not available, skipping telemetry recording")
-            return False
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot record telemetry. Platform contract §8A."
+            )
         
         try:
             # Calculate prompt hash for deduplication
@@ -156,8 +157,9 @@ class AgenticTelemetryService:
             True if recording successful
         """
         if not self.supabase_adapter:
-            self.logger.debug("Supabase adapter not available, skipping tool usage recording")
-            return False
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot record tool usage. Platform contract §8A."
+            )
         
         try:
             # Extract server name from tool name if available
@@ -224,8 +226,9 @@ class AgenticTelemetryService:
             True if recording successful
         """
         if not self.supabase_adapter:
-            self.logger.debug("Supabase adapter not available, skipping health recording")
-            return False
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot record health. Platform contract §8A."
+            )
         
         try:
             # Prepare health metrics record
@@ -284,8 +287,9 @@ class AgenticTelemetryService:
             }
         """
         if not self.supabase_adapter:
-            self.logger.warning("Supabase adapter not available, cannot retrieve metrics")
-            return {}
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot retrieve metrics. Platform contract §8A."
+            )
         
         try:
             # Build filters
@@ -385,8 +389,9 @@ class AgenticTelemetryService:
             True if recording successful
         """
         if not self.supabase_adapter:
-            self.logger.debug("Supabase adapter not available, skipping orchestrator telemetry")
-            return False
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot record orchestrator telemetry. Platform contract §8A."
+            )
         
         try:
             execution_record = {
@@ -441,8 +446,9 @@ class AgenticTelemetryService:
             True if recording successful
         """
         if not self.supabase_adapter:
-            self.logger.debug("Supabase adapter not available, skipping health recording")
-            return False
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot record health. Platform contract §8A."
+            )
         
         try:
             health_record = {
@@ -497,8 +503,9 @@ class AgenticTelemetryService:
             }
         """
         if not self.supabase_adapter:
-            self.logger.warning("Supabase adapter not available, cannot retrieve metrics")
-            return {}
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot retrieve metrics. Platform contract §8A."
+            )
         
         try:
             filters = {"orchestrator_id": orchestrator_id}

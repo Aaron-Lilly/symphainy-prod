@@ -12,12 +12,14 @@ ingestion, explainable interpretation, and replayable migration.
 Critical Rule: Phase 2 Data Brain never returns raw data by default — only references.
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, TYPE_CHECKING
 from dataclasses import dataclass, field
 from datetime import datetime
 
 from utilities import get_logger, get_clock, generate_event_id
-from symphainy_platform.foundations.public_works.adapters.arango_adapter import ArangoAdapter
+
+if TYPE_CHECKING:
+    from symphainy_platform.foundations.public_works.protocols.lineage_provenance_protocol import LineageProvenanceProtocol
 
 
 @dataclass
@@ -105,17 +107,21 @@ class DataBrain:
     
     def __init__(
         self,
-        arango_adapter: Optional[ArangoAdapter] = None,
+        lineage_backend: Optional["LineageProvenanceProtocol"] = None,
         use_memory: bool = False
     ):
         """
         Initialize Data Brain.
+
+        Uses LineageProvenanceProtocol (e.g. from public_works.get_lineage_backend());
+        adapters must not escape Public Works. Artifact lineage lives in Supabase;
+        this backend is for runtime execution provenance (Arango-backed).
         
         Args:
-            arango_adapter: Optional ArangoDB adapter for persistent storage
+            lineage_backend: Optional lineage backend (from Public Works get_lineage_backend())
             use_memory: If True, use in-memory storage (for tests)
         """
-        self.arango_adapter = arango_adapter
+        self.lineage_backend = lineage_backend
         self.use_memory = use_memory
         self._memory_references: Dict[str, DataReference] = {}
         self._memory_provenance: Dict[str, List[ProvenanceEntry]] = {}
@@ -136,18 +142,19 @@ class DataBrain:
         if self.use_memory:
             return True
         
-        if not self.arango_adapter:
-            self.logger.warning("ArangoDB adapter not available, using in-memory storage")
-            return True
+        if not self.lineage_backend:
+            raise RuntimeError(
+                "Lineage backend not wired; cannot initialize Data Brain (use_memory=False). Platform contract §8A."
+            )
         
         try:
             # Ensure collections exist
-            if not await self.arango_adapter.collection_exists(self.references_collection):
-                await self.arango_adapter.create_collection(self.references_collection)
+            if not await self.lineage_backend.collection_exists(self.references_collection):
+                await self.lineage_backend.create_collection(self.references_collection)
                 self.logger.info(f"Created collection: {self.references_collection}")
             
-            if not await self.arango_adapter.collection_exists(self.provenance_collection):
-                await self.arango_adapter.create_collection(self.provenance_collection)
+            if not await self.lineage_backend.collection_exists(self.provenance_collection):
+                await self.lineage_backend.create_collection(self.provenance_collection)
                 self.logger.info(f"Created collection: {self.provenance_collection}")
             
             return True
@@ -189,15 +196,16 @@ class DataBrain:
                 self._memory_references[reference_id] = reference
                 return True
             
-            if not self.arango_adapter:
-                self._memory_references[reference_id] = reference
-                return True
+            if not self.lineage_backend:
+                raise RuntimeError(
+                    "Lineage backend not wired; cannot register reference (use_memory=False). Platform contract §8A."
+                )
             
-            # Store in ArangoDB
+            # Store via lineage backend (Arango-backed inside Public Works)
             document = reference.to_dict()
             document["_key"] = reference_id
             
-            result = await self.arango_adapter.insert_document(
+            result = await self.lineage_backend.insert_document(
                 self.references_collection,
                 document
             )
@@ -229,11 +237,13 @@ class DataBrain:
             if self.use_memory:
                 return self._memory_references.get(reference_id)
             
-            if not self.arango_adapter:
-                return self._memory_references.get(reference_id)
+            if not self.lineage_backend:
+                raise RuntimeError(
+                    "Lineage backend not wired; cannot get reference (use_memory=False). Platform contract §8A."
+                )
             
-            # Get from ArangoDB
-            document = await self.arango_adapter.get_document(
+            # Get via lineage backend
+            document = await self.lineage_backend.get_document(
                 self.references_collection,
                 reference_id
             )
@@ -280,10 +290,12 @@ class DataBrain:
                 
                 return references[:limit]
             
-            if not self.arango_adapter:
-                return []
+            if not self.lineage_backend:
+                raise RuntimeError(
+                    "Lineage backend not wired; cannot list references (use_memory=False). Platform contract §8A."
+                )
             
-            # Query ArangoDB
+            # Query via lineage backend
             query = f"""
             FOR ref IN {self.references_collection}
                 FILTER @reference_type == null OR ref.reference_type == @reference_type
@@ -298,7 +310,7 @@ class DataBrain:
                 "limit": limit
             }
             
-            results = await self.arango_adapter.execute_aql(query, bind_vars=bind_vars)
+            results = await self.lineage_backend.execute_aql(query, bind_vars=bind_vars)
             
             references = []
             for doc in results:
@@ -353,17 +365,16 @@ class DataBrain:
                 self._memory_provenance[reference_id].append(provenance_entry)
                 return True
             
-            if not self.arango_adapter:
-                if reference_id not in self._memory_provenance:
-                    self._memory_provenance[reference_id] = []
-                self._memory_provenance[reference_id].append(provenance_entry)
-                return True
+            if not self.lineage_backend:
+                raise RuntimeError(
+                    "Lineage backend not wired; cannot track provenance (use_memory=False). Platform contract §8A."
+                )
             
-            # Store in ArangoDB
+            # Store via lineage backend
             document = provenance_entry.to_dict()
             document["_key"] = entry_id
             
-            result = await self.arango_adapter.insert_document(
+            result = await self.lineage_backend.insert_document(
                 self.provenance_collection,
                 document
             )
@@ -401,10 +412,12 @@ class DataBrain:
                 entries.sort(key=lambda e: e.created_at)
                 return entries[:limit]
             
-            if not self.arango_adapter:
-                return []
+            if not self.lineage_backend:
+                raise RuntimeError(
+                    "Lineage backend not wired; cannot get provenance (use_memory=False). Platform contract §8A."
+                )
             
-            # Query ArangoDB
+            # Query via lineage backend
             query = f"""
             FOR prov IN {self.provenance_collection}
                 FILTER prov.reference_id == @reference_id
@@ -418,7 +431,7 @@ class DataBrain:
                 "limit": limit
             }
             
-            results = await self.arango_adapter.execute_aql(query, bind_vars=bind_vars)
+            results = await self.lineage_backend.execute_aql(query, bind_vars=bind_vars)
             
             entries = []
             for doc in results:

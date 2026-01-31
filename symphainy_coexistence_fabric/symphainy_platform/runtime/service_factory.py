@@ -86,10 +86,10 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
     )
     logger.info("  ✅ StateSurface created")
     
-    # Step 3: Create WriteAheadLog (for audit trail)
+    # Step 3: Create WriteAheadLog (for audit trail) — uses EventLogProtocol, not adapter
     logger.info("  → Creating WriteAheadLog...")
     wal = WriteAheadLog(
-        redis_adapter=public_works.redis_adapter
+        event_log=public_works.get_wal_backend()
     )
     logger.info("  ✅ WriteAheadLog created")
     
@@ -436,22 +436,35 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
     )
     logger.info("  ✅ Platform Solutions initialized")
     
-    # Step 5: Create ExecutionLifecycleManager
+    # Step 5: Create Data Steward (boundary contract store from Public Works; no adapter)
+    boundary_contract_store = public_works.get_boundary_contract_store()
+    data_steward_primitives = None
+    data_steward_sdk = None
+    if boundary_contract_store:
+        from symphainy_platform.civic_systems.smart_city.primitives.data_steward_primitives import DataStewardPrimitives
+        from symphainy_platform.civic_systems.smart_city.sdk.data_steward_sdk import DataStewardSDK
+        data_steward_primitives = DataStewardPrimitives(boundary_contract_store=boundary_contract_store)
+        data_steward_sdk = DataStewardSDK(data_steward_primitives=data_steward_primitives)
+        logger.info("  ✅ Data Steward SDK created (boundary contract store from Public Works)")
+    else:
+        logger.info("  ⚠️ Boundary contract store not available; Data Steward SDK not created")
+
+    # Step 6: Create ExecutionLifecycleManager
     logger.info("  → Creating ExecutionLifecycleManager...")
     execution_lifecycle_manager = ExecutionLifecycleManager(
         intent_registry=intent_registry,
         state_surface=state_surface,
         wal=wal,
-        artifact_storage=public_works.artifact_storage_abstraction,
+        artifact_storage=public_works.get_artifact_storage_abstraction(),
         platform_context_factory=platform_context_factory,
-        # ... other dependencies
+        data_steward_sdk=data_steward_sdk,
     )
     logger.info("  ✅ ExecutionLifecycleManager created")
-    
-    # Get abstractions from PublicWorksFoundationService
-    registry_abstraction = public_works.registry_abstraction
-    artifact_storage = public_works.artifact_storage_abstraction
-    file_storage = public_works.file_storage_abstraction
+
+    # Get abstractions via get_* (protocol-typed surface; no direct attr access)
+    registry_abstraction = public_works.get_registry_abstraction()
+    artifact_storage = public_works.get_artifact_storage_abstraction()
+    file_storage = public_works.get_file_storage_abstraction()
     
     # Build RuntimeServices container
     services = RuntimeServices(
@@ -501,7 +514,9 @@ def create_fastapi_app(services: RuntimeServices) -> Any:
         artifact_storage=services.artifact_storage,
         file_storage=services.file_storage
     )
-    
+    # Attach full services to app for tests and admin tooling (e.g. genesis_services fixture)
+    app.state.runtime_services = services
+
     logger.info("✅ FastAPI app created with all routes registered")
-    
+
     return app

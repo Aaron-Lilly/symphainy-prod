@@ -64,8 +64,9 @@ class AgentDefinitionRegistry:
             True if registration successful
         """
         if not self.supabase_adapter:
-            self.logger.warning("Supabase adapter not available, cannot register definition")
-            return False
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot register definition. Platform contract §8A."
+            )
         
         # Validate definition before registration
         is_valid, error = definition.validate()
@@ -120,8 +121,9 @@ class AgentDefinitionRegistry:
             AgentDefinition instance, or None if not found
         """
         if not self.supabase_adapter:
-            self.logger.warning("Supabase adapter not available, cannot retrieve definition")
-            return None
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot retrieve definition. Platform contract §8A."
+            )
         
         try:
             # Query Supabase
@@ -160,8 +162,9 @@ class AgentDefinitionRegistry:
             List of AgentDefinition instances
         """
         if not self.supabase_adapter:
-            self.logger.warning("Supabase adapter not available, cannot list definitions")
-            return []
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot list definitions. Platform contract §8A."
+            )
         
         try:
             # Query Supabase
@@ -204,8 +207,9 @@ class AgentDefinitionRegistry:
             True if update successful
         """
         if not self.supabase_adapter:
-            self.logger.warning("Supabase adapter not available, cannot update definition")
-            return False
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot update definition. Platform contract §8A."
+            )
         
         # Validate definition before update
         is_valid, error = definition.validate()
@@ -258,8 +262,9 @@ class AgentDefinitionRegistry:
             True if deletion successful
         """
         if not self.supabase_adapter:
-            self.logger.warning("Supabase adapter not available, cannot delete definition")
-            return False
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot delete definition. Platform contract §8A."
+            )
         
         try:
             # Delete from Supabase

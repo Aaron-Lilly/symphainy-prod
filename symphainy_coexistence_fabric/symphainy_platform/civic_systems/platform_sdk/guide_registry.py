@@ -64,8 +64,9 @@ class GuideRegistry:
             True if registration successful
         """
         if not self.supabase_adapter:
-            self.logger.warning("Supabase adapter not available, cannot register guide")
-            return False
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot register guide. Platform contract §8A."
+            )
         
         try:
             # Prepare guide record
@@ -117,7 +118,9 @@ class GuideRegistry:
             Guide data or None if not found
         """
         if not self.supabase_adapter:
-            return None
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot retrieve guide. Platform contract §8A."
+            )
         
         try:
             # Query guides table
@@ -161,7 +164,9 @@ class GuideRegistry:
             List of guides
         """
         if not self.supabase_adapter:
-            return []
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot list guides. Platform contract §8A."
+            )
         
         try:
             # Query guides table
@@ -208,7 +213,9 @@ class GuideRegistry:
             True if update successful
         """
         if not self.supabase_adapter:
-            return False
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot update guide. Platform contract §8A."
+            )
         
         try:
             # Get existing guide to get UUID
@@ -276,7 +283,9 @@ class GuideRegistry:
             True if deletion successful
         """
         if not self.supabase_adapter:
-            return False
+            raise RuntimeError(
+                "Supabase adapter not wired; cannot delete guide. Platform contract §8A."
+            )
         
         try:
             # Query to get UUID

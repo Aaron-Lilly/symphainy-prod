@@ -47,8 +47,9 @@
 1. **Services Running:**
    ```bash
    cd tests/infrastructure
-   docker-compose -f docker-compose.3d-test.yml up -d redis arangodb consul
+   docker-compose -f docker-compose.3d-test.yml up -d redis arangodb consul meilisearch
    ```
+   (Meilisearch is containerized in the 3d-test compose; no cloud required.)
 
 2. **Environment Variables:**
    ```bash

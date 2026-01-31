@@ -2,7 +2,7 @@
 
 **Purpose:** North star for startup. After Φ3, the **Experience SDK surface is available**. Φ4 is when experience surfaces attach to that SDK.
 
-**References:** [INIT_ORDER_SPEC.md](INIT_ORDER_SPEC.md) (Φ3 mechanical content), [EXPERIENCE_SDK_CONTRACT.md](EXPERIENCE_SDK_CONTRACT.md), [solution_realm_refactoring_vision.md](../solution_realm_refactoring_vision.md).
+**References:** [INIT_ORDER_SPEC.md](INIT_ORDER_SPEC.md) (Φ3 mechanical content), [EXPERIENCE_SDK_CONTRACT.md](EXPERIENCE_SDK_CONTRACT.md), [LIFECYCLE_HOOKS.md](LIFECYCLE_HOOKS.md) (lifecycle hook locations), [solution_realm_refactoring_vision.md](../solution_realm_refactoring_vision.md).
 
 ---
 

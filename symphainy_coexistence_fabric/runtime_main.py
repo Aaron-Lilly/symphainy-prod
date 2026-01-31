@@ -19,6 +19,7 @@ This entry point:
 5. Starts uvicorn server
 """
 
+import signal
 import sys
 from pathlib import Path
 
@@ -27,7 +28,15 @@ project_root = Path(__file__).resolve().parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from symphainy_platform.bootstrap import load_platform_config, pre_boot_validate
+from symphainy_platform.bootstrap import (
+    load_platform_config,
+    pre_boot_validate,
+    startup_begin,
+    startup_complete,
+    shutdown_begin,
+    shutdown_complete,
+    crash_detected,
+)
 from symphainy_platform.runtime.service_factory import (
     create_runtime_services,
     create_fastapi_app
@@ -49,10 +58,23 @@ def main():
     
     Config is loaded once (Layer 1); pre-boot validates all required infra (Layer 2);
     then the object graph is built with that config. No env reads inside Public Works.
+    Lifecycle hooks (startup_begin, startup_complete, shutdown_begin, shutdown_complete, crash_detected)
+    are invoked at documented points; MVP = no-ops (PLATFORM_VISION_RECONCILIATION §2.3).
     """
     import asyncio
 
+    def _on_sigterm(signum, frame):
+        """On SIGTERM: invoke lifecycle hooks then exit. MVP: no-ops."""
+        shutdown_begin(reason="SIGTERM")
+        shutdown_complete()
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, _on_sigterm)
+
     try:
+        # Lifecycle: startup_begin (before Φ1 / substrate init)
+        startup_begin()
+
         # Layer 1: Load canonical platform config from environment
         logger.info("🚀 Starting Symphainy Runtime Service...")
         config = load_platform_config()
@@ -67,6 +89,9 @@ def main():
         # Create FastAPI app (receives services, doesn't create them)
         app = create_fastapi_app(services)
 
+        # Lifecycle: startup_complete (after Φ3/Φ4 equivalent — runtime graph + app ready)
+        startup_complete(config=config, app=app)
+
         # Start server
         host = "0.0.0.0"
         port = config.get("runtime_port", 8000)
@@ -75,16 +100,21 @@ def main():
         logger.info(f"✅ Runtime service ready on {host}:{port}")
         logger.info("Starting uvicorn server...")
 
-        uvicorn.run(
-            app,
-            host=host,
-            port=port,
-            log_level=log_level
-        )
+        try:
+            uvicorn.run(
+                app,
+                host=host,
+                port=port,
+                log_level=log_level
+            )
+        finally:
+            # Lifecycle: shutdown_complete (after uvicorn stops, infrastructure released)
+            shutdown_complete()
 
     except SystemExit:
         raise
     except Exception as e:
+        crash_detected(e, context={"phase": "main"})
         logger.error(f"❌ Failed to start runtime service: {e}", exc_info=True)
         sys.exit(1)
 

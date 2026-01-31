@@ -194,8 +194,9 @@ class DataQualityService:
         # Never use state_surface.retrieve_file() - that's an anti-pattern.
         try:
             if not self.public_works:
-                self.logger.warning("Public Works not available - cannot retrieve parsed file via Content Realm")
-                return None
+                raise RuntimeError(
+                    "Public Works not wired; cannot retrieve parsed file via Content Realm. Platform contract §8A."
+                )
             
             # Use File Parser library (governed access)
             from symphainy_platform.foundations.libraries.parsing.file_parser_service import FileParserService
@@ -227,7 +228,9 @@ class DataQualityService:
         ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.
         """
         if not self.public_works:
-            return None
+            raise RuntimeError(
+                "Public Works not wired; cannot get semantic data abstraction. Platform contract §8A."
+            )
         
         # Use SemanticDataAbstraction (governed access)
         semantic_data = self.public_works.get_semantic_data_abstraction()
@@ -556,7 +559,9 @@ class DataQualityService:
     ) -> Optional[Dict[str, Any]]:
         """Get deterministic embedding from ArangoDB."""
         if not self.public_works:
-            return None
+            raise RuntimeError(
+                "Public Works not wired; cannot get deterministic compute abstraction. Platform contract §8A."
+            )
         
         # Use DeterministicComputeAbstraction (governed access)
         # ARCHITECTURAL PRINCIPLE: Realms use Public Works abstractions, never direct adapters.

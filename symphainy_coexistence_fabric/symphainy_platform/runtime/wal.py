@@ -17,7 +17,7 @@ from datetime import datetime, date
 from enum import Enum
 
 from utilities import generate_event_id, get_clock, get_logger
-from symphainy_platform.foundations.public_works.adapters.redis_adapter import RedisAdapter
+from symphainy_platform.foundations.public_works.protocols.event_log_protocol import EventLogProtocol
 
 
 class WALEventType(str, Enum):
@@ -94,20 +94,20 @@ class WriteAheadLog:
     
     def __init__(
         self,
-        redis_adapter: Optional[RedisAdapter] = None,
+        event_log: Optional[EventLogProtocol] = None,
         use_memory: bool = False,
         max_events_per_partition: int = 100000
     ):
         """
         Initialize WAL.
-        
+
         Args:
-            redis_adapter: Optional Redis adapter (uses Streams)
+            event_log: Optional event log backend (protocol from Public Works; no adapter)
             use_memory: If True, use in-memory storage (for tests)
             max_events_per_partition: Maximum events per partition (for retention)
         """
         self.use_memory = use_memory
-        self.redis_adapter = redis_adapter
+        self.event_log = event_log
         self.max_events_per_partition = max_events_per_partition
         self._memory_log: List[WALEvent] = []
         self.logger = get_logger(self.__class__.__name__)
@@ -159,10 +159,10 @@ class WriteAheadLog:
             self._memory_log.append(event)
             return event
         
-        if not self.redis_adapter:
-            # Fallback to memory if Redis not available
-            self._memory_log.append(event)
-            return event
+        if not self.event_log:
+            raise RuntimeError(
+                "Event log not wired; cannot append WAL event (use_memory=False). Platform contract §8A."
+            )
         
         try:
             # Get stream name (partitioned by tenant + date)
@@ -172,7 +172,7 @@ class WriteAheadLog:
             fields = event.to_stream_fields()
             
             # Add to stream with automatic retention
-            message_id = await self.redis_adapter.xadd(
+            message_id = await self.event_log.xadd(
                 stream_name,
                 fields,
                 maxlen=self.max_events_per_partition,
@@ -222,8 +222,10 @@ class WriteAheadLog:
             ]
             return sorted(events, key=lambda e: e.timestamp, reverse=True)[:limit]
         
-        if not self.redis_adapter:
-            return []
+        if not self.event_log:
+            raise RuntimeError(
+                "Event log not wired; cannot get WAL events (use_memory=False). Platform contract §8A."
+            )
         
         try:
             # Determine date range
@@ -240,7 +242,7 @@ class WriteAheadLog:
                 stream_name = self._get_stream_name(tenant_id, current_date)
                 
                 # Read from end (most recent first)
-                stream_events = await self.redis_adapter.xrange(
+                stream_events = await self.event_log.xrange(
                     stream_name,
                     start="-",
                     end="+",
@@ -336,12 +338,14 @@ class WriteAheadLog:
         Returns:
             True if group created successfully
         """
-        if not self.redis_adapter:
-            return False
+        if not self.event_log:
+            raise RuntimeError(
+                "Event log not wired; cannot create consumer group. Platform contract §8A."
+            )
         
         try:
             stream_name = self._get_stream_name(tenant_id, stream_date)
-            return await self.redis_adapter.xgroup_create(
+            return await self.event_log.xgroup_create(
                 stream_name,
                 group_name,
                 id="0",  # Start from beginning
@@ -374,14 +378,16 @@ class WriteAheadLog:
         Returns:
             List of WAL events
         """
-        if not self.redis_adapter:
-            return []
+        if not self.event_log:
+            raise RuntimeError(
+                "Event log not wired; cannot read from consumer group. Platform contract §8A."
+            )
         
         try:
             stream_name = self._get_stream_name(tenant_id, stream_date)
             streams = {stream_name: ">"}  # Read new messages
             
-            result = await self.redis_adapter.xreadgroup(
+            result = await self.event_log.xreadgroup(
                 group_name,
                 consumer_name,
                 streams,
@@ -389,9 +395,9 @@ class WriteAheadLog:
                 block=block
             )
             
-            # Convert to WALEvent objects
+            # Convert to WALEvent objects (result: stream -> list of (message_id, fields))
             events: List[WALEvent] = []
-            for stream, messages in result.items():
+            for _stream, messages in result.items():
                 for message_id, fields in messages:
                     try:
                         event = WALEvent.from_stream_fields(fields, message_id)
@@ -424,12 +430,14 @@ class WriteAheadLog:
         Returns:
             Number of messages acknowledged
         """
-        if not self.redis_adapter:
-            return 0
+        if not self.event_log:
+            raise RuntimeError(
+                "Event log not wired; cannot acknowledge messages. Platform contract §8A."
+            )
         
         try:
             stream_name = self._get_stream_name(tenant_id, stream_date)
-            return await self.redis_adapter.xack(stream_name, group_name, *message_ids)
+            return await self.event_log.xack(stream_name, group_name, *message_ids)
         except Exception as e:
             self.logger.error(f"Failed to acknowledge messages: {e}")
             return 0
