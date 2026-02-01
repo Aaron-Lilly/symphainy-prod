@@ -297,7 +297,8 @@ class PlatformService:
         self,
         parsed_file_id: str,
         tenant_id: str,
-        session_id: Optional[str] = None
+        session_id: Optional[str] = None,
+        execution_context: Optional[Any] = None
     ) -> Optional[Dict[str, Any]]:
         """
         Get parsed file content by ID.
@@ -309,9 +310,15 @@ class PlatformService:
             parsed_file_id: Parsed file identifier
             tenant_id: Tenant identifier
             session_id: Optional session identifier
+            execution_context: Optional ExecutionContext from caller (preferred).
+                              If not provided, a minimal context is created (legacy support).
         
         Returns:
             Parsed content dict or None if not found
+        
+        Note:
+            DISPOSABLE WRAPPER PATTERN: This method delegates to FileParserService.
+            Callers should pass execution_context when available to maintain proper audit trail.
         """
         try:
             # Use FileParserService from libraries
@@ -321,31 +328,40 @@ class PlatformService:
             
             service = FileParserService(public_works=self._public_works)
             
-            # Create minimal context
-            from symphainy_platform.runtime.execution_context import ExecutionContext
-            from symphainy_platform.runtime.intent_model import Intent
-            from utilities import generate_event_id
+            # Use provided context or create minimal one for legacy callers
+            context = execution_context
+            if context is None:
+                # Legacy support: create minimal context
+                # WARNING: This path loses execution audit trail. Callers should pass context.
+                self._logger.warning(
+                    "get_parsed_file called without execution_context - "
+                    "audit trail may be incomplete. Callers should pass execution_context."
+                )
+                from symphainy_platform.runtime.execution_context import ExecutionContext
+                from symphainy_platform.runtime.intent_model import Intent
+                from utilities import generate_event_id
+                
+                minimal_intent = Intent(
+                    intent_type="get_parsed_file",
+                    tenant_id=tenant_id,
+                    session_id=session_id or "platform_sdk",
+                    solution_id="platform_sdk",
+                    parameters={"parsed_file_id": parsed_file_id}
+                )
+                
+                context = ExecutionContext(
+                    execution_id=generate_event_id(),
+                    intent=minimal_intent,
+                    tenant_id=tenant_id,
+                    session_id=session_id or "platform_sdk",
+                    solution_id="platform_sdk"
+                )
             
-            minimal_intent = Intent(
-                intent_type="get_parsed_file",
-                tenant_id=tenant_id,
-                session_id=session_id or "platform_sdk",
-                solution_id="platform_sdk",
-                parameters={"parsed_file_id": parsed_file_id}
-            )
-            
-            minimal_context = ExecutionContext(
-                execution_id=generate_event_id(),
-                intent=minimal_intent,
-                tenant_id=tenant_id,
-                session_id=session_id or "platform_sdk",
-                solution_id="platform_sdk"
-            )
-            
+            # Pure delegation
             return await service.get_parsed_file(
                 parsed_file_id=parsed_file_id,
                 tenant_id=tenant_id,
-                context=minimal_context
+                context=context
             )
         except Exception as e:
             self._logger.error(f"Failed to get parsed file: {e}")
@@ -444,7 +460,8 @@ class PlatformService:
         parsed_file_id: str,
         parsed_content: Dict[str, Any],
         tenant_id: str,
-        session_id: str
+        session_id: str,
+        execution_context: Optional[Any] = None
     ) -> Dict[str, Any]:
         """
         Create deterministic embeddings (schema fingerprints + pattern signatures).
@@ -457,6 +474,8 @@ class PlatformService:
             parsed_content: Parsed file content
             tenant_id: Tenant identifier
             session_id: Session identifier
+            execution_context: Optional ExecutionContext from caller (preferred).
+                              If not provided, a minimal context is created (legacy support).
         
         Returns:
             Dict with:
@@ -465,6 +484,10 @@ class PlatformService:
                 - pattern_signature: Statistical signature of data patterns
                 - schema: Extracted schema
                 - status: "success" or "failed"
+        
+        Note:
+            DISPOSABLE WRAPPER PATTERN: This method delegates to DeterministicEmbeddingService.
+            Callers should pass execution_context when available to maintain proper audit trail.
         """
         try:
             # Use DeterministicEmbeddingService from libraries
@@ -475,35 +498,43 @@ class PlatformService:
             # Create service with our public_works
             service = DeterministicEmbeddingService(public_works=self._public_works)
             
-            # Create a minimal context for the service
-            # Note: The library expects ExecutionContext, but we create a minimal one
-            from symphainy_platform.runtime.execution_context import ExecutionContext
-            from symphainy_platform.runtime.intent_model import Intent
+            # Use provided context or create minimal one for legacy callers
+            context = execution_context
+            if context is None:
+                # Legacy support: create minimal context
+                # WARNING: This path loses execution audit trail. Callers should pass context.
+                self._logger.warning(
+                    "create_deterministic_embeddings called without execution_context - "
+                    "audit trail may be incomplete. Callers should pass execution_context."
+                )
+                from symphainy_platform.runtime.execution_context import ExecutionContext
+                from symphainy_platform.runtime.intent_model import Intent
+                from utilities import generate_event_id
+                
+                minimal_intent = Intent(
+                    intent_type="create_deterministic_embeddings",
+                    tenant_id=tenant_id,
+                    session_id=session_id,
+                    solution_id="platform_sdk",
+                    parameters={"parsed_file_id": parsed_file_id}
+                )
+                
+                context = ExecutionContext(
+                    execution_id=generate_event_id(),
+                    intent=minimal_intent,
+                    tenant_id=tenant_id,
+                    session_id=session_id,
+                    solution_id="platform_sdk"
+                )
             
-            minimal_intent = Intent(
-                intent_type="create_deterministic_embeddings",
-                tenant_id=tenant_id,
-                session_id=session_id,
-                solution_id="platform_sdk",
-                parameters={"parsed_file_id": parsed_file_id}
-            )
-            
-            from utilities import generate_event_id
-            minimal_context = ExecutionContext(
-                execution_id=generate_event_id(),
-                intent=minimal_intent,
-                tenant_id=tenant_id,
-                session_id=session_id,
-                solution_id="platform_sdk"
-            )
-            
-            # Create deterministic embeddings
+            # Create deterministic embeddings (pure delegation)
             result = await service.create_deterministic_embeddings(
                 parsed_file_id=parsed_file_id,
                 parsed_content=parsed_content,
-                context=minimal_context
+                context=context
             )
             
+            # Light shaping: consistent return format
             return {
                 "deterministic_embedding_id": result.get("deterministic_embedding_id"),
                 "schema_fingerprint": result.get("schema_fingerprint"),

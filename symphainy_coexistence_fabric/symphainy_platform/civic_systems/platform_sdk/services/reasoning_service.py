@@ -405,6 +405,14 @@ class AgentService:
         """
         Multi-agent collaboration on a task.
         
+        .. deprecated::
+            This method violates the Disposable Wrapper Pattern by containing
+            orchestration logic. Use a Journey orchestrator instead for multi-agent
+            workflows. This method is retained for backward compatibility but will
+            emit a deprecation warning.
+            
+            See: docs/architecture/DISPOSABLE_WRAPPER_PATTERN.md
+        
         Args:
             agent_ids: List of agent IDs to collaborate
             task: Task definition
@@ -413,6 +421,18 @@ class AgentService:
         Returns:
             Collaboration result
         """
+        import warnings
+        warnings.warn(
+            "AgentService.collaborate() is deprecated - orchestration should be in "
+            "Journey orchestrators, not SDK wrappers. See DISPOSABLE_WRAPPER_PATTERN.md",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        self._logger.warning(
+            "DISPOSABLE_WRAPPER_PATTERN VIOLATION: collaborate() contains orchestration logic. "
+            "This method is deprecated. Use Journey orchestrators for multi-agent workflows."
+        )
+        
         results = []
         current_context = context or {}
         
