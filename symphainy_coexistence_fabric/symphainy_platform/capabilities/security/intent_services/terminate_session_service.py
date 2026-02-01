@@ -29,9 +29,11 @@ class TerminateSessionService(PlatformIntentService):
     - Returns termination confirmation
     """
     
+    intent_type = "terminate_session"
+    
     def __init__(self, service_id: str = "terminate_session_service"):
         """Initialize Terminate Session Service."""
-        super().__init__(service_id=service_id)
+        super().__init__(service_id=service_id, intent_type="terminate_session")
         self.logger = get_logger(self.__class__.__name__)
     
     async def execute(self, ctx: PlatformContext) -> Dict[str, Any]:

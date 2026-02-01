@@ -27,6 +27,8 @@ class ListAvailableMCPToolsService(PlatformIntentService):
     - Returns tool catalog
     """
     
+    intent_type = "list_available_mcp_tools"
+    
     def __init__(self, service_id: str = "list_available_mcp_tools_service"):
         """Initialize List Available MCP Tools Service."""
         super().__init__(service_id=service_id)
