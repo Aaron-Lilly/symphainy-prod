@@ -77,29 +77,28 @@ class CheckEmailAvailabilityService(PlatformIntentService):
         }
     
     async def _check_email_availability(self, ctx: PlatformContext, email: str) -> Dict[str, Any]:
-        """Check email availability using Security Guard SDK."""
-        if ctx.platform and ctx.platform._public_works:
-            try:
-                security_guard_sdk = getattr(ctx.platform._public_works, 'security_guard_sdk', None)
-                if security_guard_sdk:
-                    result = await security_guard_sdk.check_email_availability(email)
-                    if result is not None:
-                        return {
-                            "available": result.get("available", False),
-                            "reason": result.get("reason")
-                        }
-                
-                # Fallback to auth_abstraction
-                auth_abstraction = ctx.platform._public_works.get_auth_abstraction()
-                if auth_abstraction:
-                    result = await auth_abstraction.check_email_availability(email)
-                    if result is not None:
-                        return {
-                            "available": result.get("available", False),
-                            "reason": result.get("reason")
-                        }
-            except Exception as e:
-                self.logger.warning(f"Email availability check failed: {e}")
+        """Check email availability using ctx.governance.auth (protocol-compliant)."""
+        # Use ctx.governance.auth - the proper protocol boundary
+        if not ctx.governance or not ctx.governance.auth:
+            raise RuntimeError("Platform contract §8A: ctx.governance.auth required for email check")
         
-        # Default to available if service is unavailable (let registration handle it)
-        return {"available": True, "reason": "Could not verify - proceeding optimistically"}
+        try:
+            result = await ctx.governance.auth.check_email_availability(email)
+            
+            if result is not None:
+                if isinstance(result, dict):
+                    return {
+                        "available": result.get("available", False),
+                        "reason": result.get("reason")
+                    }
+                # Handle object result
+                return {
+                    "available": getattr(result, "available", False),
+                    "reason": getattr(result, "reason", None)
+                }
+            
+            return {"available": False, "reason": "Email check returned no result"}
+            
+        except Exception as e:
+            self.logger.error(f"Email availability check failed: {e}", exc_info=True)
+            raise RuntimeError(f"Platform contract §8A: Email check failed - {e}")

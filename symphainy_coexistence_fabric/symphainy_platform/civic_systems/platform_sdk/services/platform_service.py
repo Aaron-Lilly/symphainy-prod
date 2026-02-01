@@ -1249,6 +1249,47 @@ class PlatformService:
             return False
     
     # ========================================================================
+    # FILE OPERATIONS
+    # ========================================================================
+    
+    async def delete_file(
+        self,
+        storage_location: str,
+        tenant_id: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Delete a file from storage.
+        
+        Args:
+            storage_location: Storage location/path of the file
+            tenant_id: Optional tenant identifier
+        
+        Returns:
+            Dict with:
+                - success: bool
+                - status: "success" or "failed"
+                - error: Error message if failed
+        """
+        if not self._file_storage:
+            raise RuntimeError(
+                "FileStorageAbstraction not wired; cannot delete file. Platform contract §8A."
+            )
+        
+        try:
+            await self._file_storage.delete_file(storage_location)
+            return {
+                "success": True,
+                "status": "success"
+            }
+        except Exception as e:
+            self._logger.error(f"File deletion failed: {e}")
+            return {
+                "success": False,
+                "error": str(e),
+                "status": "failed"
+            }
+    
+    # ========================================================================
     # MATERIALIZATION OPERATIONS
     # ========================================================================
     

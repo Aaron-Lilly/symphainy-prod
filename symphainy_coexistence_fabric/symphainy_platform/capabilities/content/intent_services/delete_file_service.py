@@ -92,16 +92,18 @@ class DeleteFileService(PlatformIntentService):
         deleted_at = self.clock.now().isoformat() if self.clock else None
         deleted_items: List[str] = []
         
-        # Step 1: Delete from storage via ctx.platform
+        # Step 1: Delete from storage via ctx.platform (protocol-compliant)
         if storage_location:
             try:
-                # Access file storage through platform's underlying public_works
-                if ctx.platform and ctx.platform._public_works:
-                    file_storage = ctx.platform._public_works.get_file_storage_abstraction()
-                    if file_storage:
-                        await file_storage.delete_file(storage_location)
-                        deleted_items.append(f"storage:{storage_location}")
-                        self.logger.info(f"Deleted file from storage: {storage_location}")
+                if not ctx.platform:
+                    raise RuntimeError("Platform contract §8A: ctx.platform required for file deletion")
+                
+                result = await ctx.platform.delete_file(storage_location)
+                if result.get("success"):
+                    deleted_items.append(f"storage:{storage_location}")
+                    self.logger.info(f"Deleted file from storage: {storage_location}")
+                else:
+                    self.logger.warning(f"Failed to delete from storage: {result.get('error')}")
             except Exception as e:
                 self.logger.warning(f"Failed to delete from storage (may already be gone): {e}")
         

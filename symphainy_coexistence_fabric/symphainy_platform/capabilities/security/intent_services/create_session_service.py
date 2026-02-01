@@ -103,29 +103,27 @@ class CreateSessionService(PlatformIntentService):
         access_token: Optional[str],
         metadata: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Create session using Traffic Cop SDK or state_surface."""
+        """Create session using ctx.governance.sessions (protocol-compliant)."""
         session_id = f"session_{generate_event_id()}"
         
-        if ctx.platform and ctx.platform._public_works:
+        # Use ctx.governance.sessions if available (proper protocol boundary)
+        if ctx.governance and ctx.governance.sessions:
             try:
-                # Try Traffic Cop SDK
-                traffic_cop_sdk = getattr(ctx.platform._public_works, 'traffic_cop_sdk', None)
-                if traffic_cop_sdk:
-                    session_intent = await traffic_cop_sdk.create_session_intent(
-                        tenant_id=tenant_id,
-                        user_id=user_id,
-                        metadata=metadata
-                    )
-                    if session_intent:
-                        return {
-                            "success": True,
-                            "session_id": session_intent.session_id,
-                            "expires_at": session_intent.execution_contract.get("expires_at")
-                        }
+                session_intent = await ctx.governance.sessions.create_session_intent(
+                    tenant_id=tenant_id,
+                    user_id=user_id,
+                    metadata=metadata
+                )
+                if session_intent:
+                    return {
+                        "success": True,
+                        "session_id": getattr(session_intent, 'session_id', session_id),
+                        "expires_at": getattr(session_intent, 'execution_contract', {}).get("expires_at")
+                    }
             except Exception as e:
-                self.logger.warning(f"Session creation via Traffic Cop SDK failed: {e}")
+                self.logger.warning(f"Session creation via ctx.governance.sessions failed: {e}")
         
-        # Fallback to state_surface
+        # Fallback to state_surface (valid - it's on ctx directly)
         if ctx.state_surface:
             try:
                 await ctx.state_surface.set_execution_state(
@@ -146,8 +144,5 @@ class CreateSessionService(PlatformIntentService):
             except Exception as e:
                 self.logger.warning(f"Session creation via state_surface failed: {e}")
         
-        # Return basic session if no SDK available
-        return {
-            "success": True,
-            "session_id": session_id
-        }
+        # If neither governance.sessions nor state_surface available, fail loudly
+        raise RuntimeError("Platform contract §8A: ctx.governance.sessions or ctx.state_surface required for session creation")

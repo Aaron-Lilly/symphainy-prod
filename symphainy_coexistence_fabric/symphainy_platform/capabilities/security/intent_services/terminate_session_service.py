@@ -104,22 +104,25 @@ class TerminateSessionService(PlatformIntentService):
         user_id: str,
         reason: str
     ) -> Dict[str, Any]:
-        """Terminate session using Traffic Cop SDK or state_surface."""
-        if ctx.platform and ctx.platform._public_works:
+        """Terminate session using ctx.governance.sessions (protocol-compliant)."""
+        # Use ctx.governance.sessions if available (proper protocol boundary)
+        if ctx.governance and ctx.governance.sessions:
             try:
-                # Try Traffic Cop SDK
-                traffic_cop_sdk = getattr(ctx.platform._public_works, 'traffic_cop_sdk', None)
-                if traffic_cop_sdk:
-                    result = await traffic_cop_sdk.terminate_session(
-                        session_id=session_id,
-                        reason=reason
-                    )
-                    if result and result.get("success"):
+                result = await ctx.governance.sessions.terminate_session(
+                    session_id=session_id,
+                    reason=reason
+                )
+                if result:
+                    if isinstance(result, dict) and result.get("success"):
                         return {"success": True}
+                    elif hasattr(result, 'success') and result.success:
+                        return {"success": True}
+                    # If we got a result, assume success
+                    return {"success": True}
             except Exception as e:
-                self.logger.warning(f"Session termination via Traffic Cop SDK failed: {e}")
+                self.logger.warning(f"Session termination via ctx.governance.sessions failed: {e}")
         
-        # Fallback to state_surface
+        # Fallback to state_surface (valid - it's on ctx directly)
         if ctx.state_surface:
             try:
                 # Clear session state
@@ -130,6 +133,8 @@ class TerminateSessionService(PlatformIntentService):
                 return {"success": True}
             except Exception as e:
                 self.logger.warning(f"Session termination via state_surface failed: {e}")
+                # Idempotent - if state doesn't exist, that's fine
+                return {"success": True}
         
-        # If no state to clear, consider it a success (idempotent)
-        return {"success": True}
+        # If neither governance.sessions nor state_surface available, fail loudly
+        raise RuntimeError("Platform contract §8A: ctx.governance.sessions or ctx.state_surface required for session termination")

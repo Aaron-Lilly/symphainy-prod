@@ -98,38 +98,33 @@ class ValidateAuthorizationService(PlatformIntentService):
         action: str,
         tenant_id: str
     ) -> Dict[str, Any]:
-        """Check authorization using Security Guard SDK."""
-        if ctx.platform and ctx.platform._public_works:
-            try:
-                security_guard_sdk = getattr(ctx.platform._public_works, 'security_guard_sdk', None)
-                if security_guard_sdk:
-                    result = await security_guard_sdk.check_permission(
-                        user_id=user_id,
-                        resource=resource,
-                        action=action,
-                        tenant_id=tenant_id
-                    )
-                    if result:
-                        return {
-                            "authorized": result.get("authorized", False),
-                            "reason": result.get("reason")
-                        }
-                
-                # Fallback to auth_abstraction
-                auth_abstraction = ctx.platform._public_works.get_auth_abstraction()
-                if auth_abstraction:
-                    result = await auth_abstraction.check_permission(
-                        user_id=user_id,
-                        resource=resource,
-                        action=action
-                    )
-                    if result:
-                        return {
-                            "authorized": result.get("authorized", False),
-                            "reason": result.get("reason")
-                        }
-            except Exception as e:
-                self.logger.warning(f"Authorization check failed: {e}")
+        """Check authorization using ctx.governance.auth (protocol-compliant)."""
+        # Use ctx.governance.auth - the proper protocol boundary
+        if not ctx.governance or not ctx.governance.auth:
+            raise RuntimeError("Platform contract §8A: ctx.governance.auth required for authorization")
         
-        # Default to denied if no SDK available
-        return {"authorized": False, "reason": "Authorization service unavailable"}
+        try:
+            result = await ctx.governance.auth.check_permission(
+                user_id=user_id,
+                resource=resource,
+                action=action,
+                tenant_id=tenant_id
+            )
+            
+            if result:
+                if isinstance(result, dict):
+                    return {
+                        "authorized": result.get("authorized", False),
+                        "reason": result.get("reason")
+                    }
+                # Handle object result
+                return {
+                    "authorized": getattr(result, "authorized", False),
+                    "reason": getattr(result, "reason", None)
+                }
+            
+            return {"authorized": False, "reason": "Authorization check returned no result"}
+            
+        except Exception as e:
+            self.logger.error(f"Authorization check failed: {e}", exc_info=True)
+            return {"authorized": False, "reason": str(e)}
