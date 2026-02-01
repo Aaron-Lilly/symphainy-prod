@@ -1,7 +1,7 @@
 """Get Execution Metrics Service (Platform SDK)
 
 Returns execution metrics for the Control Room dashboard.
-For MVP, returns placeholder structure. In future, aggregates from WAL/State Surface.
+Uses WALQueryProtocol via ctx.platform.get_wal_query_interface() when available.
 """
 
 from typing import Dict, Any
@@ -22,16 +22,30 @@ class GetExecutionMetricsService(PlatformIntentService):
     async def execute(self, ctx: PlatformContext) -> Dict[str, Any]:
         self.logger.info(f"Executing get_execution_metrics: {ctx.execution_id}")
         
-        # Extract parameters
-        params = ctx.parameters or {}
+        params = getattr(ctx.intent, "parameters", None) or ctx.parameters or {}
         time_range = params.get("time_range", "1h")
-        
-        # For MVP: Return placeholder structure
-        # In future: Aggregate from WAL and State Surface
+        tenant_id = getattr(ctx, "tenant_id", None)
+
+        wal_query = None
+        if ctx.platform and hasattr(ctx.platform, "get_wal_query_interface"):
+            wal_query = ctx.platform.get_wal_query_interface()
+
+        if wal_query and hasattr(wal_query, "get_execution_metrics"):
+            try:
+                metrics = await wal_query.get_execution_metrics(
+                    tenant_id=tenant_id,
+                    time_range=time_range,
+                )
+                metrics["metrics_id"] = generate_event_id()
+                return {"artifacts": {"metrics": metrics}, "events": []}
+            except Exception as e:
+                self.logger.warning(f"WAL query failed, returning placeholder: {e}")
+
+        created_at = getattr(ctx, "created_at", None)
         metrics = {
             "metrics_id": generate_event_id(),
             "time_range": time_range,
-            "timestamp": datetime.utcnow().isoformat(),
+            "timestamp": created_at.isoformat() if created_at else datetime.utcnow().isoformat(),
             "total_intents": 0,
             "successful_intents": 0,
             "failed_intents": 0,
@@ -39,7 +53,6 @@ class GetExecutionMetricsService(PlatformIntentService):
             "average_execution_time_ms": 0.0,
             "intent_distribution": {},
             "error_rate": 0.0,
-            "note": "Real metrics will be available once WAL query interface is implemented"
+            "note": "WAL query interface not available or failed; provide Redis and tenant_id for real metrics",
         }
-        
         return {"artifacts": {"metrics": metrics}, "events": []}

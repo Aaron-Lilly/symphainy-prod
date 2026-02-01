@@ -1,6 +1,7 @@
 """Compose Solution Service (Platform SDK)
 
-Creates solutions from templates or custom configurations.
+Creates solutions from templates or custom configurations, then registers and activates them.
+Requires get_solution_registry(); fails fast if registry is not available (no silent success without registration).
 """
 
 from typing import Dict, Any, Optional
@@ -46,6 +47,35 @@ class ComposeSolutionService(PlatformIntentService):
                     "events": []
                 }
             
+            # Register and activate in solution registry (required; fail fast if unavailable)
+            reg = None
+            if ctx.platform and hasattr(ctx.platform, "get_solution_registry"):
+                reg = ctx.platform.get_solution_registry()
+            if not reg or not hasattr(reg, "register_solution") or not hasattr(reg, "activate_solution"):
+                raise RuntimeError(
+                    "Solution registry not available; cannot register composed solution. "
+                    "Ensure Public Works provides get_solution_registry() and initialize() has run."
+                )
+            from symphainy_platform.civic_systems.platform_sdk.solution_model import Solution
+            reg_dict = {
+                "solution_id": solution["solution_id"],
+                "solution_context": solution.get("context", {"goals": [], "constraints": [], "risk": "Low"}),
+                "domain_service_bindings": solution.get("domain_service_bindings", []),
+                "supported_intents": solution.get("supported_intents", []),
+                "metadata": solution.get("metadata", {}),
+                "created_at": datetime.utcnow().isoformat(),
+            }
+            sol = Solution.from_dict(reg_dict)
+            if not reg.register_solution(sol):
+                raise RuntimeError(
+                    f"Solution registry refused registration for solution_id={sol.solution_id}. "
+                    "Check solution validation and registry state."
+                )
+            if not reg.activate_solution(sol.solution_id):
+                raise RuntimeError(
+                    f"Solution registry refused activation for solution_id={sol.solution_id}. "
+                    "Solution was registered but not activated."
+                )
             return {
                 "artifacts": {
                     "solution": solution,

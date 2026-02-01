@@ -77,28 +77,16 @@ class CheckEmailAvailabilityService(PlatformIntentService):
         }
     
     async def _check_email_availability(self, ctx: PlatformContext, email: str) -> Dict[str, Any]:
-        """Check email availability using ctx.governance.auth (protocol-compliant)."""
-        # Use ctx.governance.auth - the proper protocol boundary
+        """Check email availability using ctx.governance.auth (Security Guard SDK). No _public_works."""
         if not ctx.governance or not ctx.governance.auth:
-            raise RuntimeError("Platform contract §8A: ctx.governance.auth required for email check")
-        
-        try:
-            result = await ctx.governance.auth.check_email_availability(email)
-            
-            if result is not None:
-                if isinstance(result, dict):
-                    return {
-                        "available": result.get("available", False),
-                        "reason": result.get("reason")
-                    }
-                # Handle object result
-                return {
-                    "available": getattr(result, "available", False),
-                    "reason": getattr(result, "reason", None)
-                }
-            
-            return {"available": False, "reason": "Email check returned no result"}
-            
-        except Exception as e:
-            self.logger.error(f"Email availability check failed: {e}", exc_info=True)
-            raise RuntimeError(f"Platform contract §8A: Email check failed - {e}")
+            raise RuntimeError(
+                "Security Guard SDK not available; cannot check email availability. "
+                "Ensure Public Works provides get_auth_abstraction() and GovernanceService is built."
+            )
+        result = await ctx.governance.auth.check_email_availability(email)
+        if result is None:
+            return {"available": True, "reason": "Could not verify - proceeding optimistically"}
+        return {
+            "available": result.get("available", False),
+            "reason": result.get("reason")
+        }

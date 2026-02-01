@@ -140,8 +140,12 @@ class CreateSessionService(BaseIntentService):
         
         if self.public_works:
             try:
-                # Try Traffic Cop SDK
-                traffic_cop_sdk = getattr(self.public_works, 'traffic_cop_sdk', None)
+                # Use boundary getter only (CTA: no getattr at boundary)
+                traffic_cop_sdk = (
+                    self.public_works.get_traffic_cop_sdk()
+                    if hasattr(self.public_works, "get_traffic_cop_sdk")
+                    else None
+                )
                 if traffic_cop_sdk:
                     session_intent = await traffic_cop_sdk.create_session_intent(
                         tenant_id=tenant_id,

@@ -51,6 +51,9 @@ from .protocols.graph_query_protocol import GraphQueryProtocol
 from .protocols.knowledge_discovery_protocol import KnowledgeDiscoveryProtocol
 from .protocols.event_publisher_protocol import EventPublisherProtocol
 from .protocols.event_log_protocol import EventLogProtocol
+from .protocols.data_governance_protocol import DataGovernanceProtocol
+from .protocols.wal_query_protocol import WALQueryProtocol
+from .protocols.solution_registry_protocol import SolutionRegistryProtocol
 from .protocols.visual_generation_protocol import VisualGenerationProtocol
 from .backends import create_event_log_backend
 from .protocols.deterministic_embedding_storage_protocol import DeterministicEmbeddingStorageProtocol
@@ -138,6 +141,7 @@ class PublicWorksFoundationService:
         self.deterministic_compute_abstraction: Optional[Any] = None  # DeterministicComputeAbstraction
         self.registry_abstraction: Optional[Any] = None  # RegistryAbstraction
         self._boundary_contract_store: Optional[Any] = None  # BoundaryContractStoreProtocol
+        self._data_governance_abstraction: Optional[Any] = None  # DataStewardPrimitives (built inside PW; no adapter at boundary)
         self._lineage_backend: Optional[Any] = None  # LineageProvenanceProtocol (Arango-backed)
         self.auth_abstraction: Optional[AuthAbstraction] = None
         self.tenant_abstraction: Optional[TenantAbstraction] = None
@@ -164,6 +168,8 @@ class PublicWorksFoundationService:
         
         # Event log backend (EventLogProtocol) for WAL, Outbox, PostOffice — no adapter leak
         self._wal_backend: Optional[Any] = None  # EventLogProtocol when Redis present (from create_event_log_backend)
+        self._wal_query_interface: Optional[Any] = None  # WALQueryProtocol for GetExecutionMetricsService
+        self._solution_registry: Optional[Any] = None  # SolutionRegistryProtocol (in-memory MVP; durable later)
         
         # Layer 1: Ingestion Abstractions
         self.ingestion_abstraction: Optional[Any] = None  # Will import IngestionAbstraction when needed
@@ -420,6 +426,18 @@ class PublicWorksFoundationService:
         else:
             self.logger.warning("HuggingFace configuration not found, HuggingFace adapter not created")
         
+        # LLM Abstraction (wraps OpenAI + HuggingFace; boundary getter is get_llm_abstraction())
+        if self.openai_adapter or self.huggingface_adapter:
+            try:
+                from .abstractions.llm_abstraction import LLMAbstraction
+                self._llm_abstraction = LLMAbstraction(
+                    openai_adapter=self.openai_adapter,
+                    huggingface_adapter=self.huggingface_adapter,
+                )
+                self.logger.info("✅ LLM abstraction created (protocol-only boundary)")
+            except Exception as e:
+                self.logger.warning(f"LLM abstraction creation failed: {e}")
+        
         # Mainframe adapter (will be created in _create_abstractions after State Surface is available)
         
         # ArangoDB adapter (canonical config only)
@@ -501,6 +519,14 @@ class PublicWorksFoundationService:
         self._wal_backend = create_event_log_backend(self.redis_adapter)
         if self._wal_backend:
             self.logger.info("Event log backend (WAL) created")
+            from .backends.wal_query_backend import WalQueryBackend
+            self._wal_query_interface = WalQueryBackend(event_log=self._wal_backend)
+            self.logger.info("WAL query interface created (get_wal_query_interface)")
+        
+        # Solution registry (in-memory MVP; durable backing later via Curator/registry_entries)
+        from symphainy_platform.civic_systems.platform_sdk.solution_registry import SolutionRegistry
+        self._solution_registry = SolutionRegistry()
+        self.logger.info("Solution registry created (get_solution_registry)")
         
         # State management abstraction
         self.state_abstraction = StateManagementAbstraction(
@@ -1246,6 +1272,16 @@ class PublicWorksFoundationService:
         """
         return self._boundary_contract_store
 
+    def get_data_governance_abstraction(self) -> Optional[DataGovernanceProtocol]:
+        """
+        Get data governance abstraction (DataGovernanceProtocol). Boundary getter — GovernanceService uses this only.
+        DataStewardPrimitives is built inside Public Works from boundary_contract_store; no supabase_adapter at boundary.
+
+        Returns:
+            Optional[DataGovernanceProtocol]: Data steward primitives or None if boundary contract store unavailable
+        """
+        return self._data_governance_abstraction
+
     def get_lineage_backend(self) -> Optional[Any]:
         """
         Get lineage backend (protocol). Arango-backed for DataBrain execution provenance.
@@ -1276,6 +1312,26 @@ class PublicWorksFoundationService:
         """
         return self._wal_backend
 
+    def get_wal_query_interface(self) -> Optional[WALQueryProtocol]:
+        """
+        Get WAL query interface (WALQueryProtocol) for execution metrics aggregation.
+        GetExecutionMetricsService uses this for get_execution_metrics(time_range, tenant_id).
+
+        Returns:
+            Optional[WALQueryProtocol]: WAL query implementation or None if WAL backend unavailable
+        """
+        return self._wal_query_interface
+
+    def get_solution_registry(self) -> Optional[SolutionRegistryProtocol]:
+        """
+        Get solution registry (SolutionRegistryProtocol) for Control Tower (list_solutions, compose_solution).
+        In-memory MVP; durable backing (Curator/registry_entries) later.
+
+        Returns:
+            Optional[SolutionRegistryProtocol]: Solution registry or None
+        """
+        return self._solution_registry
+
     def get_state_surface(self) -> Optional[Any]:
         """
         Get State Surface (for file retrieval).
@@ -1287,9 +1343,19 @@ class PublicWorksFoundationService:
         # This method is a placeholder - State Surface should be passed via context
         return None
     
+    def get_llm_abstraction(self) -> Optional[Any]:
+        """
+        Get LLM abstraction (LLMProtocol) for governed LLM access.
+        Boundary getter — ReasoningService and intent services use this only; no adapter at boundary.
+        
+        Returns:
+            Optional[LLMAbstraction]: LLM abstraction implementing LLMProtocol, or None if no LLM adapters
+        """
+        return self._llm_abstraction
+    
     def get_llm_adapter(self) -> Optional[Any]:
         """
-        Get LLM adapter (OpenAI) for governed LLM access.
+        Get LLM adapter (OpenAI). Internal use only; prefer get_llm_abstraction() at boundary.
         
         Returns:
             Optional[OpenAIAdapter]: OpenAI adapter or None
@@ -1322,3 +1388,56 @@ class PublicWorksFoundationService:
             Optional[DeterministicEmbeddingStorageProtocol]: Deterministic embedding storage or None
         """
         return self.deterministic_compute_abstraction
+
+    def get_materialization_policy(self) -> Optional[Any]:
+        """
+        Get materialization policy (optional). Used by Data Steward SDK for policy decisions.
+        
+        Returns:
+            Optional materialization policy store or None if not set
+        """
+        return getattr(self, "materialization_policy", None)
+
+    def get_security_guard_sdk(self) -> Optional[Any]:
+        """
+        Get Security Guard SDK (auth/session coordination). Boundary getter for realms and Experience.
+        Builds SDK from get_auth_abstraction() and get_tenant_abstraction(); no getattr at boundary.
+        
+        Returns:
+            Optional SecurityGuardSDK or None if auth/tenant not available
+        """
+        if getattr(self, "_security_guard_sdk", None) is not None:
+            return self._security_guard_sdk
+        auth = self.get_auth_abstraction() if hasattr(self, "get_auth_abstraction") else None
+        tenant = self.get_tenant_abstraction() if hasattr(self, "get_tenant_abstraction") else None
+        if not auth:
+            return None
+        try:
+            from symphainy_platform.civic_systems.smart_city.sdk.security_guard_sdk import SecurityGuardSDK
+            self._security_guard_sdk = SecurityGuardSDK(
+                auth_abstraction=auth,
+                tenant_abstraction=tenant,
+            )
+            return self._security_guard_sdk
+        except Exception:
+            return None
+
+    def get_traffic_cop_sdk(self) -> Optional[Any]:
+        """
+        Get Traffic Cop SDK (session coordination). Boundary getter for realms and Experience.
+        Builds SDK from get_state_abstraction(); no getattr at boundary.
+        
+        Returns:
+            Optional TrafficCopSDK or None if state not available
+        """
+        if getattr(self, "_traffic_cop_sdk", None) is not None:
+            return self._traffic_cop_sdk
+        state = self.get_state_abstraction() if hasattr(self, "get_state_abstraction") else None
+        if not state:
+            return None
+        try:
+            from symphainy_platform.civic_systems.smart_city.sdk.traffic_cop_sdk import TrafficCopSDK
+            self._traffic_cop_sdk = TrafficCopSDK(state_abstraction=state)
+            return self._traffic_cop_sdk
+        except Exception:
+            return None

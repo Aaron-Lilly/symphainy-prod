@@ -500,7 +500,7 @@ What does this column represent? Return ONLY a concise description (1-5 words)."
                 embedding_vector = await self._create_embedding_vector(
                     text=chunk.text,
                     model_name=model_name,
-                    llm_adapter=llm_adapter,
+                    llm_adapter=llm,
                     context=context
                 )
                 
@@ -652,7 +652,12 @@ What does this column represent? Return ONLY a concise description (1-5 words)."
         Returns:
             List of floats (embedding vector)
         """
-        # Try to use adapter's embedding method
+        # Prefer LLM protocol (get_llm_abstraction) — no adapter at boundary (CTA)
+        if hasattr(llm_adapter, 'embed'):
+            result = await llm_adapter.embed(content=text, model=model_name)
+            emb = result.get("embedding", [])
+            return emb if isinstance(emb, list) else list(emb)
+        # Legacy adapter methods (for backward compatibility)
         if hasattr(llm_adapter, 'create_embeddings'):
             result = await llm_adapter.create_embeddings(
                 text=text,

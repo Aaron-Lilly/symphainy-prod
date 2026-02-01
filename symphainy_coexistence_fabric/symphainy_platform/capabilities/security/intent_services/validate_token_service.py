@@ -90,38 +90,31 @@ class ValidateTokenService(PlatformIntentService):
         }
     
     async def _validate_token(self, ctx: PlatformContext, token: str) -> Dict[str, Any]:
-        """Validate token using ctx.governance.auth (protocol-compliant)."""
-        # Use ctx.governance.auth - the proper protocol boundary
+        """Validate token using ctx.governance.auth (Security Guard SDK). No _public_works."""
         if not ctx.governance or not ctx.governance.auth:
-            raise RuntimeError("Platform contract §8A: ctx.governance.auth required for token validation")
-        
-        try:
-            result = await ctx.governance.auth.validate_token(token)
-            
-            if result:
-                # Handle both SDK result object and dict result
-                if hasattr(result, 'user_id'):
-                    return {
-                        "valid": True,
-                        "user_id": result.user_id,
-                        "email": getattr(result, 'email', None),
-                        "tenant_id": getattr(result, 'tenant_id', None),
-                        "roles": getattr(result, 'roles', []),
-                        "permissions": getattr(result, 'permissions', [])
-                    }
-                elif isinstance(result, dict):
-                    if result.get("success") or result.get("valid"):
-                        return {
-                            "valid": True,
-                            "user_id": result.get("user_id"),
-                            "email": result.get("email"),
-                            "tenant_id": result.get("tenant_id"),
-                            "roles": result.get("roles", []),
-                            "permissions": result.get("permissions", [])
-                        }
-            
-            return {"valid": False, "reason": "Invalid token"}
-            
-        except Exception as e:
-            self.logger.error(f"Token validation failed: {e}", exc_info=True)
-            return {"valid": False, "reason": str(e)}
+            raise RuntimeError(
+                "Security Guard SDK not available; cannot validate token. "
+                "Ensure Public Works provides get_auth_abstraction() and GovernanceService is built."
+            )
+        result = await ctx.governance.auth.validate_token(token)
+        if not result:
+            return {"valid": False, "reason": "Token validation failed"}
+        if hasattr(result, "user_id"):
+            return {
+                "valid": True,
+                "user_id": result.user_id,
+                "email": result.email,
+                "tenant_id": result.tenant_id,
+                "roles": result.roles,
+                "permissions": result.permissions
+            }
+        if isinstance(result, dict) and result.get("success"):
+            return {
+                "valid": True,
+                "user_id": result.get("user_id"),
+                "email": result.get("email"),
+                "tenant_id": result.get("tenant_id"),
+                "roles": result.get("roles", []),
+                "permissions": result.get("permissions", [])
+            }
+        return {"valid": False, "reason": "Token validation failed"}

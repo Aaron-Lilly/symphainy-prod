@@ -204,48 +204,32 @@ class SemanticSignalExtractor(AgentBase):
         # Build structured extraction prompt
         prompt = self._build_structured_extraction_prompt(chunks)
         
-        # Get LLM adapter
-        llm_adapter = None
-        if self.public_works:
-            llm_adapter = getattr(self.public_works, 'openai_adapter', None)
-            if not llm_adapter:
-                llm_adapter_registry = getattr(self.public_works, 'llm_adapter_registry', None)
-                if llm_adapter_registry:
-                    llm_adapter = llm_adapter_registry.get_adapter("openai")
+        # Get LLM via boundary getter only (CTA: no adapter at boundary; no silent failure)
+        llm = None
+        if self.public_works and hasattr(self.public_works, "get_llm_abstraction"):
+            llm = self.public_works.get_llm_abstraction()
+        if not llm:
+            raise RuntimeError(
+                "LLM not available for semantic signal extraction. "
+                "Ensure Public Works provides get_llm_abstraction() and LLM is configured."
+            )
         
-        if not llm_adapter:
-            # Fallback: Return empty signals if LLM not available
-            self.logger.warning("LLM adapter not available - returning empty signals")
-            return {
-                "key_concepts": [],
-                "inferred_intents": [],
-                "domain_hints": [],
-                "dates": [],
-                "documents": [],
-                "people": [],
-                "organizations": [],
-                "ambiguities": [],
-                "interpretation": "",
-                "confidence": 0.0
-            }
-        
-        # Use JSON response format for structured output
+        # Use LLM protocol complete() with system_message
         try:
-            response = await llm_adapter.create_completion(
+            result = await llm.complete(
                 prompt=prompt,
-                system_message=system_message,
                 model="gpt-4o-mini",
                 max_tokens=1000,
                 temperature=0.3,
-                response_format={"type": "json_object"},  # Force structured output
-                context=context
+                system_message=system_message,
             )
+            content = result.get("content", "") if isinstance(result, dict) else str(result)
             
             # Parse JSON response
-            if isinstance(response, str):
-                signals = json.loads(response)
-            elif isinstance(response, dict):
-                signals = response
+            if isinstance(content, str):
+                signals = json.loads(content) if content.strip() else {}
+            elif isinstance(content, dict):
+                signals = content
             else:
                 signals = {}
             

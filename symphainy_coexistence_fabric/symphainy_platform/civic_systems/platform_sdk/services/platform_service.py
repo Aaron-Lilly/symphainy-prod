@@ -110,66 +110,97 @@ class PlatformService:
             self._initialize_abstractions(public_works)
     
     def _initialize_abstractions(self, public_works: Any) -> None:
-        """Initialize abstractions from Public Works."""
+        """Initialize abstractions from Public Works via getters only (no getattr on raw attributes)."""
+        if not public_works:
+            return
         # Visual generation
-        self._visual_generation = getattr(public_works, 'visual_generation_abstraction', None)
+        if hasattr(public_works, "get_visual_generation_abstraction"):
+            self._visual_generation = public_works.get_visual_generation_abstraction()
         if self._visual_generation:
             self._logger.debug("✅ VisualGenerationAbstraction initialized")
-        
         # Ingestion
-        self._ingestion = getattr(public_works, 'ingestion_abstraction', None)
+        if hasattr(public_works, "get_ingestion_abstraction"):
+            self._ingestion = public_works.get_ingestion_abstraction()
         if self._ingestion:
             self._logger.debug("✅ IngestionAbstraction initialized")
-        
         # Semantic data
-        self._semantic_data = getattr(public_works, 'semantic_data_abstraction', None)
+        if hasattr(public_works, "get_semantic_data_abstraction"):
+            self._semantic_data = public_works.get_semantic_data_abstraction()
         if self._semantic_data:
             self._logger.debug("✅ SemanticDataAbstraction initialized")
-        
         # Deterministic compute (embeddings)
-        self._deterministic_compute = getattr(public_works, 'deterministic_compute_abstraction', None)
+        if hasattr(public_works, "get_deterministic_compute_abstraction"):
+            self._deterministic_compute = public_works.get_deterministic_compute_abstraction()
         if self._deterministic_compute:
             self._logger.debug("✅ DeterministicComputeAbstraction initialized")
-        
         # File storage
-        self._file_storage = getattr(public_works, 'file_storage_abstraction', None)
+        if hasattr(public_works, "get_file_storage_abstraction"):
+            self._file_storage = public_works.get_file_storage_abstraction()
         if self._file_storage:
             self._logger.debug("✅ FileStorageAbstraction initialized")
-        
         # Artifact storage
-        self._artifact_storage = getattr(public_works, 'artifact_storage_abstraction', None)
+        if hasattr(public_works, "get_artifact_storage_abstraction"):
+            self._artifact_storage = public_works.get_artifact_storage_abstraction()
         if self._artifact_storage:
             self._logger.debug("✅ ArtifactStorageAbstraction initialized")
-        
-        # Initialize parsers by type
+        # Initialize parsers by type (getters only)
         self._initialize_parsers(public_works)
+
+    def get_wal_query_interface(self) -> Optional[Any]:
+        """
+        Get WAL query interface (WALQueryProtocol) for execution metrics.
+        Delegates to Public Works; intent services use this for get_execution_metrics.
+        """
+        if not self._public_works or not hasattr(self._public_works, "get_wal_query_interface"):
+            return None
+        return self._public_works.get_wal_query_interface()
+
+    def get_solution_registry(self) -> Optional[Any]:
+        """
+        Get solution registry (SolutionRegistryProtocol) for Control Tower (list_solutions, compose_solution).
+        Delegates to Public Works.
+        """
+        if not self._public_works or not hasattr(self._public_works, "get_solution_registry"):
+            return None
+        return self._public_works.get_solution_registry()
+
+    def get_file_storage_abstraction(self) -> Optional[Any]:
+        """
+        Get file storage abstraction (FileStorageProtocol) for intent services that need direct storage access.
+        Prefer platform methods (e.g. ingest_file, parse) when possible; use this when deletion or raw storage is needed.
+        """
+        return self._file_storage
     
     def _initialize_parsers(self, public_works: Any) -> None:
-        """Initialize parsing abstractions by file type."""
-        parser_mappings = {
-            "csv": "csv_processing_abstraction",
-            "excel": "excel_processing_abstraction",
-            "pdf": "pdf_processing_abstraction",
-            "word": "word_processing_abstraction",
-            "docx": "word_processing_abstraction",
-            "html": "html_processing_abstraction",
-            "image": "image_processing_abstraction",
-            "json": "json_processing_abstraction",
-            "text": "text_processing_abstraction",
-            "txt": "text_processing_abstraction",
-            "kreuzberg": "kreuzberg_processing_abstraction",
-            "mainframe": "mainframe_processing_abstraction",
-            "data_model": "data_model_processing_abstraction",
-            "workflow": "workflow_processing_abstraction",
-            "bpmn": "workflow_processing_abstraction",
-            "sop": "sop_processing_abstraction",
+        """Initialize parsing abstractions by file type via Public Works getters only."""
+        if not public_works:
+            return
+        # file_type -> getter method name on public_works
+        parser_getters = {
+            "csv": "get_csv_processing_abstraction",
+            "excel": "get_excel_processing_abstraction",
+            "pdf": "get_pdf_processing_abstraction",
+            "word": "get_word_processing_abstraction",
+            "docx": "get_word_processing_abstraction",
+            "html": "get_html_processing_abstraction",
+            "image": "get_image_processing_abstraction",
+            "json": "get_json_processing_abstraction",
+            "text": "get_text_processing_abstraction",
+            "txt": "get_text_processing_abstraction",
+            "kreuzberg": "get_kreuzberg_processing_abstraction",
+            "mainframe": "get_mainframe_processing_abstraction",
+            "data_model": "get_data_model_processing_abstraction",
+            "workflow": "get_workflow_processing_abstraction",
+            "bpmn": "get_workflow_processing_abstraction",
+            "sop": "get_sop_processing_abstraction",
         }
-        
-        for file_type, attr_name in parser_mappings.items():
-            parser = getattr(public_works, attr_name, None)
-            if parser:
-                self._parsers[file_type] = parser
-                self._logger.debug(f"✅ Parser for '{file_type}' initialized")
+        for file_type, getter_name in parser_getters.items():
+            getter = getattr(public_works, getter_name, None)
+            if callable(getter):
+                parser = getter()
+                if parser:
+                    self._parsers[file_type] = parser
+                    self._logger.debug(f"✅ Parser for '{file_type}' initialized")
     
     # ========================================================================
     # PARSING OPERATIONS
@@ -1060,8 +1091,8 @@ class PlatformService:
         Capability builders should use the helper methods below rather than
         accessing this directly.
         """
-        if self._public_works:
-            return getattr(self._public_works, 'registry_abstraction', None)
+        if self._public_works and hasattr(self._public_works, "get_registry_abstraction"):
+            return self._public_works.get_registry_abstraction()
         return None
     
     async def get_file_metadata(

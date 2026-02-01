@@ -423,12 +423,16 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
     total_handlers = content_count + legacy_content_count + insights_count + operations_count + outcomes_count + security_count + control_tower_count + coexistence_count
     logger.info(f"  ✅ IntentRegistry created with {total_handlers} intent services across all realms")
     
-    # Step 4.5: Initialize Platform Solutions
+    # Step 4.5: Initialize Platform Solutions (solution registry from Public Works when available)
     logger.info("  → Initializing Platform Solutions...")
     from ..solutions import initialize_solutions
     from ..civic_systems.platform_sdk.solution_registry import SolutionRegistry
-    
-    solution_registry = SolutionRegistry()
+
+    solution_registry = (
+        public_works.get_solution_registry()
+        if hasattr(public_works, "get_solution_registry") and public_works.get_solution_registry() is not None
+        else SolutionRegistry()
+    )
     solution_services = await initialize_solutions(
         public_works=public_works,
         state_surface=state_surface,

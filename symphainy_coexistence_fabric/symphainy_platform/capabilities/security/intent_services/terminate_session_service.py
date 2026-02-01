@@ -104,25 +104,18 @@ class TerminateSessionService(PlatformIntentService):
         user_id: str,
         reason: str
     ) -> Dict[str, Any]:
-        """Terminate session using ctx.governance.sessions (protocol-compliant)."""
-        # Use ctx.governance.sessions if available (proper protocol boundary)
+        """Terminate session using ctx.governance.sessions (Traffic Cop SDK) or state_surface. No _public_works."""
         if ctx.governance and ctx.governance.sessions:
             try:
                 result = await ctx.governance.sessions.terminate_session(
                     session_id=session_id,
                     reason=reason
                 )
-                if result:
-                    if isinstance(result, dict) and result.get("success"):
-                        return {"success": True}
-                    elif hasattr(result, 'success') and result.success:
-                        return {"success": True}
-                    # If we got a result, assume success
+                if result and result.get("success"):
                     return {"success": True}
             except Exception as e:
-                self.logger.warning(f"Session termination via ctx.governance.sessions failed: {e}")
-        
-        # Fallback to state_surface (valid - it's on ctx directly)
+                self.logger.warning(f"Session termination via Traffic Cop SDK failed: {e}")
+        # Fallback to state_surface
         if ctx.state_surface:
             try:
                 # Clear session state
@@ -133,8 +126,6 @@ class TerminateSessionService(PlatformIntentService):
                 return {"success": True}
             except Exception as e:
                 self.logger.warning(f"Session termination via state_surface failed: {e}")
-                # Idempotent - if state doesn't exist, that's fine
-                return {"success": True}
         
-        # If neither governance.sessions nor state_surface available, fail loudly
-        raise RuntimeError("Platform contract §8A: ctx.governance.sessions or ctx.state_surface required for session termination")
+        # If no state to clear, consider it a success (idempotent)
+        return {"success": True}

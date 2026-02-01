@@ -98,37 +98,25 @@ class AuthenticateUserService(PlatformIntentService):
         }
     
     async def _authenticate(self, ctx: PlatformContext, email: str, password: str) -> Dict[str, Any]:
-        """Authenticate using ctx.governance.auth (protocol-compliant)."""
-        # Use ctx.governance.auth - the proper protocol boundary
+        """Authenticate using Security Guard SDK via ctx.governance.auth (no _public_works)."""
         if not ctx.governance or not ctx.governance.auth:
-            raise RuntimeError("Platform contract §8A: ctx.governance.auth required for authentication")
-        
-        try:
-            result = await ctx.governance.auth.authenticate({
-                "email": email,
-                "password": password
-            })
-            
-            if result:
-                # Handle both SDK result object and dict result
-                if hasattr(result, 'user_id'):
-                    return {
-                        "success": True,
-                        "user_id": result.user_id,
-                        "email": getattr(result, 'email', email),
-                        "tenant_id": getattr(result, 'tenant_id', None),
-                        "roles": getattr(result, 'roles', []),
-                        "permissions": getattr(result, 'permissions', []),
-                        "access_token": getattr(result, 'execution_contract', {}).get("access_token"),
-                        "refresh_token": getattr(result, 'execution_contract', {}).get("refresh_token")
-                    }
-                elif isinstance(result, dict):
-                    if result.get("success"):
-                        return result
-                    return {"success": True, **result}
-            
+            raise RuntimeError(
+                "Security Guard SDK not available; cannot authenticate. "
+                "Ensure Public Works provides get_auth_abstraction() and GovernanceService is built."
+            )
+        result = await ctx.governance.auth.authenticate({
+            "email": email,
+            "password": password
+        })
+        if not result:
             return {"success": False, "error": "Authentication failed"}
-            
-        except Exception as e:
-            self.logger.error(f"Authentication failed: {e}", exc_info=True)
-            return {"success": False, "error": str(e)}
+        return {
+            "success": True,
+            "user_id": result.user_id,
+            "email": result.email,
+            "tenant_id": result.tenant_id,
+            "roles": result.roles,
+            "permissions": result.permissions,
+            "access_token": result.execution_contract.get("access_token"),
+            "refresh_token": result.execution_contract.get("refresh_token")
+        }

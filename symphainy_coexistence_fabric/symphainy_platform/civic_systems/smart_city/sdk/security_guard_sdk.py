@@ -390,3 +390,22 @@ class SecurityGuardSDK:
             "prepared": True,
             "execution_contract": execution_contract
         }
+
+    async def check_email_availability(self, email: str) -> Optional[Dict[str, Any]]:
+        """Delegate to auth_abstraction if it has check_email_availability."""
+        if self.auth_abstraction and hasattr(self.auth_abstraction, "check_email_availability"):
+            return await self.auth_abstraction.check_email_availability(email)
+        return None
+
+    async def check_permission(
+        self,
+        user_id: str,
+        resource: str,
+        action: str,
+        tenant_id: str
+    ) -> Optional[Dict[str, Any]]:
+        """Delegate to auth_abstraction if it has check_permission."""
+        if self.auth_abstraction and hasattr(self.auth_abstraction, "check_permission"):
+            result = await self.auth_abstraction.check_permission(user_id, action, resource)
+            return {"authorized": result, "reason": None} if isinstance(result, bool) else result
+        return None

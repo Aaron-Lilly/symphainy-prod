@@ -30,13 +30,11 @@ from utilities import get_logger
 @dataclass
 class LLMService:
     """
-    LLM Service - Language model completion.
+    LLM Service - Language model completion and embedding.
     
-    Wraps OpenAI and HuggingFace adapters from Public Works.
+    Uses LLMProtocol only (get_llm_abstraction()). No adapter at boundary.
     """
-    _openai_adapter: Optional[Any] = None
-    _huggingface_adapter: Optional[Any] = None
-    _default_model: str = "gpt-4"
+    _llm_abstraction: Optional[Any] = None  # LLMProtocol implementation from Public Works
     
     def __post_init__(self):
         self._logger = get_logger("LLMService")
@@ -49,121 +47,30 @@ class LLMService:
         max_tokens: int = 1000,
         **kwargs
     ) -> Dict[str, Any]:
-        """
-        Complete a prompt using LLM.
-        
-        Args:
-            prompt: The prompt to complete
-            model: Model to use (default: gpt-4)
-            temperature: Sampling temperature
-            max_tokens: Maximum tokens to generate
-            **kwargs: Additional model-specific parameters
-        
-        Returns:
-            Dict with completion result
-        """
-        model = model or self._default_model
-        
-        # Route to appropriate adapter based on model
-        if model.startswith("gpt") or model.startswith("o1"):
-            return await self._complete_openai(prompt, model, temperature, max_tokens, **kwargs)
-        elif model.startswith("hf-") or "huggingface" in model.lower():
-            return await self._complete_huggingface(prompt, model, temperature, max_tokens, **kwargs)
-        else:
-            # Default to OpenAI
-            return await self._complete_openai(prompt, model, temperature, max_tokens, **kwargs)
-    
-    async def _complete_openai(
-        self,
-        prompt: str,
-        model: str,
-        temperature: float,
-        max_tokens: int,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """Complete using OpenAI adapter."""
-        if not self._openai_adapter:
-            raise RuntimeError("OpenAI adapter not available. Check LLMService initialization.")
-        
-        try:
-            # Use OpenAI adapter's completion method
-            response = await self._openai_adapter.complete(
-                prompt=prompt,
-                model=model,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                **kwargs
+        """Complete a prompt using LLM (via protocol-only boundary)."""
+        if not self._llm_abstraction:
+            raise RuntimeError(
+                "LLM abstraction not available. Check Public Works get_llm_abstraction() and LLM configuration."
             )
-            return {
-                "content": response.get("content", ""),
-                "model": model,
-                "usage": response.get("usage", {}),
-                "finish_reason": response.get("finish_reason", "stop")
-            }
-        except Exception as e:
-            self._logger.error(f"OpenAI completion failed: {e}")
-            raise
-    
-    async def _complete_huggingface(
-        self,
-        prompt: str,
-        model: str,
-        temperature: float,
-        max_tokens: int,
-        **kwargs
-    ) -> Dict[str, Any]:
-        """Complete using HuggingFace adapter."""
-        if not self._huggingface_adapter:
-            raise RuntimeError("HuggingFace adapter not available. Check LLMService initialization.")
-        
-        try:
-            response = await self._huggingface_adapter.generate(
-                prompt=prompt,
-                model=model.replace("hf-", ""),
-                temperature=temperature,
-                max_new_tokens=max_tokens,
-                **kwargs
-            )
-            return {
-                "content": response.get("generated_text", ""),
-                "model": model,
-                "usage": {},
-                "finish_reason": "stop"
-            }
-        except Exception as e:
-            self._logger.error(f"HuggingFace completion failed: {e}")
-            raise
+        return await self._llm_abstraction.complete(
+            prompt=prompt,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            **kwargs
+        )
     
     async def embed(
         self,
         content: str,
         model: Optional[str] = None
     ) -> Dict[str, Any]:
-        """
-        Generate embeddings for content.
-        
-        Args:
-            content: Text to embed
-            model: Embedding model to use
-        
-        Returns:
-            Dict with embedding vector and metadata
-        """
-        model = model or "text-embedding-ada-002"
-        
-        if not self._openai_adapter:
-            raise RuntimeError("OpenAI adapter not available for embeddings.")
-        
-        try:
-            response = await self._openai_adapter.embed(content=content, model=model)
-            return {
-                "embedding": response.get("embedding", []),
-                "model": model,
-                "dimensions": len(response.get("embedding", []))
-            }
-        except Exception as e:
-            self._logger.error(f"Embedding generation failed: {e}")
-            raise
+        """Generate embeddings for content (via protocol-only boundary)."""
+        if not self._llm_abstraction:
+            raise RuntimeError(
+                "LLM abstraction not available for embeddings. Check Public Works get_llm_abstraction()."
+            )
+        return await self._llm_abstraction.embed(content=content, model=model)
 
 
 @dataclass
@@ -490,11 +397,11 @@ class ReasoningService:
         self._logger = get_logger("ReasoningService")
         self._public_works = public_works
         
-        # Initialize LLM service
-        self.llm = LLMService(
-            _openai_adapter=getattr(public_works, 'openai_adapter', None) if public_works else None,
-            _huggingface_adapter=getattr(public_works, 'huggingface_adapter', None) if public_works else None
-        )
+        # Initialize LLM service via protocol-only boundary (get_llm_abstraction())
+        llm_abstraction = None
+        if public_works and hasattr(public_works, 'get_llm_abstraction'):
+            llm_abstraction = public_works.get_llm_abstraction()
+        self.llm = LLMService(_llm_abstraction=llm_abstraction)
         
         # Initialize Agent service with lazy instantiation support
         # Agents are created on-demand when invoked via ctx.reasoning.agents.invoke()
@@ -529,8 +436,7 @@ class ReasoningService:
             Dict mapping component name to availability boolean
         """
         return {
-            "llm_openai": self.llm._openai_adapter is not None,
-            "llm_huggingface": self.llm._huggingface_adapter is not None,
+            "llm": self.llm._llm_abstraction is not None,
             "agents": self.agents._agent_registry is not None,
             "agent_factory": self.agents._agent_factory is not None,
         }

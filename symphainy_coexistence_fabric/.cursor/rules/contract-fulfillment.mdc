@@ -1,0 +1,33 @@
+---
+description: No silent failure / no false success — fulfill contracts or announce failure
+alwaysApply: true
+---
+
+# Contract fulfillment: no silent failure / no false success
+
+We are fulfilling contracts. If we cannot do what the contract is asking, **announce it** — do not silently fail or return false success.
+
+## Rules
+
+1. **No silent failure**  
+   Do not hide missing capability (e.g. registry not available) by returning empty data, placeholder data, or success. Raise a clear error so the caller can handle it.
+
+2. **No false success**  
+   Do not return success when the requested operation was not fully performed (e.g. "compose solution" without actually registering). Either fulfill the contract or fail with a clear message.
+
+3. **Fail fast**  
+   When a required dependency (getter, adapter, registry) is missing or the operation cannot be completed, raise `RuntimeError` (or equivalent) with a message that states:
+   - what is missing or what failed
+   - how to fix it (e.g. "Ensure Public Works provides get_solution_registry() and initialize() has run")
+
+4. **Scope**  
+   Applies to boundary getters, protocol implementations, adapters, intent services, and any code that implements a contract. Examples:
+   - Contract says "list solutions from registry" → no registry ⇒ error, not a fake list.
+   - Contract says "register and activate" → no registry or failed register ⇒ error, not success.
+   - LLM complete/embed → API unavailable ⇒ raise, not empty/error dict.
+   - Data governance / solution registry / WAL query → required capability missing ⇒ raise, not placeholder.
+
+## References
+
+- **CTA:** `docs/CTA_TOP_DOWN_DERIVATION.md` — section "Contract fulfillment rule: no silent failure / no false success"
+- Aligns with "no fallbacks for required capabilities" and "no adapter at boundary"; extends them so that **failure to fulfill a contract must be explicit**.

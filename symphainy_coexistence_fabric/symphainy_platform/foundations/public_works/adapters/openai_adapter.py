@@ -87,45 +87,36 @@ class OpenAIAdapter:
         self._initialize_client()
     
     def _initialize_client(self):
-        """Initialize OpenAI client."""
+        """Initialize OpenAI client. Fails fast: raises if SDK missing or client cannot be created."""
         if AsyncOpenAI is None:
-            self.logger.error("OpenAI SDK not installed")
-            return
-            
+            raise RuntimeError(
+                "OpenAI SDK not installed. Install with: pip install openai"
+            )
         try:
-            # Create OpenAI client (private)
             self._client = AsyncOpenAI(
                 api_key=self.api_key,
                 base_url=self.base_url
             )
-            # Keep client as alias for backward compatibility (will be removed)
             self.client = self._client
-            
             self.logger.info("✅ OpenAI adapter initialized")
-            
         except Exception as e:
-            self.logger.error(f"Failed to initialize OpenAI client: {e}")
             self._client = None
             self.client = None
+            raise RuntimeError(
+                f"OpenAI client initialization failed: {e}. Check API key and network."
+            ) from e
     
     async def generate_completion(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """
         Generate completion using OpenAI.
-        
-        Args:
-            request: Completion request
-            
-        Returns:
-            Dict: Completion response
+        Fails fast: raises if client is not initialized or API call fails.
         """
         if not self._client:
-            return {"error": "OpenAI client not initialized"}
-            
+            raise RuntimeError(
+                "OpenAI client not initialized. Check LLM configuration (e.g. openai_api_key) and that the OpenAI SDK is installed."
+            )
         try:
-            # Generate completion
             response = await self._client.chat.completions.create(**request)
-            
-            # Convert to dict
             return {
                 "id": response.id,
                 "choices": [
@@ -146,41 +137,36 @@ class OpenAIAdapter:
                 "model": response.model,
                 "created": response.created
             }
-            
         except Exception as e:
-            self.logger.error(f"Failed to generate completion: {e}")
-            return {"error": str(e)}
+            self.logger.error(f"OpenAI completion failed: {e}")
+            raise RuntimeError(
+                f"OpenAI API request failed: {e}. Check API key, network, and model availability."
+            ) from e
     
     async def generate_embeddings(self, text: str, model: str = "text-embedding-ada-002") -> List[float]:
         """
         Generate embeddings using OpenAI.
-        
-        Args:
-            text: Input text
-            model: Embedding model
-            
-        Returns:
-            List[float]: Embeddings
+        Fails fast: raises if client is not initialized or API call fails.
         """
         if not self._client:
-            return []
-            
+            raise RuntimeError(
+                "OpenAI client not initialized. Check LLM configuration (e.g. openai_api_key) and that the OpenAI SDK is installed."
+            )
         try:
-            # Generate embeddings
             response = await self._client.embeddings.create(
                 input=text,
                 model=model
             )
-            
-            # Extract embeddings
-            embeddings = response.data[0].embedding if response.data else []
-            
+            if not response.data:
+                raise RuntimeError("OpenAI returned no embedding data; check API response.")
+            embeddings = response.data[0].embedding
             self.logger.info(f"✅ Embeddings generated for text (length: {len(text)})")
             return embeddings
-            
         except Exception as e:
             self.logger.error(f"Failed to generate embeddings: {e}")
-            return []
+            raise RuntimeError(
+                f"OpenAI embeddings API failed: {e}. Check API key, network, and model availability."
+            ) from e
     
     async def get_models(self) -> List[Dict[str, Any]]:
         """

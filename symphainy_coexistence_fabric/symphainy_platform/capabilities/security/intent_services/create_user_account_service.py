@@ -100,38 +100,30 @@ class CreateUserAccountService(PlatformIntentService):
         }
     
     async def _register_user(self, ctx: PlatformContext, name: str, email: str, password: str) -> Dict[str, Any]:
-        """Register user using ctx.governance.auth (protocol-compliant)."""
-        # Use ctx.governance.auth - the proper protocol boundary
+        """Register user using ctx.governance.auth (Security Guard SDK). No _public_works."""
         if not ctx.governance or not ctx.governance.auth:
-            raise RuntimeError("Platform contract §8A: ctx.governance.auth required for registration")
-        
-        try:
-            result = await ctx.governance.auth.register_user({
-                "email": email,
-                "password": password,
-                "user_metadata": {"name": name, "full_name": name}
-            })
-            
-            if result:
-                # Handle both SDK result object and dict result
-                if hasattr(result, 'user_id'):
-                    return {
-                        "success": True,
-                        "user_id": result.user_id,
-                        "email": getattr(result, 'email', email),
-                        "tenant_id": getattr(result, 'tenant_id', None),
-                        "roles": getattr(result, 'roles', ["user"]),
-                        "permissions": getattr(result, 'permissions', ["read", "write"]),
-                        "access_token": getattr(result, 'execution_contract', {}).get("access_token"),
-                        "refresh_token": getattr(result, 'execution_contract', {}).get("refresh_token")
-                    }
-                elif isinstance(result, dict):
-                    if result.get("success"):
-                        return result
-                    return {"success": True, **result}
-            
+            raise RuntimeError(
+                "Security Guard SDK not available; cannot register user. "
+                "Ensure Public Works provides get_auth_abstraction() and GovernanceService is built."
+            )
+        result = await ctx.governance.auth.register_user({
+            "email": email,
+            "password": password,
+            "user_metadata": {"name": name, "full_name": name}
+        })
+        if not result:
             return {"success": False, "error": "Registration failed"}
-            
-        except Exception as e:
-            self.logger.error(f"Registration failed: {e}", exc_info=True)
-            return {"success": False, "error": str(e)}
+        if hasattr(result, "user_id"):
+            return {
+                "success": True,
+                "user_id": result.user_id,
+                "email": result.email,
+                "tenant_id": result.tenant_id,
+                "roles": result.roles,
+                "permissions": result.permissions,
+                "access_token": result.execution_contract.get("access_token"),
+                "refresh_token": result.execution_contract.get("refresh_token")
+            }
+        if isinstance(result, dict) and result.get("success"):
+            return result
+        return {"success": False, "error": result.get("error", "Registration failed") if isinstance(result, dict) else "Registration failed"}

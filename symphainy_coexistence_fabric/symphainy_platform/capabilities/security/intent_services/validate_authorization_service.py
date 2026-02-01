@@ -98,33 +98,21 @@ class ValidateAuthorizationService(PlatformIntentService):
         action: str,
         tenant_id: str
     ) -> Dict[str, Any]:
-        """Check authorization using ctx.governance.auth (protocol-compliant)."""
-        # Use ctx.governance.auth - the proper protocol boundary
+        """Check authorization using ctx.governance.auth (Security Guard SDK). No _public_works."""
         if not ctx.governance or not ctx.governance.auth:
-            raise RuntimeError("Platform contract §8A: ctx.governance.auth required for authorization")
-        
-        try:
-            result = await ctx.governance.auth.check_permission(
-                user_id=user_id,
-                resource=resource,
-                action=action,
-                tenant_id=tenant_id
+            raise RuntimeError(
+                "Security Guard SDK not available; cannot check authorization. "
+                "Ensure Public Works provides get_auth_abstraction() and GovernanceService is built."
             )
-            
-            if result:
-                if isinstance(result, dict):
-                    return {
-                        "authorized": result.get("authorized", False),
-                        "reason": result.get("reason")
-                    }
-                # Handle object result
-                return {
-                    "authorized": getattr(result, "authorized", False),
-                    "reason": getattr(result, "reason", None)
-                }
-            
+        result = await ctx.governance.auth.check_permission(
+            user_id=user_id,
+            resource=resource,
+            action=action,
+            tenant_id=tenant_id
+        )
+        if not result:
             return {"authorized": False, "reason": "Authorization check returned no result"}
-            
-        except Exception as e:
-            self.logger.error(f"Authorization check failed: {e}", exc_info=True)
-            return {"authorized": False, "reason": str(e)}
+        return {
+            "authorized": result.get("authorized", False),
+            "reason": result.get("reason")
+        }

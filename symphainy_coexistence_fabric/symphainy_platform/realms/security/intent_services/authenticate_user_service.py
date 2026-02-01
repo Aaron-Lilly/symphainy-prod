@@ -143,8 +143,12 @@ class AuthenticateUserService(BaseIntentService):
         """Authenticate using Public Works auth abstraction."""
         if self.public_works:
             try:
-                # Try to get Security Guard SDK
-                security_guard_sdk = getattr(self.public_works, 'security_guard_sdk', None)
+                # Use boundary getter only (CTA: no getattr at boundary)
+                security_guard_sdk = (
+                    self.public_works.get_security_guard_sdk()
+                    if hasattr(self.public_works, "get_security_guard_sdk")
+                    else None
+                )
                 if security_guard_sdk:
                     result = await security_guard_sdk.authenticate({
                         "email": email,

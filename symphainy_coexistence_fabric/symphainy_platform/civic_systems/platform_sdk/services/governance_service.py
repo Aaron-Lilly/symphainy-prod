@@ -67,28 +67,26 @@ class GovernanceService:
     def _initialize_sdks(self, public_works: Any) -> None:
         """Initialize Smart City SDKs from Public Works abstractions."""
         try:
-            # Data Steward SDK
+            # Data Steward SDK — boundary getter only; no adapter at boundary (CTA §1.3, §2.2)
             from symphainy_platform.civic_systems.smart_city.sdk.data_steward_sdk import DataStewardSDK
-            from symphainy_platform.civic_systems.smart_city.primitives.data_steward_primitives import DataStewardPrimitives
-            
-            # Get materialization policy if available
-            materialization_policy = getattr(public_works, 'materialization_policy', None)
-            
-            # Create Data Steward Primitives
-            supabase_adapter = getattr(public_works, 'supabase_adapter', None)
-            data_steward_primitives = None
-            if supabase_adapter:
-                try:
-                    data_steward_primitives = DataStewardPrimitives(supabase_adapter=supabase_adapter)
-                except Exception as e:
-                    self._logger.warning(f"Failed to create DataStewardPrimitives: {e}")
-            
-            self._data_steward_sdk = DataStewardSDK(
-                data_governance_abstraction=getattr(public_works, 'data_governance_abstraction', None),
-                data_steward_primitives=data_steward_primitives,
-                materialization_policy=materialization_policy
+
+            data_steward_primitives = (
+                public_works.get_data_governance_abstraction()
+                if hasattr(public_works, "get_data_governance_abstraction")
+                else None
             )
-            self._logger.debug("✅ DataStewardSDK initialized")
+            materialization_policy = (
+                public_works.get_materialization_policy()
+                if hasattr(public_works, "get_materialization_policy")
+                else None
+            )
+
+            self._data_steward_sdk = DataStewardSDK(
+                data_governance_abstraction=data_steward_primitives,
+                data_steward_primitives=data_steward_primitives,
+                materialization_policy=materialization_policy,
+            )
+            self._logger.debug("✅ DataStewardSDK initialized (get_data_governance_abstraction only)")
         except Exception as e:
             self._logger.warning(f"Failed to initialize DataStewardSDK: {e}")
         
@@ -96,7 +94,7 @@ class GovernanceService:
             # Security Guard SDK
             from symphainy_platform.civic_systems.smart_city.sdk.security_guard_sdk import SecurityGuardSDK
             self._security_guard_sdk = SecurityGuardSDK(
-                auth_abstraction=getattr(public_works, 'auth_abstraction', None)
+                auth_abstraction=public_works.get_auth_abstraction() if hasattr(public_works, "get_auth_abstraction") else None
             )
             self._logger.debug("✅ SecurityGuardSDK initialized")
         except Exception as e:
