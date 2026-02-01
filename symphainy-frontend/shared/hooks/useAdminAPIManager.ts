@@ -1,12 +1,8 @@
 /**
  * useAdminAPIManager Hook
  * 
- * React hook to provide AdminAPIManager instance to components.
+ * Re-export from AdminAPIManager for backward compatibility.
+ * The hook is now defined in AdminAPIManager.ts itself.
  */
 
-import { useMemo } from 'react';
-import { AdminAPIManager } from '@/shared/managers/AdminAPIManager';
-
-export function useAdminAPIManager(): AdminAPIManager {
-  return useMemo(() => new AdminAPIManager(), []);
-}
+export { useAdminAPIManager } from '@/shared/managers/AdminAPIManager';

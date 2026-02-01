@@ -3,10 +3,10 @@
  * 
  * Centralized client for Admin Dashboard API calls (all 3 views).
  * 
- * Architecture:
- * - Direct REST API calls to Experience Plane Admin Dashboard endpoints
- * - No intent submission (Admin Dashboard is not realm-based)
- * - Access control handled by backend (Security Guard SDK)
+ * Architecture (Post-Modernization):
+ * - Direct REST API calls to Admin Dashboard endpoints
+ * - Backend handles intent submission to Control Tower capability
+ * - Passes session_id and tenant_id as query parameters
  * 
  * Views:
  * 1. Control Room - Platform observability
@@ -248,71 +248,98 @@ export interface BusinessFeatureRequestResponse {
 // Admin API Manager Class
 // ============================================
 
-import { usePlatformState } from '@/shared/state/PlatformStateProvider';
-import { validateSession } from '@/shared/utils/sessionValidation';
-
+/**
+ * Admin API Manager - REST-based client for Admin Dashboard
+ * 
+ * Post-Modernization Pattern:
+ * - Frontend calls REST endpoints directly
+ * - Backend handles intent submission to Control Tower
+ * - session_id and tenant_id passed as query parameters
+ */
 export class AdminAPIManager {
-  private getPlatformState: () => ReturnType<typeof usePlatformState>;
+  private sessionId: string | null = null;
+  private tenantId: string | null = null;
 
-  constructor(getPlatformState?: () => ReturnType<typeof usePlatformState>) {
-    this.getPlatformState = getPlatformState || (() => {
-      throw new Error("PlatformStateProvider not available. Use AdminAPIManager with usePlatformState hook.");
+  constructor(sessionId?: string, tenantId?: string) {
+    this.sessionId = sessionId || null;
+    this.tenantId = tenantId || null;
+  }
+
+  /**
+   * Update session and tenant context
+   */
+  setContext(sessionId: string, tenantId: string): void {
+    this.sessionId = sessionId;
+    this.tenantId = tenantId;
+  }
+
+  /**
+   * Build URL with query parameters including session_id and tenant_id
+   */
+  private buildUrl(endpoint: string, params: Record<string, any> = {}): string {
+    const url = new URL(getApiEndpointUrl(endpoint));
+    
+    // Add session_id and tenant_id if available
+    if (this.sessionId) {
+      url.searchParams.set('session_id', this.sessionId);
+    }
+    if (this.tenantId) {
+      url.searchParams.set('tenant_id', this.tenantId);
+    }
+    
+    // Add additional parameters
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) {
+        url.searchParams.set(key, String(value));
+      }
     });
+    
+    return url.toString();
   }
 
   /**
-   * Helper method to submit admin intent and wait for execution
-   * 
-   * ✅ PHASE 5.6.5: Intent-based API pattern for admin operations
+   * Make GET request to admin API
    */
-  private async _submitAdminIntent(
-    intentType: string,
-    parameters: Record<string, any> = {}
-  ): Promise<any> {
-    const platformState = this.getPlatformState();
+  private async get<T>(endpoint: string, params: Record<string, any> = {}): Promise<T> {
+    const url = this.buildUrl(endpoint, params);
     
-    // ✅ FIX ISSUE 4: Use standardized session validation
-    validateSession(platformState, `admin operation: ${intentType}`);
-
-    // Submit intent via Experience Plane Client
-    const execution = await platformState.submitIntent(intentType, parameters);
-
-    // Wait for execution completion
-    const result = await this._waitForExecution(execution, platformState);
-
-    if (result.status === "completed" && result.artifacts) {
-      return result.artifacts;
-    } else {
-      throw new Error(result.error || `Failed to execute ${intentType}`);
+    const response = await fetch(url, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || `Request failed: ${response.statusText}`);
     }
+    
+    return response.json();
   }
 
   /**
-   * Wait for execution completion
+   * Make POST request to admin API
    */
-  private async _waitForExecution(
-    executionId: string,
-    platformState: ReturnType<typeof usePlatformState>,
-    maxWaitTime: number = 60000,
-    pollInterval: number = 1000
-  ): Promise<any> {
-    const startTime = Date.now();
+  private async post<T>(endpoint: string, data: any, params: Record<string, any> = {}): Promise<T> {
+    const url = this.buildUrl(endpoint, params);
     
-    while (Date.now() - startTime < maxWaitTime) {
-      const status = await platformState.getExecutionStatus(executionId);
-      
-      if (!status) {
-        throw new Error("Execution not found");
-      }
-
-      if (status.status === "completed" || status.status === "failed" || status.status === "cancelled") {
-        return status;
-      }
-
-      await new Promise(resolve => setTimeout(resolve, pollInterval));
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      credentials: 'include',
+      body: JSON.stringify(data),
+    });
+    
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      throw new Error(errorData.detail || `Request failed: ${response.statusText}`);
     }
-
-    throw new Error("Execution timeout");
+    
+    return response.json();
   }
 
   // ============================================
@@ -320,53 +347,50 @@ export class AdminAPIManager {
   // ============================================
 
   /**
-   * Get platform statistics (admin_get_platform_statistics intent)
+   * Get platform statistics
    * 
-   * ✅ PHASE 5.6.5: Migrated to intent-based API
+   * Backend: GET /api/admin/control-room/statistics
    */
   async getPlatformStatistics(): Promise<PlatformStatistics> {
-    const artifacts = await this._submitAdminIntent('admin_get_platform_statistics');
-    return artifacts.platform_statistics;
+    return this.get<PlatformStatistics>('/api/admin/control-room/statistics');
   }
 
   /**
-   * Get execution metrics (admin_get_execution_metrics intent)
+   * Get execution metrics
    * 
-   * ✅ PHASE 5.6.5: Migrated to intent-based API
+   * Backend: GET /api/admin/control-room/execution-metrics
    */
   async getExecutionMetrics(timeRange: string = '1h'): Promise<ExecutionMetrics> {
-    const artifacts = await this._submitAdminIntent('admin_get_execution_metrics', { time_range: timeRange });
-    return artifacts.execution_metrics;
+    return this.get<ExecutionMetrics>('/api/admin/control-room/execution-metrics', {
+      time_range: timeRange
+    });
   }
 
   /**
-   * Get realm health (admin_get_realm_health intent)
+   * Get realm health
    * 
-   * ✅ PHASE 5.6.5: Migrated to intent-based API
+   * Backend: GET /api/admin/control-room/realm-health
    */
   async getRealmHealth(): Promise<RealmHealth> {
-    const artifacts = await this._submitAdminIntent('admin_get_realm_health');
-    return artifacts.realm_health;
+    return this.get<RealmHealth>('/api/admin/control-room/realm-health');
   }
 
   /**
-   * Get solution registry status (admin_get_solution_registry_status intent)
+   * Get solution registry status
    * 
-   * ✅ PHASE 5.6.5: Migrated to intent-based API
+   * Backend: GET /api/admin/control-room/solution-registry
    */
   async getSolutionRegistryStatus(): Promise<SolutionRegistryStatus> {
-    const artifacts = await this._submitAdminIntent('admin_get_solution_registry_status');
-    return artifacts.solution_registry_status;
+    return this.get<SolutionRegistryStatus>('/api/admin/control-room/solution-registry');
   }
 
   /**
-   * Get system health (admin_get_system_health intent)
+   * Get system health
    * 
-   * ✅ PHASE 5.6.5: Migrated to intent-based API
+   * Backend: GET /api/admin/control-room/system-health
    */
   async getSystemHealth(): Promise<SystemHealth> {
-    const artifacts = await this._submitAdminIntent('admin_get_system_health');
-    return artifacts.system_health;
+    return this.get<SystemHealth>('/api/admin/control-room/system-health');
   }
 
   // ============================================
@@ -374,63 +398,70 @@ export class AdminAPIManager {
   // ============================================
 
   /**
-   * Get Platform SDK documentation (admin_get_documentation intent)
+   * Get Platform SDK documentation
    * 
-   * ✅ PHASE 5.6.5: Migrated to intent-based API
+   * Backend: GET /api/admin/developer/documentation
    */
   async getDocumentation(section?: string): Promise<Documentation> {
-    const artifacts = await this._submitAdminIntent('admin_get_documentation', { section });
-    return artifacts.documentation;
+    return this.get<Documentation>('/api/admin/developer/documentation', 
+      section ? { section } : {}
+    );
   }
 
   /**
-   * Get code examples (admin_get_code_examples intent)
+   * Get code examples
    * 
-   * ✅ PHASE 5.6.5: Migrated to intent-based API
+   * Backend: GET /api/admin/developer/code-examples
    */
   async getCodeExamples(category?: string): Promise<CodeExamples> {
-    const artifacts = await this._submitAdminIntent('admin_get_code_examples', { category });
-    return artifacts.code_examples;
+    return this.get<CodeExamples>('/api/admin/developer/code-examples',
+      category ? { category } : {}
+    );
   }
 
   /**
-   * Get patterns and best practices (admin_get_patterns intent)
+   * Get patterns and best practices
    * 
-   * ✅ PHASE 5.6.5: Migrated to intent-based API
+   * Backend: GET /api/admin/developer/patterns
    */
   async getPatterns(): Promise<Patterns> {
-    const artifacts = await this._submitAdminIntent('admin_get_patterns');
-    return artifacts.patterns;
+    return this.get<Patterns>('/api/admin/developer/patterns');
   }
 
   /**
-   * Validate solution configuration (admin_validate_solution intent)
+   * Validate solution configuration (Solution Builder Playground)
    * 
-   * ✅ PHASE 5.6.5: Migrated to intent-based API
+   * Backend: POST /api/admin/developer/validate-solution
    */
   async validateSolution(request: SolutionValidationRequest): Promise<SolutionValidationResponse> {
-    const artifacts = await this._submitAdminIntent('admin_validate_solution', request);
-    return artifacts.solution_validation;
+    return this.post<SolutionValidationResponse>(
+      '/api/admin/developer/validate-solution',
+      request.solution_config
+    );
   }
 
   /**
-   * Preview solution structure (admin_preview_solution intent)
+   * Preview solution structure (Solution Builder Playground)
    * 
-   * ✅ PHASE 5.6.5: Migrated to intent-based API
+   * Backend: POST /api/admin/developer/preview-solution
    */
   async previewSolution(request: SolutionValidationRequest): Promise<SolutionValidationResponse> {
-    const artifacts = await this._submitAdminIntent('admin_preview_solution', request);
-    return artifacts.solution_preview;
+    return this.post<SolutionValidationResponse>(
+      '/api/admin/developer/preview-solution',
+      request.solution_config
+    );
   }
 
   /**
-   * Submit feature request (admin_submit_feature_request intent)
+   * Submit feature request (Developer)
    * 
-   * ✅ PHASE 5.6.5: Migrated to intent-based API
+   * Backend: POST /api/admin/developer/submit-feature-request
    */
   async submitFeatureRequest(request: FeatureRequestSubmission): Promise<FeatureRequestResponse> {
-    const artifacts = await this._submitAdminIntent('admin_submit_feature_request', request);
-    return artifacts.feature_request;
+    return this.post<FeatureRequestResponse>(
+      '/api/admin/developer/submit-feature-request',
+      request
+    );
   }
 
   // ============================================
@@ -438,58 +469,111 @@ export class AdminAPIManager {
   // ============================================
 
   /**
-   * Get solution composition guide (admin_get_composition_guide intent)
+   * Get solution composition guide
    * 
-   * ✅ PHASE 5.6.5: Migrated to intent-based API
+   * Backend: GET /api/admin/business/composition-guide
    */
   async getCompositionGuide(): Promise<CompositionGuide> {
-    const artifacts = await this._submitAdminIntent('admin_get_composition_guide');
-    return artifacts.composition_guide;
+    return this.get<CompositionGuide>('/api/admin/business/composition-guide');
   }
 
   /**
-   * Get solution templates (admin_get_solution_templates intent)
+   * Get solution templates
    * 
-   * ✅ PHASE 5.6.5: Migrated to intent-based API
+   * Backend: GET /api/admin/business/templates
    */
   async getSolutionTemplates(): Promise<SolutionTemplates> {
-    const artifacts = await this._submitAdminIntent('admin_get_solution_templates');
-    return artifacts.solution_templates;
+    return this.get<SolutionTemplates>('/api/admin/business/templates');
   }
 
   /**
-   * Compose solution (admin_compose_solution intent)
+   * Compose solution (advanced builder)
    * 
-   * ✅ PHASE 5.6.5: Migrated to intent-based API
+   * Backend: POST /api/admin/business/compose
    */
   async composeSolution(request: SolutionCompositionRequest): Promise<SolutionCompositionResponse> {
-    const artifacts = await this._submitAdminIntent('admin_compose_solution', request);
-    return artifacts.solution_composition;
+    return this.post<SolutionCompositionResponse>(
+      '/api/admin/business/compose',
+      request.solution_config
+    );
   }
 
   /**
-   * Register composed solution (admin_register_solution intent)
+   * Create solution from template
    * 
-   * ✅ PHASE 5.6.5: Migrated to intent-based API
+   * Backend: POST /api/admin/business/create-from-template
+   */
+  async createFromTemplate(templateId: string, customizations?: Record<string, any>): Promise<SolutionCompositionResponse> {
+    return this.post<SolutionCompositionResponse>(
+      '/api/admin/business/create-from-template',
+      { template_id: templateId, customizations }
+    );
+  }
+
+  /**
+   * List registered solutions
+   * 
+   * Backend: GET /api/admin/business/solutions
+   */
+  async listSolutions(activeOnly: boolean = false): Promise<any> {
+    return this.get('/api/admin/business/solutions', { active_only: activeOnly });
+  }
+
+  /**
+   * Get solution status
+   * 
+   * Backend: GET /api/admin/business/solutions/{solution_id}
+   */
+  async getSolutionStatus(solutionId: string): Promise<any> {
+    return this.get(`/api/admin/business/solutions/${solutionId}`);
+  }
+
+  /**
+   * Register composed solution
+   * 
+   * Backend: POST /api/admin/business/compose (same as composeSolution)
    */
   async registerSolution(request: SolutionCompositionRequest): Promise<SolutionCompositionResponse> {
-    const artifacts = await this._submitAdminIntent('admin_register_solution', request);
-    return artifacts.solution_registration;
+    return this.composeSolution(request);
   }
 
   /**
-   * Submit business feature request (admin_submit_business_feature_request intent)
+   * Submit business feature request
    * 
-   * ✅ PHASE 5.6.5: Migrated to intent-based API
+   * Backend: POST /api/admin/business/submit-feature-request
    */
   async submitBusinessFeatureRequest(request: BusinessFeatureRequest): Promise<BusinessFeatureRequestResponse> {
-    const artifacts = await this._submitAdminIntent('admin_submit_business_feature_request', request);
-    return artifacts.business_feature_request;
+    return this.post<BusinessFeatureRequestResponse>(
+      '/api/admin/business/submit-feature-request',
+      request
+    );
   }
 }
 
-// Factory function for use in components
+// ============================================
+// Hook for React Components
+// ============================================
+
+import { useMemo } from 'react';
+import { useSessionBoundary } from '@/shared/state/SessionBoundaryProvider';
+import { useTenant } from '@/shared/contexts/TenantContext';
+
+/**
+ * React hook to create AdminAPIManager with current session and tenant context
+ * 
+ * Usage:
+ *   const adminAPI = useAdminAPIManager();
+ *   const stats = await adminAPI.getPlatformStatistics();
+ */
 export function useAdminAPIManager(): AdminAPIManager {
-  const platformState = usePlatformState();
-  return new AdminAPIManager(() => platformState);
+  const { state: sessionState } = useSessionBoundary();
+  const { tenantId } = useTenant();
+  
+  return useMemo(() => {
+    const manager = new AdminAPIManager(
+      sessionState.sessionId || undefined,
+      tenantId || undefined
+    );
+    return manager;
+  }, [sessionState.sessionId, tenantId]);
 }
