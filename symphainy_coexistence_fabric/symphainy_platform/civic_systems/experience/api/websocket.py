@@ -16,15 +16,27 @@ for _ in range(10):  # Max 10 levels up
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
-from typing import Dict, Any, Optional
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query, HTTPException
+from pydantic import BaseModel
+from typing import Dict, Any, Optional, List
 
 from utilities import get_logger
 from ..sdk.runtime_client import RuntimeClient
 from ..sdk.experience_sdk import ExperienceSDK
 
 
-router = APIRouter(prefix="/api/execution", tags=["websocket"])
+router = APIRouter(prefix="/api/execution", tags=["execution"])
+
+
+# Response model matching Runtime and Frontend contracts
+class ExecutionStatusResponse(BaseModel):
+    """Response from execution status query."""
+    execution_id: str
+    status: str
+    intent_id: str
+    artifacts: Optional[Dict[str, Any]] = None
+    events: Optional[List[Dict[str, Any]]] = None
+    error: Optional[str] = None
 logger = get_logger("ExperienceAPI.WebSocket")
 
 
@@ -36,6 +48,41 @@ def get_runtime_client() -> RuntimeClient:
 def get_experience_sdk(runtime_client: RuntimeClient = Depends(get_runtime_client)) -> ExperienceSDK:
     """Dependency to get Experience SDK."""
     return ExperienceSDK(runtime_client)
+
+
+@router.get("/{execution_id}/status", response_model=ExecutionStatusResponse)
+async def get_execution_status(
+    execution_id: str,
+    tenant_id: str = Query(..., description="Tenant ID for multi-tenant isolation"),
+    include_artifacts: bool = Query(False, description="Include execution artifacts"),
+    include_visuals: bool = Query(False, description="Include visual representations"),
+    runtime_client: RuntimeClient = Depends(get_runtime_client)
+) -> ExecutionStatusResponse:
+    """
+    Get execution status via REST (polling fallback for when WebSocket is unavailable).
+    
+    This endpoint proxies to Runtime's execution status endpoint.
+    
+    Frontend uses this when:
+    - Initial status check before WebSocket connection
+    - Fallback when WebSocket disconnects
+    - Simple status queries without streaming
+    """
+    try:
+        result = await runtime_client.get_execution_status(
+            execution_id=execution_id,
+            tenant_id=tenant_id,
+            include_artifacts=include_artifacts,
+            include_visuals=include_visuals
+        )
+        return ExecutionStatusResponse(**result)
+    except Exception as e:
+        logger.error(f"Failed to get execution status for {execution_id}: {e}", exc_info=True)
+        # Return error response with status
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get execution status: {str(e)}"
+        )
 
 
 @router.websocket("/{execution_id}/stream")
