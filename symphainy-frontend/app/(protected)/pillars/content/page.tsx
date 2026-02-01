@@ -12,14 +12,15 @@ import {
   CardDescription,
   CardContent,
 } from "@/components/ui/card";
-// ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
+import { Badge } from "@/components/ui/badge";
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
+import { useTenant } from "@/shared/contexts/TenantContext";
 import { SecondaryChatbotAgent, SecondaryChatbotTitle } from "@/shared/types/secondaryChatbot";
 import { PillarCompletionMessage } from "../shared/components/PillarCompletionMessage";
-// ✅ PHASE 7: Routing Refactoring - Sync route params to state
 import { usePathname, useSearchParams } from "next/navigation";
 import { syncRouteToState } from "@/shared/utils/routing";
 import { Suspense } from "react";
+import { Database, FileCode } from "lucide-react";
 
 export default function ContentPage() {
   return (
@@ -30,15 +31,17 @@ export default function ContentPage() {
 }
 
 function ContentPageContent() {
-  // ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
   const { setChatbotAgentInfo, setMainChatbotOpen, setRealmState, setCurrentPillar, getRealmState } = usePlatformState();
-  const setAgentInfo = setChatbotAgentInfo; // Alias for compatibility
+  const setAgentInfo = setChatbotAgentInfo;
   
-  // ✅ PHASE 7: Routing Refactoring - Get route params
+  // Get tenant configuration
+  const { currentTenant } = useTenant();
+  const contentFeatures = currentTenant.features.content;
+  
   const pathname = usePathname();
   const searchParams = useSearchParams();
   
-  // ✅ PHASE 7: Sync route params to state on mount and route changes
+  // Sync route params to state on mount and route changes
   useEffect(() => {
     const params = new URLSearchParams(searchParams.toString());
     syncRouteToState(pathname, params, setRealmState, setCurrentPillar);
@@ -49,31 +52,30 @@ function ContentPageContent() {
   const [parseResult, setParseResult] = useState<any>(null);
   const [extractedMetadata, setExtractedMetadata] = useState<any>(null);
   
-  // ✅ PHASE 7: Get current step from realm state (synced from route)
+  // Get current step from realm state (synced from route)
   const routeStep = getRealmState("content", "currentStep") as string | null;
   const [currentStep, setCurrentStep] = useState<'upload' | 'parse' | 'metadata' | 'complete'>(
     (routeStep as 'upload' | 'parse' | 'metadata' | 'complete') || 'upload'
   );
   
-  // ✅ PHASE 7: Update current step when route changes
+  // Update current step when route changes
   useEffect(() => {
     if (routeStep && ['upload', 'parse', 'metadata', 'complete'].includes(routeStep)) {
       setCurrentStep(routeStep as 'upload' | 'parse' | 'metadata' | 'complete');
     }
   }, [routeStep]);
 
-  // ✅ PHASE 1.2: Set up Content Liaison Agent as secondary option
+  // Set up Content Liaison Agent with tenant-specific context
   useEffect(() => {
-    // Configure the secondary agent but don't show it by default
     setAgentInfo({
       agent: SecondaryChatbotAgent.CONTENT_LIAISON,
       title: SecondaryChatbotTitle.CONTENT_LIAISON,
       file_url: "",
-      additional_info: "Content management and file processing assistance. Ask me about file uploads, parsing, and data extraction."
+      additional_info: currentTenant.agents?.liaison_agent_prompt_context ||
+        "Content management and file processing assistance. Ask me about file uploads, parsing, and data extraction."
     });
-    // Keep main chatbot open by default - GuideAgent will be shown
     setMainChatbotOpen(true);
-  }, [setAgentInfo, setMainChatbotOpen]);
+  }, [setAgentInfo, setMainChatbotOpen, currentTenant]);
 
   // Handler functions
   const handleFileSelected = (file: any) => {
@@ -101,10 +103,17 @@ function ContentPageContent() {
           <div>
             <h2 className="text-h2 font-bold text-gray-800">Data Pillar</h2>
             <p className="text-base text-sm text-gray-700 leading-relaxed">
-              Connect, manage, and parse your business data to begin the journey.
+              {contentFeatures.upload_guidance || 'Connect, manage, and parse your business data to begin the journey.'}
             </p>
+            {/* Show supported file types for this tenant */}
+            <div className="flex flex-wrap gap-1 mt-2">
+              {contentFeatures.file_types.map((type) => (
+                <Badge key={type} variant="outline" className="text-xs">
+                  {type.toUpperCase()}
+                </Badge>
+              ))}
+            </div>
           </div>
-          {/* ✅ PHASE 1.2: Show which Liaison Agent is available */}
           <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
             <span className="text-xs font-semibold text-blue-900">Available:</span>
             <span className="text-xs text-blue-700">Content Liaison Agent</span>
@@ -142,7 +151,89 @@ function ContentPageContent() {
         </CardContent>
       </Card>
 
-      {/* Row 2: File Parsing (stacked on top) */}
+      {/* Mainframe Parser Section - Only for VLP and Base tenants */}
+      {contentFeatures.show_mainframe_parser && (
+        <Card className="border-purple-200">
+          <CardHeader className="bg-purple-50/50">
+            <CardTitle className="flex items-center gap-2">
+              <Database className="h-5 w-5 text-purple-600" />
+              Mainframe Data Processing
+              <Badge variant="secondary" className="ml-2">Specialized</Badge>
+            </CardTitle>
+            <CardDescription>
+              Upload mainframe data files with optional COBOL copybook for field mapping.
+              Supports EBCDIC encoding, packed decimal, and fixed-length record formats.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="p-4 border border-purple-200 rounded-lg bg-white">
+                <h4 className="font-semibold text-purple-900 mb-2">Data File Upload</h4>
+                <p className="text-sm text-gray-600 mb-3">
+                  Upload your mainframe extract (.dat, .txt, or raw binary files)
+                </p>
+                <FileUploader />
+              </div>
+              <div className="p-4 border border-purple-200 rounded-lg bg-white">
+                <h4 className="font-semibold text-purple-900 mb-2">Copybook Upload (Optional)</h4>
+                <p className="text-sm text-gray-600 mb-3">
+                  Upload COBOL copybook (.cpy, .cbl) for automatic field mapping
+                </p>
+                <FileUploader />
+              </div>
+            </div>
+            <div className="mt-4 p-3 bg-purple-50 rounded-lg">
+              <p className="text-xs text-purple-800">
+                <strong>Tip:</strong> For best results, ensure your mainframe extract uses a consistent record layout.
+                The copybook helps us automatically identify field boundaries, data types, and encoding.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* EDI Parser Section - Only for PSO and Base tenants */}
+      {contentFeatures.show_edi_parser && (
+        <Card className="border-green-200">
+          <CardHeader className="bg-green-50/50">
+            <CardTitle className="flex items-center gap-2">
+              <FileCode className="h-5 w-5 text-green-600" />
+              EDI Processing
+              <Badge variant="secondary" className="ml-2">Specialized</Badge>
+            </CardTitle>
+            <CardDescription>
+              Process EDI transactions from trading partners. Supports X12, EDIFACT, and HL7 formats.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="pt-4">
+            <div className="space-y-4">
+              <div className="p-4 border border-green-200 rounded-lg bg-white">
+                <h4 className="font-semibold text-green-900 mb-2">EDI File Upload</h4>
+                <p className="text-sm text-gray-600 mb-3">
+                  Upload EDI files (.edi, .x12, .txt) for parsing and validation
+                </p>
+                <FileUploader />
+              </div>
+              <div className="grid grid-cols-3 gap-3 text-sm">
+                <div className="p-3 bg-green-50 rounded-lg text-center">
+                  <div className="font-semibold text-green-800">X12</div>
+                  <div className="text-xs text-green-600">810, 850, 997</div>
+                </div>
+                <div className="p-3 bg-green-50 rounded-lg text-center">
+                  <div className="font-semibold text-green-800">EDIFACT</div>
+                  <div className="text-xs text-green-600">ORDERS, INVOIC</div>
+                </div>
+                <div className="p-3 bg-green-50 rounded-lg text-center">
+                  <div className="font-semibold text-green-800">HL7</div>
+                  <div className="text-xs text-green-600">v2.x, FHIR</div>
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Row 2: File Parsing */}
       <Card>
         <CardHeader>
           <CardTitle>File Parsing</CardTitle>
@@ -158,7 +249,7 @@ function ContentPageContent() {
         </CardContent>
       </Card>
 
-      {/* Row 3: Parse Preview (stacked below, full width) */}
+      {/* Row 3: Parse Preview */}
       <Card>
         <CardHeader>
           <CardTitle>Parse Preview</CardTitle>

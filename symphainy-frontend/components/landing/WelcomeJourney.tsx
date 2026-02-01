@@ -11,6 +11,7 @@ import { useApp } from "@/shared/agui/AppProvider";
 import { useAuth } from '@/shared/auth/AuthProvider';
 // ✅ PHASE 4: Session-First - Use SessionBoundary for session state
 import { useSessionBoundary, SessionStatus } from '@/shared/state/SessionBoundaryProvider';
+import { useTenant } from "@/shared/contexts/TenantContext";
 import { useGuideAgent } from "@/shared/agui/GuideAgentProvider";
 import { pillars } from "@/shared/data/pillars";
 import { toast } from "sonner";
@@ -31,6 +32,9 @@ export function WelcomeJourney({
   const { user } = useAuth(); // Keep for user data
   const isAuthenticated = sessionState.status === SessionStatus.Active;
   const guideAgent = useGuideAgent();
+  
+  // Get tenant configuration for personalized welcome
+  const { currentTenant, tenantId } = useTenant();
   
   // All hooks must be called before any conditional returns (Rules of Hooks)
   const [userGoals, setUserGoals] = useState("");
@@ -247,13 +251,23 @@ export function WelcomeJourney({
       <div className="w-full min-h-screen bg-card text-card-foreground pt-15 md:pt-20 rounded-xl shadow-lg border">
         <div className="text-center mb-10">
           <h1 className="text-h1 text-4xl bg-gradient-to-r from-blue-700 via-green-500 via-purple-500 to-orange-700 bg-clip-text text-transparent font-bold">
-            Let's Build Your Coexistence Future
+            {currentTenant.branding?.welcome_message || "Let's Build Your Coexistence Future"}
           </h1>
           <p className="text-lead text-sm mt-8 max-w-3xl mx-auto">
-            Follow a guided journey through the four pillars of SymphAIny to
-            transform your business. Our AI agent will analyze your goals and
-            create a customized solution structure just for you.
+            {tenantId === 'aar' 
+              ? 'Upload your After Action Reports to extract lessons learned, identify risks, and generate actionable recommendations.'
+              : tenantId === 'pso'
+              ? 'Upload permit and service order data for processing, compliance analysis, and workflow optimization.'
+              : tenantId === 'vlp'
+              ? 'Upload policy data to begin your modernization journey - from mainframe extraction to migration planning.'
+              : 'Follow a guided journey through the four pillars of SymphAIny to transform your business. Our AI agent will analyze your goals and create a customized solution structure just for you.'}
           </p>
+          {/* Show tenant name badge if not base tenant */}
+          {tenantId !== 'base' && (
+            <div className="mt-4 inline-flex items-center px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+              <span className="text-sm font-medium text-blue-800">{currentTenant.tenant_name}</span>
+            </div>
+          )}
         </div>
 
         {/* Goal Analysis Section */}

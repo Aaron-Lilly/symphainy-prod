@@ -7,6 +7,7 @@ export const dynamic = 'force-dynamic';
 import { useSessionBoundary, SessionStatus } from "@/shared/state/SessionBoundaryProvider";
 import { useAuth } from "@/shared/auth/AuthProvider"; // Keep for user data
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
+import { useTenant } from "@/shared/contexts/TenantContext";
 import { useOperationsAPIManager } from "@/shared/hooks/useOperationsAPIManager";
 import { SecondaryChatbotAgent } from "@/shared/types/secondaryChatbot";
 // ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms (already imported above)
@@ -44,6 +45,10 @@ export default function JourneyPillar() {
   const setAgentInfo = setChatbotAgentInfo; // Alias for compatibility
   const isAuthenticated = sessionState.status === SessionStatus.Active;
   const operationsAPIManager = useOperationsAPIManager();
+  
+  // Get tenant configuration for conditional features
+  const { currentTenant } = useTenant();
+  const operationsFeatures = currentTenant.features.operations;
 
   const pathname = usePathname();
 
@@ -144,17 +149,18 @@ export default function JourneyPillar() {
   }, [isAuthenticated, initialized, sessionState.sessionId, state.realm.content.files]);
 
 
-  // Set up journey liaison agent
+  // Set up journey liaison agent with tenant-specific context
   useEffect(() => {
     setAgentInfo({
-      title: "Journey Liaison",
+      title: "Operations Liaison",
       agent: "journey",
       file_url: "",
-      additional_info: "Your AI assistant for journey and workflow management",
+      additional_info: currentTenant.agents?.liaison_agent_prompt_context ||
+        "Your AI assistant for operations and workflow management",
     });
     // Keep main chatbot open by default - GuideAgent will be shown
     setMainChatbotOpen(true);
-  }, [setAgentInfo, setMainChatbotOpen]);
+  }, [setAgentInfo, setMainChatbotOpen, currentTenant]);
 
   // Handle coexistence analysis
   const handleAnalyze = async () => {
@@ -371,7 +377,7 @@ export default function JourneyPillar() {
 
           {(selected.SOP || selected.workflow) && (
             <div className="flex space-x-4">
-              {selected.SOP && selected.workflow && (
+              {selected.SOP && selected.workflow && operationsFeatures.show_coexistence_analysis && (
                 <button
                   onClick={handleAnalyze}
                   disabled={loading.isLoading}
@@ -380,7 +386,7 @@ export default function JourneyPillar() {
                   Analyze Coexistence
                 </button>
               )}
-              {selected.SOP && (
+              {selected.SOP && operationsFeatures.show_workflow_builder && (
                 <button
                   onClick={handleGenerateWorkflowFromSop}
                   disabled={loading.isLoading}
@@ -389,7 +395,7 @@ export default function JourneyPillar() {
                   Generate Workflow from SOP
                 </button>
               )}
-              {selected.workflow && (
+              {selected.workflow && operationsFeatures.show_sop_generator && (
                 <button
                   onClick={handleGenerateSopFromWorkflow}
                   disabled={loading.isLoading}
@@ -409,22 +415,39 @@ export default function JourneyPillar() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-800">Journey</h1>
+            <h1 className="text-3xl font-bold text-gray-800">Operations</h1>
             <p className="text-gray-600 mt-2">
-              Manage workflows, SOPs, and process optimization
+              {currentTenant.tenant_id === 'aar'
+                ? 'Generate SOPs from After Action Report insights.'
+                : currentTenant.tenant_id === 'pso'
+                ? 'Build workflows for permit processing and compliance.'
+                : currentTenant.tenant_id === 'vlp'
+                ? 'Create migration workflows and coexistence blueprints.'
+                : 'Manage workflows, SOPs, and process optimization'}
             </p>
+            {/* Show enabled features for this tenant */}
+            <div className="flex gap-2 mt-2">
+              {operationsFeatures.show_sop_generator && (
+                <Badge variant="outline" className="text-xs">SOP Generator</Badge>
+              )}
+              {operationsFeatures.show_workflow_builder && (
+                <Badge variant="outline" className="text-xs">Workflow Builder</Badge>
+              )}
+              {operationsFeatures.show_coexistence_analysis && (
+                <Badge variant="outline" className="text-xs">Coexistence Analysis</Badge>
+              )}
+            </div>
           </div>
-          {/* ✅ PHASE 1.2: Show which Liaison Agent is available */}
           <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
             <span className="text-xs font-semibold text-blue-900">Available:</span>
-            <span className="text-xs text-blue-700">Journey Liaison Agent</span>
+            <span className="text-xs text-blue-700">Operations Liaison Agent</span>
             <span className="flex h-2 w-2 rounded-full bg-blue-500" title="Liaison agent available" />
           </div>
         </div>
 
         <JourneyChoice
           onSelectExisting={() => setJourney('select')}
-          onStartWizard={() => setJourney('wizard')}
+          onStartWizard={operationsFeatures.show_workflow_builder ? () => setJourney('wizard') : undefined}
         />
 
         {/* Display results when available */}
@@ -464,80 +487,84 @@ export default function JourneyPillar() {
         />
       </div>
 
-      {/* ✅ PHASE 3.2: Enhanced Coexistence Analysis - More Prominent */}
-      <div className="mt-8">
-        {/* Coexistence Explanation Section */}
-        {(!selected.SOP || !selected.workflow) && (
-          <Card className="mb-6 border-2 border-blue-200 bg-blue-50/30">
-            <CardHeader>
-              <CardTitle className="text-xl">Coexistence Analysis</CardTitle>
-              <CardDescription>
-                Understand how your SOPs and workflows coexist and identify opportunities for alignment
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-white border border-gray-200 rounded-lg p-4">
-                    <h4 className="font-semibold text-gray-800 mb-2">SOP (Standard Operating Procedure)</h4>
-                    <p className="text-sm text-gray-600">
-                      Defines how work <em>should</em> be done according to policies and procedures.
+      {/* ✅ PHASE 3.2: Enhanced Coexistence Analysis - Conditional based on tenant */}
+      {operationsFeatures.show_coexistence_analysis && (
+        <div className="mt-8">
+          {/* Coexistence Explanation Section */}
+          {(!selected.SOP || !selected.workflow) && (
+            <Card className="mb-6 border-2 border-blue-200 bg-blue-50/30">
+              <CardHeader>
+                <CardTitle className="text-xl">Coexistence Analysis</CardTitle>
+                <CardDescription>
+                  {currentTenant.tenant_id === 'vlp'
+                    ? 'Analyze how legacy mainframe systems coexist with modern applications during migration.'
+                    : 'Understand how your SOPs and workflows coexist and identify opportunities for alignment'}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="bg-white border border-gray-200 rounded-lg p-4">
+                      <h4 className="font-semibold text-gray-800 mb-2">SOP (Standard Operating Procedure)</h4>
+                      <p className="text-sm text-gray-600">
+                        Defines how work <em>should</em> be done according to policies and procedures.
+                      </p>
+                    </div>
+                    <div className="bg-white border border-gray-200 rounded-lg p-4">
+                      <h4 className="font-semibold text-gray-800 mb-2">Workflow</h4>
+                      <p className="text-sm text-gray-600">
+                        Defines how work <em>is</em> done in practice, including actual processes and tools.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <h4 className="font-semibold text-blue-900 mb-2">How They Coexist</h4>
+                    <p className="text-sm text-blue-800">
+                      The platform analyzes the relationship between SOPs and workflows, identifying gaps, overlaps,
+                      and opportunities for alignment. This helps bridge the gap between policy (SOP) and practice (workflow).
                     </p>
                   </div>
-                  <div className="bg-white border border-gray-200 rounded-lg p-4">
-                    <h4 className="font-semibold text-gray-800 mb-2">Workflow</h4>
-                    <p className="text-sm text-gray-600">
-                      Defines how work <em>is</em> done in practice, including actual processes and tools.
-                    </p>
+                  <div className="text-center text-sm text-gray-600">
+                    <p>Select both an SOP file and a workflow file to begin coexistence analysis</p>
                   </div>
                 </div>
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                  <h4 className="font-semibold text-blue-900 mb-2">How They Coexist</h4>
-                  <p className="text-sm text-blue-800">
-                    The platform analyzes the relationship between SOPs and workflows, identifying gaps, overlaps,
-                    and opportunities for alignment. This helps bridge the gap between policy (SOP) and practice (workflow).
-                  </p>
-                </div>
-                <div className="text-center text-sm text-gray-600">
-                  <p>Select both an SOP file and a workflow file to begin coexistence analysis</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
+              </CardContent>
+            </Card>
+          )}
 
-        {/* Coexistence Analysis Results - Enhanced Display */}
-        {(selected.SOP && selected.workflow) && (
-          <Card className="mb-6 border-2 border-green-200 bg-green-50/30">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="text-xl">Coexistence Analysis Ready</CardTitle>
-                  <CardDescription>
-                    SOP and workflow selected. Click "Analyze Coexistence" to generate the coexistence blueprint.
-                  </CardDescription>
+          {/* Coexistence Analysis Results - Enhanced Display */}
+          {(selected.SOP && selected.workflow) && (
+            <Card className="mb-6 border-2 border-green-200 bg-green-50/30">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="text-xl">Coexistence Analysis Ready</CardTitle>
+                    <CardDescription>
+                      SOP and workflow selected. Click "Analyze Coexistence" to generate the coexistence blueprint.
+                    </CardDescription>
+                  </div>
+                  <div className="flex gap-2">
+                    <Badge variant="outline" className="bg-white">SOP: {selected.SOP?.ui_name}</Badge>
+                    <Badge variant="outline" className="bg-white">Workflow: {selected.workflow?.ui_name}</Badge>
+                  </div>
                 </div>
-                <div className="flex gap-2">
-                  <Badge variant="outline" className="bg-white">SOP: {selected.SOP?.ui_name}</Badge>
-                  <Badge variant="outline" className="bg-white">Workflow: {selected.workflow?.ui_name}</Badge>
-                </div>
-              </div>
-            </CardHeader>
-          </Card>
-        )}
+              </CardHeader>
+            </Card>
+          )}
 
-        <CoexistenceBlueprint
-          sopText={coexistenceState.sopText}
-          workflowData={coexistenceState.workflowData}
-          generatedSopUuid={coexistenceState.generatedSopUuid}
-          generatedWorkflowUuid={coexistenceState.generatedWorkflowUuid}
-          selectedSopFileUuid={selected.SOP?.uuid || null}
-          selectedWorkflowFileUuid={selected.workflow?.uuid || null}
-          sessionToken={sessionState.sessionId || ""}
-          sessionState={coexistenceState}
-          isEnabled={coexistenceState.isEnabled || !!(selected.SOP && selected.workflow)}
-        />
-      </div>
+          <CoexistenceBlueprint
+            sopText={coexistenceState.sopText}
+            workflowData={coexistenceState.workflowData}
+            generatedSopUuid={coexistenceState.generatedSopUuid}
+            generatedWorkflowUuid={coexistenceState.generatedWorkflowUuid}
+            selectedSopFileUuid={selected.SOP?.uuid || null}
+            selectedWorkflowFileUuid={selected.workflow?.uuid || null}
+            sessionToken={sessionState.sessionId || ""}
+            sessionState={coexistenceState}
+            isEnabled={coexistenceState.isEnabled || !!(selected.SOP && selected.workflow)}
+          />
+        </div>
+      )}
 
       {/* Completion Message */}
       <PillarCompletionMessage

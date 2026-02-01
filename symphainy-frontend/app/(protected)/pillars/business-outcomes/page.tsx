@@ -28,6 +28,7 @@ import RoadmapTimeline from "@/components/experience/RoadmapTimeline";
 import { Button } from "@/components/ui/button";
 import { usePlatformState } from "@/shared/state/PlatformStateProvider";
 import { useSessionBoundary } from "@/shared/state/SessionBoundaryProvider";
+import { useTenant } from "@/shared/contexts/TenantContext";
 import { useOutcomesAPIManager } from "@/shared/hooks/useOutcomesAPIManager";
 import { Loader, AlertTriangle, FileText, Play, Download, Upload, MessageCircle, Eye, GitBranch } from "lucide-react";
 import { FileMetadata, FileType, FileStatus } from "@/shared/types/file";
@@ -64,6 +65,10 @@ export default function BusinessOutcomesPillarPage() {
   // ✅ PHASE 5: Use PlatformStateProvider instead of Jotai atoms
   const { state, setChatbotAgentInfo, setMainChatbotOpen, submitIntent, getExecutionStatus } = usePlatformState();
   const setAgentInfo = setChatbotAgentInfo; // Alias for compatibility
+  
+  // Get tenant configuration
+  const { currentTenant } = useTenant();
+  const outcomesFeatures = currentTenant.features.outcomes;
 
   const outcomesAPIManager = useOutcomesAPIManager();
   const [showProposal, setShowProposal] = useState(false);
@@ -178,18 +183,19 @@ export default function BusinessOutcomesPillarPage() {
     }
   }, [sessionState.sessionId, hasInsights, hasOperations, outcomesAPIManager]);
 
-  // ✅ PHASE 1.2: Set up Business Outcomes Liaison Agent
+  // ✅ PHASE 1.2: Set up Business Outcomes Liaison Agent with tenant context
   useEffect(() => {
     // Configure the secondary agent but don't show it by default
     setAgentInfo({
       agent: SecondaryChatbotAgent.BUSINESS_OUTCOMES_LIAISON,
       title: SecondaryChatbotTitle.BUSINESS_OUTCOMES_LIAISON,
       file_url: "",
-      additional_info: "Strategic planning and business outcomes expert. Ask me about roadmap generation, POC creation, solution synthesis, and cross-pillar integration."
+      additional_info: currentTenant.agents?.liaison_agent_prompt_context ||
+        "Strategic planning and business outcomes expert. Ask me about roadmap generation, POC creation, solution synthesis, and cross-pillar integration."
     });
     // Keep main chatbot open by default - GuideAgent will be shown
     setMainChatbotOpen(true);
-  }, [setAgentInfo, setMainChatbotOpen]);
+  }, [setAgentInfo, setMainChatbotOpen, currentTenant]);
 
   const getFileTypeDisplay = (fileType: FileType | string): string => {
     const typeMap: Record<FileType, string> = {
@@ -511,8 +517,29 @@ export default function BusinessOutcomesPillarPage() {
           <div>
             <h1 className="text-3xl font-bold text-gray-800">Business Outcomes</h1>
             <p className="text-gray-600 mt-2">
-              Review and synthesize insights from all pillars to create strategic roadmaps and POC proposals
+              {currentTenant.tenant_id === 'aar'
+                ? 'Synthesize AAR insights into actionable recommendations and strategic roadmaps.'
+                : currentTenant.tenant_id === 'pso'
+                ? 'Generate compliance reports, operational blueprints, and permit processing roadmaps.'
+                : currentTenant.tenant_id === 'vlp'
+                ? 'Create migration blueprints, POC proposals, and modernization roadmaps.'
+                : 'Review and synthesize insights from all pillars to create strategic roadmaps and POC proposals'}
             </p>
+            {/* Show enabled features for this tenant */}
+            <div className="flex gap-2 mt-2">
+              {outcomesFeatures.show_roadmap_generator && (
+                <Badge variant="outline" className="text-xs">Roadmap Generator</Badge>
+              )}
+              {outcomesFeatures.show_poc_generator && (
+                <Badge variant="outline" className="text-xs">POC Generator</Badge>
+              )}
+              {outcomesFeatures.show_blueprint_generator && (
+                <Badge variant="outline" className="text-xs">Blueprint Generator</Badge>
+              )}
+              {outcomesFeatures.show_synthesis && (
+                <Badge variant="outline" className="text-xs">Synthesis</Badge>
+              )}
+            </div>
           </div>
           {/* ✅ PHASE 1.2: Show which Liaison Agent is available */}
           <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
