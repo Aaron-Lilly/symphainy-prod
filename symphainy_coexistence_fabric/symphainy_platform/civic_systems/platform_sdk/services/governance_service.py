@@ -103,51 +103,63 @@ class GovernanceService:
             self._logger.warning(f"Failed to initialize SecurityGuardSDK: {e}")
         
         try:
-            # Curator SDK
+            # Curator SDK — required for platform; must be Supabase-backed (no in-memory-only as final answer)
             from symphainy_platform.civic_systems.smart_city.sdk.curator_sdk import CuratorSDK
+            from symphainy_platform.foundations.curator.foundation_service import CuratorFoundationService
+            registry = public_works.get_registry_abstraction() if hasattr(public_works, 'get_registry_abstraction') else None
+            curator_foundation = CuratorFoundationService(public_works_foundation=public_works)
+            curator_service = public_works.get_curator_service() if hasattr(public_works, 'get_curator_service') else None
+            if not curator_service:
+                raise RuntimeError(
+                    "Curator is required for the platform to run and is only valid with Supabase. "
+                    "Curator service is missing. Ensure Public Works has been initialized (await public_works.initialize()) with Supabase and artifact storage configured."
+                )
             self._curator_sdk = CuratorSDK(
-                registry_abstraction=getattr(public_works, 'registry_abstraction', None)
+                registry_abstraction=registry,
+                curator_foundation=curator_foundation,
+                curator_service=curator_service,
             )
-            self._logger.debug("✅ CuratorSDK initialized")
+            self._logger.debug("✅ CuratorSDK initialized (required; Supabase-backed)")
+        except RuntimeError:
+            raise
         except Exception as e:
-            self._logger.warning(f"Failed to initialize CuratorSDK: {e}")
+            self._logger.error(f"Failed to initialize CuratorSDK: {e}", exc_info=True)
+            raise RuntimeError(
+                "Curator is required for the platform to run. CuratorSDK initialization failed."
+            ) from e
         
         try:
-            # Librarian SDK
+            # Librarian SDK — use boundary getter
             from symphainy_platform.civic_systems.smart_city.sdk.librarian_sdk import LibrarianSDK
-            self._librarian_sdk = LibrarianSDK(
-                knowledge_discovery_abstraction=getattr(public_works, 'knowledge_discovery_abstraction', None)
-            )
+            knowledge = public_works.get_knowledge_discovery_abstraction() if hasattr(public_works, 'get_knowledge_discovery_abstraction') else None
+            self._librarian_sdk = LibrarianSDK(knowledge_discovery_abstraction=knowledge)
             self._logger.debug("✅ LibrarianSDK initialized")
         except Exception as e:
             self._logger.warning(f"Failed to initialize LibrarianSDK: {e}")
         
         try:
-            # City Manager SDK
+            # City Manager SDK — use boundary getter
             from symphainy_platform.civic_systems.smart_city.sdk.city_manager_sdk import CityManagerSDK
-            self._city_manager_sdk = CityManagerSDK(
-                tenant_abstraction=getattr(public_works, 'tenant_abstraction', None)
-            )
+            tenant = public_works.get_tenant_abstraction() if hasattr(public_works, 'get_tenant_abstraction') else None
+            self._city_manager_sdk = CityManagerSDK(tenant_abstraction=tenant)
             self._logger.debug("✅ CityManagerSDK initialized")
         except Exception as e:
             self._logger.warning(f"Failed to initialize CityManagerSDK: {e}")
         
         try:
-            # Traffic Cop SDK
+            # Traffic Cop SDK — use boundary getter
             from symphainy_platform.civic_systems.smart_city.sdk.traffic_cop_sdk import TrafficCopSDK
-            self._traffic_cop_sdk = TrafficCopSDK(
-                state_abstraction=getattr(public_works, 'state_abstraction', None)
-            )
+            state = public_works.get_state_abstraction() if hasattr(public_works, 'get_state_abstraction') else None
+            self._traffic_cop_sdk = TrafficCopSDK(state_abstraction=state)
             self._logger.debug("✅ TrafficCopSDK initialized")
         except Exception as e:
             self._logger.warning(f"Failed to initialize TrafficCopSDK: {e}")
         
         try:
-            # Post Office SDK
+            # Post Office SDK — use boundary getter
             from symphainy_platform.civic_systems.smart_city.sdk.post_office_sdk import PostOfficeSDK
-            self._post_office_sdk = PostOfficeSDK(
-                event_publisher_abstraction=getattr(public_works, 'event_publisher_abstraction', None)
-            )
+            event_pub = public_works.get_event_publisher_abstraction() if hasattr(public_works, 'get_event_publisher_abstraction') else None
+            self._post_office_sdk = PostOfficeSDK(event_publisher_abstraction=event_pub)
             self._logger.debug("✅ PostOfficeSDK initialized")
         except Exception as e:
             self._logger.warning(f"Failed to initialize PostOfficeSDK: {e}")
@@ -161,11 +173,10 @@ class GovernanceService:
             self._logger.warning(f"Failed to initialize ConductorSDK: {e}")
         
         try:
-            # Nurse SDK
+            # Nurse SDK — use boundary getter
             from symphainy_platform.civic_systems.smart_city.sdk.nurse_sdk import NurseSDK
-            self._nurse_sdk = NurseSDK(
-                telemetry_abstraction=getattr(public_works, 'telemetry_abstraction', None)
-            )
+            telemetry = public_works.get_telemetry_abstraction() if hasattr(public_works, 'get_telemetry_abstraction') else None
+            self._nurse_sdk = NurseSDK(telemetry_abstraction=telemetry)
             self._logger.debug("✅ NurseSDK initialized")
         except Exception as e:
             self._logger.warning(f"Failed to initialize NurseSDK: {e}")

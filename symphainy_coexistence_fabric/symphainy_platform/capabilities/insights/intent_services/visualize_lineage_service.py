@@ -85,13 +85,14 @@ class VisualizeLineageService(PlatformIntentService):
         }
     
     async def _get_session_artifacts(self, ctx: PlatformContext) -> List[str]:
-        """Get all artifacts for current session."""
-        if ctx.platform and ctx.platform.registry:
+        """Get all artifacts for current session via file storage (not registry)."""
+        if ctx.platform:
             try:
-                files = await ctx.platform.registry.list_files(
+                user_id = ctx.metadata.get("user_id", "system") if ctx.metadata else "system"
+                files = await ctx.platform.list_files(
                     tenant_id=ctx.tenant_id,
-                    session_id=ctx.session_id,
-                    limit=100
+                    user_id=user_id,
+                    limit=100,
                 )
                 return [f.get("uuid") or f.get("file_id") for f in (files or [])]
             except Exception as e:
@@ -106,10 +107,10 @@ class VisualizeLineageService(PlatformIntentService):
         """Get metadata for all artifacts including provenance info."""
         metadata = {}
         
-        if ctx.platform and ctx.platform.registry:
+        if ctx.platform:
             for artifact_id in artifact_ids:
                 try:
-                    file_meta = await ctx.platform.registry.get_file(
+                    file_meta = await ctx.platform.get_file_metadata(
                         file_id=artifact_id,
                         tenant_id=ctx.tenant_id
                     )

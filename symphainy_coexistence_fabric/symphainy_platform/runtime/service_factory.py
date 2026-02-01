@@ -95,12 +95,14 @@ async def create_runtime_services(config: Dict[str, Any]) -> RuntimeServices:
     
     # Step 3.5: Create PlatformContextFactory (Platform SDK)
     # This is the front door for building on Symphainy - intent services
-    # receive PlatformContext (ctx) for accessing platform capabilities
+    # receive PlatformContext (ctx) for accessing platform capabilities.
+    # Per INTERCEPT_ALIGNMENT_CONTRACT: inject boundary + state_surface + wal + artifact_registry.
     logger.info("  → Creating PlatformContextFactory...")
     platform_context_factory = PlatformContextFactory(
         public_works=public_works,
         state_surface=state_surface,
-        wal=wal
+        wal=wal,
+        artifact_registry=state_surface.artifact_registry,
     )
     logger.info("  ✅ PlatformContextFactory created")
     

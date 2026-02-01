@@ -1,18 +1,32 @@
-# Meet in the Middle: Takeoff Plan (Probing Approach)
+# Meet in the Middle: Takeoff Plan (Audit–Fix–Probe–Document)
 
-**Purpose:** Takeoff’s plan to “meet Team B in the middle” at the Experience SDK and runtime contracts. We use a **probing approach**: at each layer we reconcile (docs ↔ code ↔ behavior), validate (run and capture), and document **why it works and how it’s going to behave**. Order is strict: finish genesis → foundations → runtime → civic systems → backend E2E → Phase 2b → frontend E2E.
+**Purpose:** Takeoff’s plan to “meet Team B in the middle” at the Platform Boundary (Experience SDK and runtime contracts). We use an **audit–fix–probe–document** approach: at each layer we **audit** against the final contracts and vision, **fix** deviations, **probe** to confirm success and failure are predictable, and **document** why it works and how it fails. Order is strict: genesis → foundations → runtime → civic systems → backend E2E → Phase 2b → frontend E2E.
 
-**References:** [PLATFORM_VISION_RECONCILIATION.md](PLATFORM_VISION_RECONCILIATION.md), [HANDOFF_TO_TEAM_B.md](HANDOFF_TO_TEAM_B.md), [LANDING_AGENT_TASKS.md](LANDING_AGENT_TASKS.md), [FOUNDATION_PLAN.md](FOUNDATION_PLAN.md), [PHASE0_WHAT_WE_ACTUALLY_BUILT.md](testing/PHASE0_WHAT_WE_ACTUALLY_BUILT.md), [MVP_FRONTEND_BACKEND_CONNECTIVITY.md](architecture/MVP_FRONTEND_BACKEND_CONNECTIVITY.md).
+**References:** [INTERCEPT_ALIGNMENT_CONTRACT.md](INTERCEPT_ALIGNMENT_CONTRACT.md), [PLATFORM_SDK_REQUIREMENT_SPEC.md](PLATFORM_SDK_REQUIREMENT_SPEC.md), [SOVEREIGNTY_ARCHITECTURE.md](architecture/SOVEREIGNTY_ARCHITECTURE.md), [PLATFORM_VISION_RECONCILIATION.md](PLATFORM_VISION_RECONCILIATION.md), [HANDOFF_TO_TEAM_B.md](HANDOFF_TO_TEAM_B.md), [FOUNDATION_PLAN.md](FOUNDATION_PLAN.md), [MVP_FRONTEND_BACKEND_CONNECTIVITY.md](architecture/MVP_FRONTEND_BACKEND_CONNECTIVITY.md).
 
 ---
 
-## 1. What “probing” means here
+## 1. New Phase: Contracts in Place
 
-- **Reconcile:** Align docs, code, and observed behavior. Where they diverge, fix or document the delta and the authority (e.g. executable truth wins; reconcile back into vision).
-- **Validate:** Run the system (or the layer), capture what actually happens (logs, responses, failures), and confirm invariants.
-- **Deliverable per step:** A short **“why it works and how it’s going to behave”** narrative (or checklist) so the next layer and Team B can rely on it. No step is “done” without this.
+The platform told us enough to define what it **should be**. We now have final architectural contracts and vision:
 
-Same mindset as startup probing (e.g. [PHASE0_WHAT_WE_ACTUALLY_BUILT.md](testing/PHASE0_WHAT_WE_ACTUALLY_BUILT.md)): we don’t assume; we probe, capture, and document.
+- **Intercept Alignment Contract** — Platform Boundary, protocol getters, Curator/registry surface, Civic surfaces, Runtime-provided resources, protocol-only rule.
+- **Platform SDK Requirement Spec** — What Team B builds from; Curator/registry contract, Smart City surfaces, ctx shape.
+- **Sovereignty Architecture** — Three domains, Curator as intelligence governance authority, classification schema, promotion pipeline, agent learning through Curator.
+- **Curator layer target** — Adapter→abstraction→protocol pattern, infra stack, cleanup order (CURATOR_LAYER_CLEANUP_AND_TARGET_PATTERN, CURATOR_SOVEREIGNTY_VISION_AND_INFRASTRUCTURE).
+
+So we no longer “probe to discover”; we **audit against the contract**, **fix** what doesn’t match, then **probe to confirm** that the layer succeeds and fails in predictable ways we can document.
+
+---
+
+## 2. Approach: Audit → Fix → Probe → Document
+
+- **Audit:** Compare the layer to the contract and vision. List gaps: missing getters, wrong types, adapter leaks, missing protocols, behavior that violates the “should be.”
+- **Fix:** Implement the fixes so the layer conforms to the contract (protocol-only boundary, correct wiring, predictable failure modes).
+- **Probe:** Run tests (or manual probes) to confirm: **success paths** behave as documented; **failure paths** fail in predictable ways (e.g. Platform contract §8A, missing dependency → RuntimeError with clear message, no silent degradation).
+- **Document:** Capture **“why it works and how it behaves”** and **“how it fails and when”** so the next layer and Team B can rely on it. No step is “done” without this.
+
+Probe tests are used to **confirm** conformance, not to discover behavior. We know what “should” happen; we fix until probes pass and failure modes are documented.
 
 ---
 
@@ -25,9 +39,9 @@ Same mindset as startup probing (e.g. [PHASE0_WHAT_WE_ACTUALLY_BUILT.md](testing
 
 ---
 
-## 3. Ordered probing sequence (Takeoff)
+## 5. Ordered sequence (Takeoff): Audit → Fix → Probe → Document
 
-Execute in this order. Each step ends with: **reconcile → validate → document why it works and how it’s going to behave.**
+Execute in this order. Each step: **audit** the layer against the contract/vision, **fix** deviations, **probe** to confirm success and failure are predictable, **document** why it works and how it fails.
 
 ### Step 1 — Finish genesis protocol
 
@@ -39,77 +53,56 @@ Execute in this order. Each step ends with: **reconcile → validate → documen
 - Confirm G2 (config loads), G3 (pre-boot / Public Works reachable), and Φ3 init order are enforced or explicitly deferred with a reason.
 - Lifecycle hooks (startup_begin, startup_complete, shutdown_begin, shutdown_complete, crash_detected): define the five hooks and insert them in the boot/lifecycle path; MVP = no-ops. Document locations in BOOT_PHASES or a short lifecycle doc.
 
-**Deliverable:** Genesis is “finished” to the agreed scope (e.g. G2/G3/Φ3 in code; Φ4 stub optional here or in Step 4). Written **“why genesis works and how boot behaves”** (what runs when, what fails fast, what is deferred).
+**Deliverable:** Genesis is “finished” to the agreed scope (e.g. G2/G3/Φ3 in code; Φ4 stub optional here or in Step 4). **Audit** boot against genesis doc; **fix** gaps; **probe** boot (success path + missing config / failure path); **document** “why genesis works and how boot behaves” and “how it fails and when.”
 
 **References:** [genesis_protocol.md](genesis_protocol.md), [FOUNDATION_PLAN.md](FOUNDATION_PLAN.md), [BOOT_PHASES.md](architecture/BOOT_PHASES.md), [PLATFORM_VISION_RECONCILIATION.md](PLATFORM_VISION_RECONCILIATION.md) §2.3 (lifecycle hooks).
 
 ---
 
-### Step 2 — Probe foundations (Public Works, Curator)
+### Step 2 — Foundations (Public Works, Curator)
 
-**Goal:** Review **all** adapters and the **5-layer pattern** for exposing them; **validate alignment** with the current architectural vision (updated_platform_vision, PLATFORM_VISION_RECONCILIATION). This is a **multi-day, messy** job: material refactoring may emerge at every layer (e.g. removing startup logic from adapters, defining what actually gets registered and where in Curator).
+**Goal:** Align foundations with the **Platform Boundary** and Curator target pattern. **Audit** against INTERCEPT_ALIGNMENT_CONTRACT (protocol getters, no adapter leak), CURATOR_LAYER_CLEANUP_AND_TARGET_PATTERN (adapter→abstraction→protocol, file_storage for list_files not registry), and SOVEREIGNTY vision. **Fix** deviations (missing getters, wrong callers, Curator stubs/unification). **Probe** to confirm: boot succeeds with expected config; missing optional adapter fails predictably (e.g. no crash, clear log); Curator/registry surface behaves per contract. **Document** “why foundations work and how they behave” and “how they fail and when.”
 
-**Probe:**
+**Audit:**
 
-- **Public Works:** What adapters/abstractions actually exist at boot? What config keys drive them? Run boot, capture log (as in PHASE0_WHAT_WE_ACTUALLY_BUILT); reconcile with CONFIG_ACQUISITION_SPEC / PRE_BOOT_SPEC. Document which adapters are created vs not in dev/CI/prod.
-- **Curator:** Per PLATFORM_VISION_RECONCILIATION, Curator = existing registries (e.g. IntentRegistry, schema registry). Reconcile docs with code: where do “Curator” responsibilities live? Validate that registry access and registration behave as documented.
+- **Public Works:** Do all boundary getters exist and return protocol types? Any adapter leaks? Config per CONFIG_ACQUISITION_SPEC / PRE_BOOT_SPEC? Which adapters are created vs not in dev/CI/prod?
+- **Curator:** Does ctx.governance.registry get a Curator implementation that matches the contract (register_capability, discover_agents, get_domain_registry, promote_to_platform_dna)? Are list_files callers using file_storage not registry? Curator backing unified (Supabase or CuratorFoundationService)?
 
-**Deliverable:** Foundations probe report (or update to PHASE0_WHAT_WE_ACTUALLY_BUILT / FOUNDATION_PLAN). **“Why foundations work and how they behave”** — what is guaranteed at boot, what is optional, what fails and how.
+**Deliverable:** Foundations **audit list** (gaps vs contract), **fixes** applied, **probe** results (success + failure paths). **“Why foundations work and how they behave”** and **“how they fail and when.”**
 
-**References:** [PUBLIC_WORKS_PROBE_PLAN.md](PUBLIC_WORKS_PROBE_PLAN.md) (full scope: all adapters, 5-layer pattern, vision alignment — multi-day), [PHASE0_WHAT_WE_ACTUALLY_BUILT.md](testing/PHASE0_WHAT_WE_ACTUALLY_BUILT.md), [PROBE_LAYER_MAP.md](testing/PROBE_LAYER_MAP.md), [updated_platform_vision.md](updated_platform_vision.md), [CONFIG_ACQUISITION_SPEC.md](architecture/CONFIG_ACQUISITION_SPEC.md), [PRE_BOOT_SPEC.md](architecture/PRE_BOOT_SPEC.md).
+**Strategic approach:** Do not rely on "fix in context as we work up" alone. Execute Step 2 as a **Foundation Contract Pass** per [FOUNDATION_CONTRACT_PASS_STRATEGY.md](FOUNDATION_CONTRACT_PASS_STRATEGY.md): define the foundation contract, audit against it, fix all violations, probe in isolation, document "foundation contract satisfied." Only then proceed to Runtime and Civic; if we find a foundation bug above, fix it and re-run foundation probes.
+
+**Get-on-track path:** For a single contract, CTA pattern (no fallbacks, no adapter leak), and Public Works-first-then-Curator order, use [GETTING_ON_TRACK_ASSESSMENT_AND_PLAN.md](GETTING_ON_TRACK_ASSESSMENT_AND_PLAN.md), [PUBLIC_WORKS_CONTRACT.md](PUBLIC_WORKS_CONTRACT.md), and [architecture/PUBLIC_WORKS_CTA_PATTERN.md](architecture/PUBLIC_WORKS_CTA_PATTERN.md): fill the Public Works contract, audit against it and CTA, fix all gaps, probe, document; then start Curator with schema and migrations for Supabase and build adapter → abstraction → protocol.
+
+**References:** [FOUNDATION_CONTRACT_PASS_STRATEGY.md](FOUNDATION_CONTRACT_PASS_STRATEGY.md), [CURATOR_INFRASTRUCTURE_ALIGNMENT.md](CURATOR_INFRASTRUCTURE_ALIGNMENT.md), [CURATOR_LAYER_CLEANUP_AND_TARGET_PATTERN.md](CURATOR_LAYER_CLEANUP_AND_TARGET_PATTERN.md), [PUBLIC_WORKS_PROBE_PLAN.md](PUBLIC_WORKS_PROBE_PLAN.md), [PHASE0_WHAT_WE_ACTUALLY_BUILT.md](testing/PHASE0_WHAT_WE_ACTUALLY_BUILT.md), [CONFIG_ACQUISITION_SPEC.md](architecture/CONFIG_ACQUISITION_SPEC.md), [PRE_BOOT_SPEC.md](architecture/PRE_BOOT_SPEC.md).
 
 ---
 
-### Step 3 — Probe runtime (including data brain)
+### Step 3 — Runtime (including data brain)
 
-**Goal:** Reconcile and validate the runtime layer; confirm what is implemented vs only designed, and document why it works and how it behaves. Include the **data brain** feature: we have runtime-native data cognition (`DataBrain`, references, provenance); probe whether it’s wired into the runtime graph and integrated into execution/state/artifacts.
-
-**Probe:**
-
-- **Runtime graph:** Init order (StateSurface, WAL, IntentRegistry, ExecutionLifecycleManager, etc.). Run boot and execution paths; capture what is actually used on a typical intent run.
-- **Data brain:** `symphainy_platform/runtime/data_brain.py` exists (DataBrain, DataReference, ProvenanceEntry). Is it constructed in the runtime graph? Is it used by StateSurface, artifact resolution, or any journey? If not, document “designed but not integrated” and either wire it or document the path to integration.
-- **State surface / WAL / execution lifecycle:** Reconcile with RUNTIME_CONTRACTS; validate read/write and execution flow.
-
-**Deliverable:** Runtime probe report. **“Why the runtime works and how it behaves”** — including a clear line on data brain: implemented and integrated vs scaffold-only and where it plugs in later.
+**Goal:** Align runtime with RUNTIME_CONTRACTS and intercept (StateSurface, WAL, ArtifactRegistry injected into PlatformContextFactory; execution lifecycle). **Audit** init order, what is wired vs scaffold-only (e.g. DataBrain). **Fix** wiring gaps. **Probe** to confirm: boot builds runtime graph; intent run uses StateSurface/WAL/ArtifactRegistry; missing dependency fails predictably (e.g. Platform contract §8A). **Document** “why runtime works and how it behaves” and “how it fails and when”; data brain: wired vs deferred and path to integration.
 
 **References:** [RUNTIME_CONTRACTS.md](architecture/RUNTIME_CONTRACTS.md), [ARCHITECTURE_NORTH_STAR.md](ARCHITECTURE_NORTH_STAR.md) (Data Brain / State Surface), `symphainy_platform/runtime/data_brain.py`, [INIT_ORDER_SPEC.md](architecture/INIT_ORDER_SPEC.md).
 
 ---
 
-### Step 4 — Probe civic systems (Smart City, Agentic, Experience; Platform SDK & Orchestrator Health)
+### Step 4 — Civic systems (Smart City, Agentic, Experience; Platform SDK & Orchestrator Health)
 
-**Goal:** Reconcile and validate civic systems; document why they work and how they behave. This is where we **decide and document** Platform SDK and Orchestrator Health (per EXPERIENCE_CIVIC_REFACTOR_PLAN Phase 3).
-
-**Probe:**
-
-- **Smart City / Agentic / Experience:** What roles and APIs exist in code vs docs? Experience SDK contract is already defined; validate that Experience API and RuntimeClient behave per EXPERIENCE_SDK_CONTRACT. Smart City and Agentic: reconcile names to actual services and governance boundaries.
-- **Platform SDK:** Decide (A) keep for solution/capability discovery and admin, (B) deprecate and replace with a smaller “list capabilities/solutions” API on the Experience SDK, or (C) keep internal-only. Document in `docs/architecture/PLATFORM_SDK_DECISION.md` (or section in canonical architecture). If (A) or (B), ensure Experience SDK or admin exposes “list solutions/capabilities” and “get solution/capability config” if experience surfaces need them.
-- **Orchestrator Health:** Decide (A) keep as part of control-tower/observability, (B) move under dedicated control_tower API, or (C) keep as-is and document. Document in `docs/architecture/ORCHESTRATOR_HEALTH_DECISION.md` (or same doc). Ensure admin routes (control_room, developer_view, business_user_view) still work after decisions.
-- **Φ4 stub (optional):** After “runtime graph ready” / “Experience app created,” call a documented step `attach_experience_surfaces(sdk, config)` — no-op or log. Document in BOOT_PHASES that real implementations will register or bind experience UIs here.
-
-**Deliverable:** Civic systems probe report + **PLATFORM_SDK_DECISION** and **ORCHESTRATOR_HEALTH_DECISION**. **“Why civic systems work and how they behave”** — including Platform SDK and Orchestrator Health placement and Φ4 hook.
+**Goal:** Align civic systems with EXPERIENCE_SDK_CONTRACT and intercept (ctx from boundary getters). **Audit** Smart City/Agentic/Experience vs contract; Platform SDK and Orchestrator Health placement. **Fix** deviations. **Probe** to confirm: Experience API and RuntimeClient behave per contract; admin routes work; missing dependency fails predictably. **Document** PLATFORM_SDK_DECISION and ORCHESTRATOR_HEALTH_DECISION; “why civic systems work and how they behave” and “how they fail and when.”
 
 **References:** [EXPERIENCE_SDK_CONTRACT.md](architecture/EXPERIENCE_SDK_CONTRACT.md), [EXPERIENCE_CIVIC_REFACTOR_PLAN.md](architecture/EXPERIENCE_CIVIC_REFACTOR_PLAN.md) Phase 3, [PLATFORM_VISION_RECONCILIATION.md](PLATFORM_VISION_RECONCILIATION.md).
 
 ---
 
-### Step 5 — Backend-only E2E (with probing)
+### Step 5 — Backend-only E2E
 
-**Goal:** Prove the platform and internal contracts work without the frontend. Probe the path; document **why it works and how it’s going to behave**.
-
-**Probe:**
-
-- Start Runtime + Experience.
-- Run: create session (e.g. anonymous or auth via Experience API) → submit intent (e.g. compose_journey or content parse) → get execution status (via Experience or Runtime) → resolve artifact or read result.
-- Capture successes and failures; reconcile with RUNTIME_CONTRACTS and EXPERIENCE_SDK_CONTRACT. Fix or document any mismatch.
-
-**Deliverable:** Backend-only E2E path documented (e.g. “MVP critical path (backend-only)”). **“Why backend E2E works and how it behaves”** — sequence, assumptions, and known limits.
+**Goal:** Prove the platform and internal contracts work without the frontend. **Audit** critical path (session → intent → execution status → result) against RUNTIME_CONTRACTS and EXPERIENCE_SDK_CONTRACT. **Fix** any mismatch. **Probe** to confirm: success path works; failure paths (e.g. missing tenant, invalid intent) fail predictably. **Document** “why backend E2E works and how it behaves” and “how it fails and when.”
 
 **References:** [RUNTIME_CONTRACTS.md](architecture/RUNTIME_CONTRACTS.md), [MVP_FRONTEND_BACKEND_CONNECTIVITY.md](architecture/MVP_FRONTEND_BACKEND_CONNECTIVITY.md) §3.3.
 
 ---
 
-### Step 6 — Phase 2b: Experience proxy (with probing)
+### Step 6 — Phase 2b: Experience proxy
 
 **Goal:** Frontend uses one base URL. Auth, session, intent live on Experience (8001); execution status, artifact resolve/list, intent/pending live only on Runtime (8000). Add proxy so the frontend can point at Experience and all needed calls succeed. Probe and document **why it works and how it’s going to behave**.
 
@@ -125,32 +118,25 @@ Execute in this order. Each step ends with: **reconcile → validate → documen
 
 ---
 
-### Step 7 — One frontend E2E path (with probing)
+### Step 7 — One frontend E2E path
 
-**Goal:** One user-visible path works end-to-end (e.g. open site → create session → submit intent → see result). Probe and document **why it works and how it’s going to behave**.
-
-**Probe:**
-
-- With Phase 2b and frontend env pointing at Experience: drive one path (e.g. anonymous session → submit one intent → get execution status → show result or artifact).
-- Fix broken links (missing proxy, wrong params, response shape). Capture the exact flow and assumptions.
-
-**Deliverable:** One frontend E2E path documented and regression-testable. **“Why this frontend path works and how it behaves”** — steps, env, and known caveats.
+**Goal:** One user-visible path works end-to-end (e.g. open site → create session → submit intent → see result). **Audit** path against Phase 2b proxy and frontend spec. **Fix** broken links (proxy, params, response shape). **Probe** to confirm: success path works; failure paths (e.g. network error, invalid session) fail predictably. **Document** “why this frontend path works and how it behaves” and “how it fails and when.”
 
 **References:** [MVP_FRONTEND_BACKEND_CONNECTIVITY.md](architecture/MVP_FRONTEND_BACKEND_CONNECTIVITY.md) §3.3.
 
 ---
 
-## 4. Execution order and checklist
+## 5. Execution order and checklist
 
 | Order | Step | Dependency | Deliverable |
 |-------|------|------------|-------------|
-| 1 | **Finish genesis protocol** | None | Genesis complete; “why genesis works and how boot behaves” |
-| 2 | **Probe foundations** (Public Works, Curator) | Step 1 | Foundations probe report; “why foundations work and how they behave” |
-| 3 | **Probe runtime** (incl. data brain) | Step 2 | Runtime probe report; “why runtime works and how it behaves” (+ data brain status) |
-| 4 | **Probe civic systems** (Smart City, Agentic, Experience; Platform SDK & Orchestrator Health) | Step 3 | Civic probe report + PLATFORM_SDK_DECISION + ORCHESTRATOR_HEALTH_DECISION; “why civic systems work and how they behave” |
-| 5 | **Backend-only E2E** (probing) | Steps 1–4 | Backend E2E path doc; “why backend E2E works and how it behaves” |
-| 6 | **Phase 2b** (Experience proxy, probing) | Step 4 (Experience SDK stable) | Proxy implemented and documented; “why proxy works and how it behaves” |
-| 7 | **One frontend E2E path** (probing) | Step 6 | One user-visible path doc; “why this frontend path works and how it behaves” |
+| 1 | **Genesis** (audit → fix → probe → document) | None | Genesis complete; “why genesis works and how boot behaves” and “how it fails and when” |
+| 2 | **Foundations** (Public Works, Curator) | Step 1 | Audit list + fixes; probe results; “why foundations work and how they behave” and “how they fail and when” |
+| 3 | **Runtime** (incl. data brain) | Step 2 | Audit list + fixes; probe results; “why runtime works and how it behaves” and “how it fails and when” |
+| 4 | **Civic systems** (Smart City, Agentic, Experience; Platform SDK & Orchestrator Health) | Step 3 | Civic audit + fixes; PLATFORM_SDK_DECISION + ORCHESTRATOR_HEALTH_DECISION; “why civic systems work and how they behave” and “how they fail and when” |
+| 5 | **Backend-only E2E** | Steps 1–4 | Backend E2E path doc; “why backend E2E works and how it behaves” and “how it fails and when” |
+| 6 | **Phase 2b** (Experience proxy) | Step 4 (Experience SDK stable) | Proxy implemented and documented; “why proxy works and how it behaves” and “how it fails and when” |
+| 7 | **One frontend E2E path** | Step 6 | One user-visible path doc; “why this frontend path works and how it behaves” and “how it fails and when” |
 
 **Parallelism:** Steps 1–4 are sequential by layer. Step 5 (backend E2E) can start once Steps 1–4 are done. Step 6 (Phase 2b) can overlap with Step 5 if Experience API is stable. Step 7 requires Step 6.
 
@@ -166,7 +152,7 @@ Execute in this order. Each step ends with: **reconcile → validate → documen
 - **Task 6:** Migration map — Takeoff uses as the recipe for future migration.
 - **Intent implementations:** As Team B implements intents against RUNTIME_CONTRACTS, they register with IntentRegistry and run on the runtime we own; we keep runtime and SDK stable.
 
-### 5.2 Validation at “meet”
+### 6.2 Validation at “meet”
 
 1. **Contract test:** Experience service exposes SDK operations; stub or Team B client gets expected shapes.
 2. **Backend E2E:** Session → intent → execution status → result (backend-only) passes; “why it works” doc exists.
@@ -180,9 +166,9 @@ Execute in this order. Each step ends with: **reconcile → validate → documen
 
 ---
 
-## 6. Success criteria (definition of “met in the middle”)
+## 7. Success criteria (definition of “met in the middle”)
 
-- [ ] **Genesis** is finished to agreed scope; foundations, runtime, and civic systems are **probed** and have a “why it works and how it behaves” story.
+- [ ] **Genesis** is finished to agreed scope; foundations, runtime, and civic systems are **audited, fixed, and probed** and have a “why it works and how it behaves” and “how it fails and when” story.
 - [ ] **Experience SDK** is the single contract; all experience/solution/agent access goes through it or governed capability interfaces (hard invariant).
 - [ ] **Takeoff deliverables:** Steps 1–5 done (genesis, foundations probe, runtime probe, civic probe, backend E2E); Step 6 (Phase 2b) if frontend E2E is in scope; Step 7 (one frontend path) optional; lifecycle hooks (no-ops); Platform SDK and Orchestrator Health decisions documented.
 - [ ] **One critical path works:** Session → intent → execution status → result (backend minimum; frontend E2E if Steps 6–7 done).
@@ -190,8 +176,9 @@ Execute in this order. Each step ends with: **reconcile → validate → documen
 
 ---
 
-## 7. Summary
+## 8. Summary
 
-- **Approach:** Probing at each layer — reconcile (docs ↔ code ↔ behavior), validate (run and capture), document **why it works and how it’s going to behave**. Same mindset as startup probing (PHASE0_WHAT_WE_ACTUALLY_BUILT).
-- **Order:** (1) Finish genesis → (2) Probe foundations (Public Works, Curator) → (3) Probe runtime (incl. data brain) → (4) Probe civic systems (Smart City, Agentic, Experience; Platform SDK & Orchestrator Health) → (5) Backend-only E2E → (6) Phase 2b (Experience proxy) → (7) One frontend E2E path.
-- **We meet** when: one critical path works end-to-end (backend minimum, frontend if proxy is in), docs are reconciled via the authority chain, and no solution/agent/experience bypasses the SDK (hard invariant). This plan is Takeoff’s checklist to get there.
+- **New phase:** We have final architectural contracts and vision (Intercept Alignment Contract, Platform SDK Requirement Spec, Sovereignty Architecture, Curator target pattern). We no longer “probe to discover”; we **audit against the contract**, **fix** deviations, **probe to confirm** success and failure are predictable, and **document** why it works and how it fails.
+- **Approach:** **Audit → Fix → Probe → Document** at each layer. Probe tests **confirm** conformance; we know what “should” happen and fix until probes pass and failure modes are documented.
+- **Order:** (1) Genesis → (2) Foundations (Public Works, Curator) → (3) Runtime (incl. data brain) → (4) Civic systems (Smart City, Agentic, Experience; Platform SDK & Orchestrator Health) → (5) Backend-only E2E → (6) Phase 2b (Experience proxy) → (7) One frontend E2E path.
+- **We meet** when: one critical path works end-to-end (backend minimum, frontend if proxy is in), success and failure are predictable and documented, and no solution/agent/experience bypasses the SDK (hard invariant). This plan is Takeoff’s checklist to get there.

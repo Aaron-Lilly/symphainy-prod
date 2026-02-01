@@ -1,4 +1,4 @@
-# Practical Reality Overlay
+6# Practical Reality Overlay
 
 **Status:** Canonical Reference (January 2026)  
 **Purpose:** Keep all teams aligned on what we're actually building and why, without losing the thread or our minds.  
@@ -55,6 +55,8 @@ Each demo is **the same platform** with different configurations:
 ### Team A: Takeoff (Infrastructure)
 
 **Mission:** Build everything UP TO the Platform SDK boundary.
+
+**Approach (January 2026):** We have final architectural contracts and vision (Intercept Alignment Contract, Sovereignty Architecture, Curator target pattern). We use **audit → fix → probe → document** at each layer: audit against the contract, fix deviations, run probes to confirm success and failure are predictable, document “why it works and how it fails.” See [MEET_IN_THE_MIDDLE_PLAN.md](MEET_IN_THE_MIDDLE_PLAN.md).
 
 | Deliverable | Status | Notes |
 |-------------|--------|-------|
@@ -399,6 +401,8 @@ Day 7+:  Full integration testing
 |----------|---------|----------|
 | Intercept Alignment Contract | Team A/B contract | `docs/INTERCEPT_ALIGNMENT_CONTRACT.md` |
 | Platform SDK Requirement Spec | Team B build spec | `docs/PLATFORM_SDK_REQUIREMENT_SPEC.md` |
+| Intercept Validation | Team A wire validation (Runtime → ctx → handler) | `docs/testing/INTERCEPT_VALIDATION.md` |
+| WebSocket + Traefik Deployment | Production-grade API + WebSocket routing | `docs/WEBSOCKET_TRAEFIK_DEPLOYMENT.md` |
 | Frontend Multi-Tenant Spec | Team C build spec | `docs/frontend/FRONTEND_MULTI_TENANT_SPEC.md` |
 | Three-Layer Intent Model | Architecture reference | `docs/architecture/THREE_LAYER_INTENT_MODEL.md` |
 | Sovereignty Architecture | Data ownership | `docs/architecture/SOVEREIGNTY_ARCHITECTURE.md` |

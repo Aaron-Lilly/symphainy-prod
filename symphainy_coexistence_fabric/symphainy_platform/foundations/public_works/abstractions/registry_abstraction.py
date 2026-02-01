@@ -215,9 +215,9 @@ class RegistryAbstraction:
         """
         try:
             # Build query using Supabase client directly (for complex filtering)
-            # We'll use the adapter's client for direct PostgREST queries
-            # SupabaseAdapter exposes client as self.client
-            client = self.supabase.client
+            client = self._get_supabase_client()
+            if not client:
+                return {"artifacts": [], "total": 0, "limit": limit, "offset": offset}
             
             query = client.table("artifact_index").select("*")
             query = query.eq("tenant_id", tenant_id)
@@ -282,6 +282,110 @@ class RegistryAbstraction:
             "save_materialization": ["file", "parsed_content", "embeddings"]
         }
         return eligibility_map.get(intent_type, [])
+    
+    def _get_supabase_client(self):
+        """Get Supabase client for table access (service_client preferred for writes)."""
+        return getattr(self.supabase, "service_client", None) or getattr(self.supabase, "anon_client", None)
+    
+    async def get_registry_entry(
+        self,
+        entry_type: str,
+        entry_key: str,
+        version: Optional[str] = None,
+        tenant_id: Optional[str] = None
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get a single registry entry by type, key, and optional version/tenant.
+        Used by SemanticProfileRegistry and other entry-scoped consumers.
+        Table: registry_entries (entry_type, entry_key, tenant_id, data, version, created_at).
+        """
+        client = self._get_supabase_client()
+        if not client:
+            self.logger.warning("No Supabase client for get_registry_entry")
+            return None
+        try:
+            query = (
+                client.table("registry_entries")
+                .select("data, version, created_at")
+                .eq("entry_type", entry_type)
+                .eq("entry_key", entry_key)
+            )
+            if tenant_id:
+                query = query.eq("tenant_id", tenant_id)
+            else:
+                query = query.is_("tenant_id", "null")
+            if version:
+                query = query.eq("version", version)
+            else:
+                query = query.order("created_at", desc=True).limit(1)
+            result = query.execute()
+            if result.data and len(result.data) > 0:
+                row = result.data[0]
+                data = row.get("data") if isinstance(row.get("data"), dict) else row
+                return data if isinstance(data, dict) else {"data": row, "version": row.get("version"), "created_at": row.get("created_at")}
+            return None
+        except Exception as e:
+            self.logger.debug(f"get_registry_entry failed (table may not exist): {e}")
+            return None
+    
+    async def register_entry(
+        self,
+        entry_type: str,
+        entry_key: str,
+        entry_data: Dict[str, Any],
+        version: str = "1.0.0",
+        tenant_id: Optional[str] = None
+    ) -> bool:
+        """
+        Register or overwrite a registry entry.
+        Table: registry_entries. Returns True if insert/upsert succeeded.
+        """
+        client = self._get_supabase_client()
+        if not client:
+            self.logger.warning("No Supabase client for register_entry")
+            return False
+        try:
+            row = {
+                "entry_type": entry_type,
+                "entry_key": entry_key,
+                "tenant_id": tenant_id,
+                "data": entry_data,
+                "version": version,
+            }
+            client.table("registry_entries").insert(row).execute()
+            return True
+        except Exception as e:
+            self.logger.debug(f"register_entry failed (table may not exist): {e}")
+            return False
+    
+    async def list_registry_entries(
+        self,
+        entry_type: str,
+        tenant_id: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        List registry entries for a given entry_type and optional tenant_id.
+        Returns list of entry data dicts (e.g. for SemanticProfileRegistry).
+        """
+        client = self._get_supabase_client()
+        if not client:
+            self.logger.warning("No Supabase client for list_registry_entries")
+            return []
+        try:
+            query = client.table("registry_entries").select("data, version, created_at, entry_key").eq("entry_type", entry_type)
+            if tenant_id:
+                query = query.eq("tenant_id", tenant_id)
+            else:
+                query = query.is_("tenant_id", "null")
+            result = query.order("created_at", desc=True).execute()
+            out = []
+            for row in (result.data or []):
+                data = row.get("data")
+                out.append(data if isinstance(data, dict) else row)
+            return out
+        except Exception as e:
+            self.logger.debug(f"list_registry_entries failed (table may not exist): {e}")
+            return []
     
     async def create_pending_intent(
         self,

@@ -130,7 +130,8 @@ services:
       - symphainy_net
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.runtime.rule=PathPrefix(`/api/runtime`) && !PathPrefix(`/api/runtime/agent`) || PathPrefix(`/api/intent`) || PathPrefix(`/api/session`) || PathPrefix(`/api/execution`) || PathPrefix(`/api/realms`)"
+      # /api/execution is routed to Experience (status proxy + WebSocket stream); Runtime only serves internal Experience->Runtime calls
+      - "traefik.http.routers.runtime.rule=PathPrefix(`/api/runtime`) && !PathPrefix(`/api/runtime/agent`) || PathPrefix(`/api/intent`) || PathPrefix(`/api/session`) || PathPrefix(`/api/realms`)"
       - "traefik.http.routers.runtime.entrypoints=web"
       - "traefik.http.routers.runtime.service=runtime"
       - "traefik.http.services.runtime.loadbalancer.server.port=8000"
@@ -187,11 +188,13 @@ services:
       - symphainy_net
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.experience.rule=PathPrefix(`/api/sessions`) || PathPrefix(`/api/session`) || PathPrefix(`/api/intent`) || PathPrefix(`/api/ws`) || PathPrefix(`/api/admin`) || PathPrefix(`/api/auth`)"
+      # /api/execution: Experience serves GET .../status (proxy to Runtime) and WebSocket .../stream (own); single host for frontend
+      - "traefik.http.routers.experience.rule=PathPrefix(`/api/sessions`) || PathPrefix(`/api/session`) || PathPrefix(`/api/intent`) || PathPrefix(`/api/execution`) || PathPrefix(`/api/ws`) || PathPrefix(`/api/admin`) || PathPrefix(`/api/auth`)"
       - "traefik.http.routers.experience.entrypoints=web"
       - "traefik.http.routers.experience.service=experience"
       - "traefik.http.services.experience.loadbalancer.server.port=8001"
       - "traefik.http.routers.experience.priority=10"
+      # WebSocket: guide agent (priority 20 so it wins over generic experience rule if needed)
       - "traefik.http.routers.experience-websocket.rule=PathPrefix(`/api/runtime/agent`)"
       - "traefik.http.routers.experience-websocket.entrypoints=web"
       - "traefik.http.routers.experience-websocket.service=experience"
@@ -241,7 +244,8 @@ services:
       - "traefik.http.services.frontend.loadbalancer.server.port=3000"
       - "traefik.http.routers.frontend.priority=1"  # LOW priority - API routers match first
 
-  # Traefik Reverse Proxy
+  # Traefik Reverse Proxy (API + WebSocket through single entrypoint)
+  # WebSocket: HTTP/1.1 Upgrade is passed through by default; long timeouts avoid killing live connections
   traefik:
     image: traefik:v2.10
     container_name: symphainy-traefik
@@ -250,6 +254,7 @@ services:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
+      # WebSocket / long-lived: no read/write timeout; idle 1h so agent chat and execution stream stay up
       - --entrypoints.web.transport.respondingTimeouts.readTimeout=0s
       - --entrypoints.web.transport.respondingTimeouts.writeTimeout=0s
       - --entrypoints.web.transport.respondingTimeouts.idleTimeout=3600s

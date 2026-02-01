@@ -409,9 +409,9 @@ class CuratorService:
             ).execute()
             
             if response.data and len(response.data) > 0:
-                created_registry_id = response.data[0].get("registry_id")
+                created_registry_id = response.data[0].get(id_field) or response.data[0].get("registry_id")
                 self.logger.info(f"Created registry entry: {created_registry_id} in {table_name}")
-                return str(created_registry_id)
+                return str(created_registry_id) if created_registry_id else None
             else:
                 self.logger.error(f"Failed to create registry entry: No data returned")
                 return None

@@ -1095,6 +1095,33 @@ class PlatformService:
             self._logger.warning(f"Failed to get file metadata: {e}")
             return None
     
+    async def list_files(
+        self,
+        tenant_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        file_type: Optional[str] = None,
+        limit: Optional[int] = None,
+        offset: Optional[int] = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        List files from file storage (not registry).
+        
+        Per Curator layer target: file listing uses file_storage, not registry.
+        """
+        if not self._file_storage or not hasattr(self._file_storage, "list_files"):
+            return []
+        try:
+            return await self._file_storage.list_files(
+                tenant_id=tenant_id,
+                user_id=user_id,
+                file_type=file_type,
+                limit=limit,
+                offset=offset,
+            ) or []
+        except Exception as e:
+            self._logger.warning(f"Failed to list files: {e}")
+            return []
+    
     async def get_pending_intents(
         self,
         tenant_id: str,

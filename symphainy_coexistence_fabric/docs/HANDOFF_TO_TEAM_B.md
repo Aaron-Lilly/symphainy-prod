@@ -21,6 +21,8 @@
 | 7 | Vision reconciliation (canonical) | [docs/PLATFORM_VISION_RECONCILIATION.md](PLATFORM_VISION_RECONCILIATION.md) |
 | 8 | Meet in the middle (Takeoff plan) | [docs/MEET_IN_THE_MIDDLE_PLAN.md](MEET_IN_THE_MIDDLE_PLAN.md) |
 | 9 | Platform SDK — abstractions exposed to B-team | [docs/PLATFORM_SDK_ABSTRACTS_FOR_B_TEAM.md](PLATFORM_SDK_ABSTRACTS_FOR_B_TEAM.md) |
+| 10 | **Intercept alignment contract** (we build to, you build from) | [docs/INTERCEPT_ALIGNMENT_CONTRACT.md](INTERCEPT_ALIGNMENT_CONTRACT.md) |
+| 11 | **Platform SDK requirement spec** (Team B build spec; deep dive intercept) | [docs/PLATFORM_SDK_REQUIREMENT_SPEC.md](PLATFORM_SDK_REQUIREMENT_SPEC.md) |
 
 ---
 

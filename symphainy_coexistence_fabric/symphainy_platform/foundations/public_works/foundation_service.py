@@ -826,6 +826,50 @@ class PublicWorksFoundationService:
         )
         
         self.logger.info("Parsing abstractions created with adapters connected")
+        
+        # Curator is required for the platform; requires Supabase and artifact/state abstractions
+        await self._create_curator_service()
+    
+    async def _create_curator_service(self):
+        """
+        Build Curator service (promotion to platform DNA).
+        Curator is required for the platform to run; it is only valid with proper Supabase.
+        Raises RuntimeError if Supabase or required abstractions are missing.
+        """
+        if not self.supabase_adapter:
+            raise RuntimeError(
+                "Curator is required for the platform to run and is only valid with Supabase. "
+                "Supabase adapter is missing. Configure Supabase (e.g. SUPABASE_URL, SUPABASE_SERVICE_KEY) and ensure Public Works creates the adapter."
+            )
+        if not self.artifact_storage_abstraction:
+            raise RuntimeError(
+                "Curator is required for the platform to run. "
+                "Artifact storage abstraction is missing. Ensure GCS and file storage are configured."
+            )
+        if not self.state_abstraction:
+            raise RuntimeError(
+                "Curator is required for the platform to run. "
+                "State abstraction is missing. Ensure state management is configured."
+            )
+        try:
+            from symphainy_platform.civic_systems.artifact_plane import ArtifactPlane
+            from symphainy_platform.civic_systems.smart_city.services.curator_service import CuratorService
+            artifact_plane = ArtifactPlane(
+                artifact_storage=self.artifact_storage_abstraction,
+                state_management=self.state_abstraction
+            )
+            self._curator_service = CuratorService(
+                supabase_adapter=self.supabase_adapter,
+                artifact_plane=artifact_plane,
+                curator_primitives=None
+            )
+            self.logger.info("Curator service created (Supabase-backed; required for platform)")
+        except Exception as e:
+            self.logger.error(f"Curator service creation failed: {e}", exc_info=True)
+            raise RuntimeError(
+                "Curator is required for the platform to run and must be Supabase-backed. "
+                f"Curator service creation failed: {e}"
+            ) from e
     
     async def _ensure_state_collections(self):
         """
@@ -1154,6 +1198,16 @@ class PublicWorksFoundationService:
             Optional[ArtifactStorageProtocol]: Artifact Storage abstraction or None
         """
         return self.artifact_storage_abstraction
+
+    def get_curator_service(self) -> Optional[Any]:
+        """
+        Get Curator service (promotion to platform DNA).
+        Built internally with supabase and artifact plane; no adapter exposed.
+        
+        Returns:
+            Optional[CuratorService]: Curator service or None if dependencies missing
+        """
+        return self._curator_service
 
     def get_registry_abstraction(self) -> Optional[Any]:
         """

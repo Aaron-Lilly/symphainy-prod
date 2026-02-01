@@ -138,39 +138,30 @@ class ListArtifactsService(BaseIntentService):
         user_id: str
     ) -> list:
         """
-        List files from registry (Supabase).
-        
-        Args:
-            tenant_id: Tenant identifier
-            session_id: Session identifier
-            file_type: Optional file type filter
-            limit: Maximum results
-            offset: Pagination offset
-            user_id: User identifier for workspace scoping
-        
-        Returns:
-            List of file metadata dicts
+        List files from file storage (boundary getter). RegistryAbstraction does not
+        implement list_files; use get_file_storage_abstraction() per Curator layer target.
         """
         if not self.public_works:
             raise RuntimeError(
                 "Public Works not wired; cannot list artifacts. Platform contract §8A."
             )
-        
-        registry = getattr(self.public_works, 'registry_abstraction', None)
-        if not registry:
-            self.logger.warning("Registry abstraction not available, returning empty list")
+        file_storage = (
+            self.public_works.get_file_storage_abstraction()
+            if hasattr(self.public_works, "get_file_storage_abstraction")
+            else None
+        )
+        if not file_storage:
+            self.logger.warning("File storage abstraction not available, returning empty list")
             return []
-        
         try:
-            files = await registry.list_files(
+            files = await file_storage.list_files(
                 tenant_id=tenant_id,
-                session_id=session_id,
+                user_id=user_id,
                 file_type=file_type,
                 limit=limit,
                 offset=offset,
-                user_id=user_id
             )
             return files or []
         except Exception as e:
-            self.logger.error(f"Failed to list files from registry: {e}")
+            self.logger.error(f"Failed to list files from file storage: {e}")
             return []

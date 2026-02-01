@@ -120,24 +120,21 @@ class ListArtifactsService(PlatformIntentService):
         user_id: str
     ) -> List[Dict[str, Any]]:
         """
-        List files from registry via ctx.platform.
+        List files from file storage via ctx.platform.list_files (not registry).
+        Per Curator layer target: file listing uses file_storage.
         """
-        # Access registry through ctx.platform
-        registry = ctx.platform.registry
-        if not registry:
-            self.logger.warning("Registry not available, returning empty list")
+        if not ctx.platform:
+            self.logger.warning("Platform not available, returning empty list")
             return []
-        
         try:
-            files = await registry.list_files(
+            files = await ctx.platform.list_files(
                 tenant_id=tenant_id,
-                session_id=session_id,
+                user_id=user_id,
                 file_type=file_type,
                 limit=limit,
                 offset=offset,
-                user_id=user_id
             )
             return files or []
         except Exception as e:
-            self.logger.error(f"Failed to list files from registry: {e}")
+            self.logger.error(f"Failed to list files: {e}")
             return []

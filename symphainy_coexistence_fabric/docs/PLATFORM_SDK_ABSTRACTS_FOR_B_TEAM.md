@@ -2,6 +2,8 @@
 
 **Purpose:** Give B-team a **reasonable perspective** of what the Platform SDK will expose so you can build with reasonable certainty. This is a **provisional** handoff: we are still completing Public Works discovery (Phases C–F). The **target shape** is described below; build against it. We will finalize the handoff after protocols, 4-layer flow, and service mapping are locked.
 
+**Canonical intercept (January 2026):** For ownership and the formal intercept, use **[INTERCEPT_ALIGNMENT_CONTRACT.md](INTERCEPT_ALIGNMENT_CONTRACT.md)** (we build to, you build from) and **[PLATFORM_SDK_REQUIREMENT_SPEC.md](PLATFORM_SDK_REQUIREMENT_SPEC.md)** (Team B requirement spec — deep dive definition of the intercept). This doc remains the protocol/capability reference; the contract and requirement spec define the boundary and build obligations.
+
 **Source:** Phase B of the Public Works probe. Full inventory and civic_system assignment: [PUBLIC_WORKS_REALITY_MAP.md](testing/PUBLIC_WORKS_REALITY_MAP.md) (Phase B).
 
 ---
