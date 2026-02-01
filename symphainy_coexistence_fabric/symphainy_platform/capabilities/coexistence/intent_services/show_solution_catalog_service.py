@@ -26,6 +26,8 @@ class ShowSolutionCatalogService(PlatformIntentService):
     - Includes solution details and capabilities
     """
     
+    intent_type = "show_solution_catalog"
+    
     def __init__(self, service_id: str = "show_solution_catalog_service"):
         """Initialize Show Solution Catalog Service."""
         super().__init__(service_id=service_id)

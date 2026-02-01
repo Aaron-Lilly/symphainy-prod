@@ -29,9 +29,11 @@ class CreateUserAccountService(PlatformIntentService):
     - Returns access/refresh tokens and user info
     """
     
+    intent_type = "create_user_account"
+    
     def __init__(self, service_id: str = "create_user_account_service"):
         """Initialize Create User Account Service."""
-        super().__init__(service_id=service_id)
+        super().__init__(service_id=service_id, intent_type="create_user_account")
         self.logger = get_logger(self.__class__.__name__)
     
     async def execute(self, ctx: PlatformContext) -> Dict[str, Any]:

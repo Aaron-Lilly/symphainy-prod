@@ -18,8 +18,10 @@ from symphainy_platform.civic_systems.platform_sdk import (
 class ExportArtifactService(PlatformIntentService):
     """Export Artifact Service using Platform SDK."""
     
+    intent_type = "export_artifact"
+    
     def __init__(self, service_id: str = "export_artifact_service"):
-        super().__init__(service_id=service_id)
+        super().__init__(service_id=service_id, intent_type="export_artifact")
         self.logger = get_logger(self.__class__.__name__)
     
     async def execute(self, ctx: PlatformContext) -> Dict[str, Any]:

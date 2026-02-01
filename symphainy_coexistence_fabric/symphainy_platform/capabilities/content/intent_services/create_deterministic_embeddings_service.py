@@ -97,12 +97,17 @@ class CreateDeterministicEmbeddingsService(PlatformIntentService):
         })
         
         try:
+            # Get execution context for library calls (maintains audit trail)
+            # DISPOSABLE WRAPPER PATTERN: Pass execution context to preserve audit trail
+            exec_ctx = ctx.to_execution_context()
+            
             # Get parsed file content via ctx.platform
             self.logger.info(f"🔢 Getting parsed file: {parsed_file_id}")
             parsed_content = await ctx.platform.get_parsed_file(
                 parsed_file_id=parsed_file_id,
                 tenant_id=ctx.tenant_id,
-                session_id=ctx.session_id
+                session_id=ctx.session_id,
+                execution_context=exec_ctx
             )
             
             if not parsed_content:
@@ -114,7 +119,8 @@ class CreateDeterministicEmbeddingsService(PlatformIntentService):
                 parsed_file_id=parsed_file_id,
                 parsed_content=parsed_content,
                 tenant_id=ctx.tenant_id,
-                session_id=ctx.session_id
+                session_id=ctx.session_id,
+                execution_context=exec_ctx
             )
             
             if result.get("status") == "failed":

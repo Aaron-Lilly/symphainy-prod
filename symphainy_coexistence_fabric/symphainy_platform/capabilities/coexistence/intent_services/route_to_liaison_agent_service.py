@@ -26,10 +26,13 @@ class RouteToLiaisonAgentService(PlatformIntentService):
     Handles the `route_to_liaison_agent` intent:
     - Validates target domain
     - Creates handoff context
-    - Invokes real liaison agent for initial greeting
+    - Attempts to invoke real liaison agent for initial greeting
     
     Uses ctx.reasoning.agents.invoke() for real agent handoffs.
+    If agent unavailable, returns routing info with greeting_source="default".
     """
+    
+    intent_type = "route_to_liaison_agent"
     
     # Liaison agent mappings
     LIAISON_AGENTS = {
@@ -85,7 +88,7 @@ class RouteToLiaisonAgentService(PlatformIntentService):
     
     def __init__(self, service_id: str = "route_to_liaison_agent_service"):
         """Initialize Route to Liaison Agent Service."""
-        super().__init__(service_id=service_id)
+        super().__init__(service_id=service_id, intent_type="route_to_liaison_agent")
         self.logger = get_logger(self.__class__.__name__)
     
     async def execute(self, ctx: PlatformContext) -> Dict[str, Any]:
@@ -191,8 +194,12 @@ class RouteToLiaisonAgentService(PlatformIntentService):
         ctx: PlatformContext,
         agent_id: str,
         handoff_context: Dict[str, Any]
-    ) -> str:
-        """Get greeting from real liaison agent."""
+    ) -> Dict[str, Any]:
+        """
+        Get greeting from real liaison agent.
+        
+        Returns dict with greeting text and source indicator.
+        """
         # Try to invoke real liaison agent for personalized greeting
         if ctx.reasoning and ctx.reasoning.agents:
             try:
@@ -213,17 +220,28 @@ class RouteToLiaisonAgentService(PlatformIntentService):
                     greeting = result.get("greeting") or result.get("response")
                     if greeting:
                         self.logger.info(f"✅ Got real greeting from {agent_id}")
-                        return greeting
+                        return {
+                            "text": greeting,
+                            "source": "agent",
+                            "agent_id": agent_id
+                        }
                         
             except Exception as e:
                 self.logger.warning(f"Could not get greeting from {agent_id}: {e}")
         
-        # Fallback greetings based on domain
-        fallback_greetings = {
+        # Default greetings (clearly marked as default, not fake agent responses)
+        default_greetings = {
             "content_liaison_agent": "Hi! I'm the Content Liaison Agent. I specialize in file management and content processing. How can I help you with your files today?",
             "insights_liaison_agent": "Hello! I'm the Insights Liaison Agent. I specialize in data analysis and insights generation. What data would you like to explore?",
             "operations_liaison_agent": "Hi there! I'm the Operations Liaison Agent. I specialize in workflows, SOPs, and process optimization. What process would you like to work on?",
             "outcomes_liaison_agent": "Hello! I'm the Outcomes Liaison Agent. I specialize in strategic deliverables and roadmaps. What outcome are you looking to create?"
         }
         
-        return fallback_greetings.get(agent_id, f"Hello! I'm ready to assist you with {agent_id.replace('_', ' ')}.")
+        greeting_text = default_greetings.get(agent_id, f"Hello! I'm ready to assist you with {agent_id.replace('_', ' ')}.")
+        
+        return {
+            "text": greeting_text,
+            "source": "default",  # Clearly indicates this is NOT from AI
+            "agent_id": agent_id,
+            "note": "AI greeting unavailable - using default"
+        }

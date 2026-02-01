@@ -33,6 +33,8 @@ class DeleteFileService(PlatformIntentService):
     For soft delete (archive), use ArchiveFileService.
     """
     
+    intent_type = "delete_file"
+    
     def __init__(self, service_id: str = "delete_file_service"):
         """Initialize Delete File Service."""
         super().__init__(service_id=service_id)

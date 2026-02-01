@@ -32,9 +32,11 @@ class AssessDataQualityService(PlatformIntentService):
     Uses AI for intelligent, contextual recommendations.
     """
     
+    intent_type = "assess_data_quality"
+    
     def __init__(self, service_id: str = "assess_data_quality_service"):
         """Initialize Assess Data Quality Service."""
-        super().__init__(service_id=service_id)
+        super().__init__(service_id=service_id, intent_type="assess_data_quality")
         self.logger = get_logger(self.__class__.__name__)
     
     async def execute(self, ctx: PlatformContext) -> Dict[str, Any]:

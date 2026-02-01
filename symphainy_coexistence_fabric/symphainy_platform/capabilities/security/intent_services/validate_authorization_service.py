@@ -28,9 +28,11 @@ class ValidateAuthorizationService(PlatformIntentService):
     - Returns authorization result
     """
     
+    intent_type = "validate_authorization"
+    
     def __init__(self, service_id: str = "validate_authorization_service"):
         """Initialize Validate Authorization Service."""
-        super().__init__(service_id=service_id)
+        super().__init__(service_id=service_id, intent_type="validate_authorization")
         self.logger = get_logger(self.__class__.__name__)
     
     async def execute(self, ctx: PlatformContext) -> Dict[str, Any]:

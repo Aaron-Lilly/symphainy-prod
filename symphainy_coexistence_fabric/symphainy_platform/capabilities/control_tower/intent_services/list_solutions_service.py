@@ -9,8 +9,10 @@ from symphainy_platform.civic_systems.platform_sdk import PlatformIntentService,
 class ListSolutionsService(PlatformIntentService):
     """List Solutions Service using Platform SDK."""
     
+    intent_type = "list_solutions"
+    
     def __init__(self, service_id: str = "list_solutions_service"):
-        super().__init__(service_id=service_id)
+        super().__init__(service_id=service_id, intent_type="list_solutions")
         self.logger = get_logger(self.__class__.__name__)
     
     async def execute(self, ctx: PlatformContext) -> Dict[str, Any]:

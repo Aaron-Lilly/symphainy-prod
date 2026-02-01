@@ -29,6 +29,8 @@ class RetrieveArtifactMetadataService(PlatformIntentService):
     This is a read-only query intent.
     """
     
+    intent_type = "retrieve_artifact_metadata"
+    
     def __init__(self, service_id: str = "retrieve_artifact_metadata_service"):
         """Initialize Retrieve Artifact Metadata Service."""
         super().__init__(service_id=service_id)

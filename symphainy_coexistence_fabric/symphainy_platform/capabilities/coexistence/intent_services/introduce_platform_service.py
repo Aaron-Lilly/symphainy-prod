@@ -27,6 +27,8 @@ class IntroducePlatformService(PlatformIntentService):
     - Provides getting started guidance
     """
     
+    intent_type = "introduce_platform"
+    
     def __init__(self, service_id: str = "introduce_platform_service"):
         """Initialize Introduce Platform Service."""
         super().__init__(service_id=service_id)
