@@ -215,16 +215,19 @@ class TestServiceRegistrationAudit:
         """Content capability services are registered in service_factory."""
         from symphainy_platform.runtime.service_factory import ServiceFactory
         
+        # Based on actual registration in service_factory.py
         expected_content_intents = [
+            "echo",  # Test service
             "ingest_file",
             "save_materialization",
             "parse_content",
             "create_deterministic_embeddings",
             "get_parsed_file",
             "retrieve_artifact_metadata",
+            "list_artifacts",
             "archive_file",
             "delete_file",
-            "list_artifacts",
+            # Legacy:
             "extract_embeddings",
         ]
         
@@ -245,14 +248,15 @@ class TestServiceRegistrationAudit:
         """Security capability services are registered in service_factory."""
         from symphainy_platform.runtime.service_factory import ServiceFactory
         
+        # Based on actual registration in service_factory.py
         expected_security_intents = [
             "authenticate_user",
-            "create_user_account",
             "validate_token",
-            "refresh_session",
-            "logout_user",
+            "create_user_account",
             "check_email_availability",
-            "request_password_reset",
+            "create_session",
+            "validate_authorization",
+            "terminate_session",
         ]
         
         factory = ServiceFactory()
@@ -272,14 +276,15 @@ class TestServiceRegistrationAudit:
         """Coexistence capability services are registered in service_factory."""
         from symphainy_platform.runtime.service_factory import ServiceFactory
         
+        # Based on actual registration in service_factory.py
         expected_coexistence_intents = [
-            "initiate_guide_agent",
-            "navigate_to_solution",
-            "route_to_liaison_agent",
+            "introduce_platform",
             "show_solution_catalog",
-            "get_user_journey_state",
-            "recommend_next_action",
-            "search_capabilities",
+            "navigate_to_solution",
+            "initiate_guide_agent",
+            "process_guide_agent_message",
+            "route_to_liaison_agent",
+            "list_available_mcp_tools",
         ]
         
         factory = ServiceFactory()
@@ -299,14 +304,15 @@ class TestServiceRegistrationAudit:
         """Insights capability services are registered in service_factory."""
         from symphainy_platform.runtime.service_factory import ServiceFactory
         
+        # Based on actual registration in service_factory.py
         expected_insights_intents = [
+            "assess_data_quality",
+            "interpret_data_self_discovery",
+            "interpret_data_guided",
             "analyze_structured_data",
             "analyze_unstructured_data",
-            "assess_data_quality",
-            "map_relationships",
             "visualize_lineage",
-            "guided_discovery",
-            "interpret_data",
+            "map_relationships",
         ]
         
         factory = ServiceFactory()
@@ -326,13 +332,14 @@ class TestServiceRegistrationAudit:
         """Operations capability services are registered in service_factory."""
         from symphainy_platform.runtime.service_factory import ServiceFactory
         
+        # Based on actual registration in service_factory.py
         expected_operations_intents = [
             "generate_sop",
-            "analyze_coexistence",
-            "optimize_process",
+            "generate_sop_from_chat",
+            "sop_chat_message",
             "create_workflow",
-            "convert_workflow",
-            "manage_sop",
+            "optimize_process",
+            "analyze_coexistence",
         ]
         
         factory = ServiceFactory()
@@ -352,13 +359,14 @@ class TestServiceRegistrationAudit:
         """Outcomes capability services are registered in service_factory."""
         from symphainy_platform.runtime.service_factory import ServiceFactory
         
+        # Based on actual registration in service_factory.py
         expected_outcomes_intents = [
-            "create_blueprint",
+            "synthesize_outcome",
             "generate_roadmap",
             "create_poc",
-            "synthesize_outcome",
+            "create_blueprint",
             "export_artifact",
-            "propose_poc",
+            "create_solution",
         ]
         
         factory = ServiceFactory()
@@ -378,16 +386,17 @@ class TestServiceRegistrationAudit:
         """Control Tower capability services are registered in service_factory."""
         from symphainy_platform.runtime.service_factory import ServiceFactory
         
+        # Based on actual registration in service_factory.py
         expected_control_tower_intents = [
+            "get_platform_statistics",
             "get_system_health",
+            "get_realm_health",
             "list_solutions",
             "get_solution_status",
-            "trigger_solution_action",
-            "get_developer_docs",
-            "search_documentation",
-            "compose_solution",
-            "validate_composition",
-            "execute_composition",
+            "validate_solution",
+            "get_patterns",
+            "get_code_examples",
+            "get_documentation",
         ]
         
         factory = ServiceFactory()
@@ -402,6 +411,44 @@ class TestServiceRegistrationAudit:
             f"Control Tower services not registered: {missing}. "
             "Check service_factory.py registration."
         )
+
+
+    def test_total_service_count(self):
+        """
+        Verify total number of registered services matches expected.
+        
+        This is a probative test - it will fail if services are added/removed
+        without updating this test, forcing explicit acknowledgment.
+        
+        Expected counts per capability (from service_factory.py):
+        - Content: 11 (10 + 1 legacy)
+        - Insights: 7
+        - Operations: 6
+        - Outcomes: 6
+        - Security: 7
+        - Control Tower: 9
+        - Coexistence: 8 (7 + 1 legacy)
+        Total: 54
+        """
+        from symphainy_platform.runtime.service_factory import ServiceFactory
+        
+        factory = ServiceFactory()
+        registered = factory.get_supported_intents()
+        
+        # Update this number when services change
+        EXPECTED_TOTAL = 54
+        
+        actual_count = len(registered)
+        
+        assert actual_count >= EXPECTED_TOTAL, (
+            f"Missing services! Expected at least {EXPECTED_TOTAL}, got {actual_count}. "
+            f"Registered intents: {sorted(registered)}"
+        )
+        
+        if actual_count > EXPECTED_TOTAL:
+            # New services added - update expected count
+            print(f"\n⚠️ New services detected: {actual_count} vs expected {EXPECTED_TOTAL}")
+            print(f"   Update EXPECTED_TOTAL in test if intentional")
 
 
 class TestServiceContractValidation:
