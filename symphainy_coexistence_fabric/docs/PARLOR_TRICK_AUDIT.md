@@ -8,12 +8,22 @@
 
 ---
 
-## ✅ REMEDIATION STATUS
+## ✅ REMEDIATION STATUS - FULLY COMPLETE
 
-**All 18 anti-pattern services have been fixed:**
-- Fake/template fallbacks removed
-- Services now return `{"status": "unavailable", "error": "..."}` when AI unavailable
-- All 52 services have `intent_type` class attributes
+**All architectural violations have been fixed:**
+
+1. **18 anti-pattern services fixed:**
+   - Fake/template fallbacks removed
+   - Services now return `{"status": "unavailable", "error": "..."}` when AI unavailable
+
+2. **52 services standardized:**
+   - All services have `intent_type` class attributes
+
+3. **8 protocol boundary violations fixed:**
+   - Security services (7) now use `ctx.governance.auth` and `ctx.governance.sessions`
+   - Delete service (1) now uses `ctx.platform.delete_file()`
+
+**Team B house is in order for Team A's protocol switch.**
 
 **Verification:**
 ```bash
@@ -22,6 +32,9 @@ grep -r '"placeholder":' symphainy_platform/capabilities/  # 0 matches
 
 # All services have intent_type
 grep -r 'intent_type = ' symphainy_platform/capabilities/  # 52 matches
+
+# No direct _public_works access in capability services
+grep -r '_public_works' symphainy_platform/capabilities/  # 0 matches (fixed!)
 ```
 
 ---
@@ -79,9 +92,9 @@ grep -r 'intent_type = ' symphainy_platform/capabilities/  # 52 matches
 | `ValidateAuthorizationService` | ✅ WORKS | Returns error result | Proper error handling |
 | `TerminateSessionService` | ✅ WORKS | Returns error result | Proper error handling |
 
-**Security Summary:** 7 WORK E2E
+**Security Summary:** 7 WORK E2E, Protocol-Compliant
 
-**Note:** All services properly return `{"success": False, "error": "..."}` when auth_abstraction unavailable
+**Note:** All services properly use `ctx.governance.auth` and `ctx.governance.sessions` protocol boundaries. They fail loudly with RuntimeError if boundaries unavailable.
 
 ---
 
@@ -261,6 +274,39 @@ Fixed services:
 1. ✅ **Added `intent_type` class attributes** to all 52 services
 2. ⚠️ **Agent signatures** - Documented, Team A to address in agent framework
 3. ⚠️ **Agent methods** - Documented, Team A to address in agent framework
+
+### ✅ Priority 3: Protocol Boundary Compliance - DONE
+
+Fixed 8 services that were accessing `_public_works` directly or using `getattr` for SDKs.
+These services now use proper protocol boundaries (`ctx.governance.auth`, `ctx.governance.sessions`, `ctx.platform`).
+
+**Security Services (7 fixed):**
+1. ✅ `AuthenticateUserService` - Now uses `ctx.governance.auth.authenticate()`
+2. ✅ `CreateUserAccountService` - Now uses `ctx.governance.auth.register_user()`
+3. ✅ `ValidateTokenService` - Now uses `ctx.governance.auth.validate_token()`
+4. ✅ `ValidateAuthorizationService` - Now uses `ctx.governance.auth.check_permission()`
+5. ✅ `CheckEmailAvailabilityService` - Now uses `ctx.governance.auth.check_email_availability()`
+6. ✅ `CreateSessionService` - Now uses `ctx.governance.sessions.create_session_intent()`
+7. ✅ `TerminateSessionService` - Now uses `ctx.governance.sessions.terminate_session()`
+
+**Content Services (1 fixed):**
+8. ✅ `DeleteFileService` - Now uses `ctx.platform.delete_file()` (new method added to PlatformService)
+
+**Violation Pattern Fixed:**
+```python
+# BEFORE (violation): Direct _public_works access
+if ctx.platform and ctx.platform._public_works:
+    security_guard_sdk = getattr(ctx.platform._public_works, 'security_guard_sdk', None)
+    if security_guard_sdk:
+        result = await security_guard_sdk.authenticate(...)
+
+# AFTER (protocol-compliant): Use ctx.governance.auth
+if not ctx.governance or not ctx.governance.auth:
+    raise RuntimeError("Platform contract §8A: ctx.governance.auth required")
+result = await ctx.governance.auth.authenticate(...)
+```
+
+All services now fail loudly with `RuntimeError` if required protocol boundaries are unavailable.
 
 ---
 
