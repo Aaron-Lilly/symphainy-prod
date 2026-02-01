@@ -15,18 +15,28 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ControlRoomView } from './components/ControlRoomView';
 import { DeveloperView } from './components/DeveloperView';
 import { BusinessUserView } from './components/BusinessUserView';
-import { BarChart3, Code, Briefcase } from 'lucide-react';
+import { useTenant } from '@/shared/contexts/TenantContext';
+import { BarChart3, Code, Briefcase, Building2 } from 'lucide-react';
 
 export default function AdminDashboard() {
+  const { currentTenant, tenantId } = useTenant();
+  
   return (
     <MainLayout>
       <div className="container mx-auto p-6">
-        {/* Header */}
-        <div className="mb-6">
-          <h1 className="text-3xl font-bold mb-2">Admin Dashboard</h1>
-          <p className="text-muted-foreground">
-            Administrator/Owner Front Door - Platform monitoring, documentation, and solution composition
-          </p>
+        {/* Header with Tenant Indicator */}
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h1 className="text-3xl font-bold mb-2">Control Tower</h1>
+            <p className="text-muted-foreground">
+              Platform monitoring and administration
+            </p>
+          </div>
+          <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg">
+            <Building2 className="h-4 w-4 text-blue-600" />
+            <span className="text-sm font-medium">Current Tenant:</span>
+            <span className="text-sm text-blue-700">{currentTenant.tenant_name}</span>
+          </div>
         </div>
 
         {/* Three-View Tabbed Interface */}

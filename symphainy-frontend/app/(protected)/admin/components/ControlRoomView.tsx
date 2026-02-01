@@ -4,6 +4,8 @@
  * Control Room View
  * 
  * Real-time platform observability and governance.
+ * Automatically includes tenant context via useAdminAPIManager hook.
+ * 
  * Displays:
  * - Platform Statistics
  * - Execution Metrics
@@ -12,11 +14,12 @@
  * - System Health
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader } from '@/components/ui/loader';
 import { useAdminAPIManager } from '@/shared/hooks/useAdminAPIManager';
+import { useTenant } from '@/shared/contexts/TenantContext';
 import type {
   PlatformStatistics,
   ExecutionMetrics,
@@ -32,6 +35,7 @@ import { SystemHealthCard } from './control-room/SystemHealthCard';
 
 export function ControlRoomView() {
   const adminAPIManager = useAdminAPIManager();
+  const { tenantId } = useTenant();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
@@ -42,9 +46,10 @@ export function ControlRoomView() {
   const [solutionRegistry, setSolutionRegistry] = useState<SolutionRegistryStatus | null>(null);
   const [systemHealth, setSystemHealth] = useState<SystemHealth | null>(null);
 
+  // Reload data when tenant changes
   useEffect(() => {
     loadControlRoomData();
-  }, []);
+  }, [tenantId]);
 
   const loadControlRoomData = async () => {
     setLoading(true);
