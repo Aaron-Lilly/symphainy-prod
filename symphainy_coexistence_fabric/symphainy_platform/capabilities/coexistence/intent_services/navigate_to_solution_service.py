@@ -26,6 +26,8 @@ class NavigateToSolutionService(PlatformIntentService):
     - Returns solution context and entry point
     """
     
+    intent_type = "navigate_to_solution"
+    
     # Available solutions
     SOLUTIONS = {
         "content_solution": {

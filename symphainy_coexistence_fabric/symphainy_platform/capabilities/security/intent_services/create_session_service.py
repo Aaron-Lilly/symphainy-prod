@@ -29,9 +29,11 @@ class CreateSessionService(PlatformIntentService):
     - Returns session details
     """
     
+    intent_type = "create_session"
+    
     def __init__(self, service_id: str = "create_session_service"):
         """Initialize Create Session Service."""
-        super().__init__(service_id=service_id)
+        super().__init__(service_id=service_id, intent_type="create_session")
         self.logger = get_logger(self.__class__.__name__)
     
     async def execute(self, ctx: PlatformContext) -> Dict[str, Any]:

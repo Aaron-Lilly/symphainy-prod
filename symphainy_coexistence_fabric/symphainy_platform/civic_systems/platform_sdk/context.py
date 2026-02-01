@@ -128,6 +128,35 @@ class PlatformContext:
             "metadata": self.metadata,
             "created_at": self.created_at.isoformat(),
         }
+    
+    def to_execution_context(self) -> Any:
+        """
+        Create an ExecutionContext from this PlatformContext.
+        
+        This maintains the audit trail when calling library services that
+        require ExecutionContext. The execution_id and intent are preserved.
+        
+        Returns:
+            ExecutionContext with same identity as this PlatformContext
+        
+        Note:
+            DISPOSABLE WRAPPER PATTERN: When Platform SDK wrapper methods need to
+            call library services that require ExecutionContext, they should use
+            ctx.to_execution_context() to preserve the audit trail, rather than
+            creating a new context with a different execution_id.
+        """
+        from symphainy_platform.runtime.execution_context import ExecutionContext
+        
+        return ExecutionContext(
+            execution_id=self.execution_id,
+            intent=self.intent,
+            tenant_id=self.tenant_id,
+            session_id=self.session_id,
+            solution_id=self.solution_id,
+            state_surface=self.state_surface,
+            wal=self.wal,
+            metadata=self.metadata
+        )
 
 
 class PlatformContextFactory:

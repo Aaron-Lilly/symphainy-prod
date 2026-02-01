@@ -16,15 +16,34 @@ for _ in range(10):  # Max 10 levels up
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
-from typing import Dict, Any, Optional
+import asyncio
+import time
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends, Query, HTTPException
+from pydantic import BaseModel
+from typing import Dict, Any, Optional, List
 
 from utilities import get_logger
 from ..sdk.runtime_client import RuntimeClient
 from ..sdk.experience_sdk import ExperienceSDK
 
+# Keepalive: send ping so long-idle connections (user leaves tab open) are not dropped by Traefik/client
+WEBSOCKET_PING_INTERVAL_SEC = 30
 
-router = APIRouter(prefix="/api/execution", tags=["websocket"])
+
+router = APIRouter(prefix="/api/execution", tags=["execution", "websocket"])
+
+
+# Response model matching Runtime and Frontend contracts
+class ExecutionStatusResponse(BaseModel):
+    """Response from execution status query."""
+    execution_id: str
+    status: str
+    intent_id: str
+    artifacts: Optional[Dict[str, Any]] = None
+    events: Optional[List[Dict[str, Any]]] = None
+    error: Optional[str] = None
+
+
 logger = get_logger("ExperienceAPI.WebSocket")
 
 
@@ -36,6 +55,58 @@ def get_runtime_client() -> RuntimeClient:
 def get_experience_sdk(runtime_client: RuntimeClient = Depends(get_runtime_client)) -> ExperienceSDK:
     """Dependency to get Experience SDK."""
     return ExperienceSDK(runtime_client)
+
+
+@router.get("/{execution_id}/status", response_model=ExecutionStatusResponse)
+async def get_execution_status(
+    execution_id: str,
+    tenant_id: str = Query(..., description="Tenant ID for multi-tenant isolation"),
+    include_artifacts: bool = Query(False, description="Include execution artifacts"),
+    include_visuals: bool = Query(False, description="Include visual representations"),
+    runtime_client: RuntimeClient = Depends(get_runtime_client)
+) -> ExecutionStatusResponse:
+    """
+    Get execution status via REST (polling fallback for when WebSocket is unavailable).
+    
+    This endpoint proxies to Runtime's execution status endpoint.
+    
+    Frontend uses this when:
+    - Initial status check before WebSocket connection
+    - Fallback when WebSocket disconnects
+    - Simple status queries without streaming
+    """
+    try:
+        result = await runtime_client.get_execution_status(
+            execution_id=execution_id,
+            tenant_id=tenant_id,
+            include_artifacts=include_artifacts,
+            include_visuals=include_visuals
+        )
+        return ExecutionStatusResponse(**result)
+    except Exception as e:
+        logger.error(f"Failed to get execution status for {execution_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get execution status: {str(e)}"
+        )
+
+
+async def _heartbeat_loop(
+    websocket: WebSocket,
+    interval: int,
+    stop_event: asyncio.Event,
+    execution_id: str
+):
+    """Send periodic ping to keep WebSocket alive."""
+    while not stop_event.is_set():
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=interval)
+        except asyncio.TimeoutError:
+            try:
+                await websocket.send_json({"type": "ping", "timestamp": time.time()})
+            except Exception as e:
+                logger.debug(f"Heartbeat send failed for {execution_id}: {e}")
+                break
 
 
 @router.websocket("/{execution_id}/stream")
@@ -54,7 +125,17 @@ async def stream_execution(
     tenant_id: Optional[str] = websocket.query_params.get("tenant_id") if websocket.query_params else None
     logger.info(f"WebSocket connection established for execution: {execution_id}")
 
+    stop_heartbeat = asyncio.Event()
+    heartbeat_task: Optional[asyncio.Task] = None
     try:
+        heartbeat_task = asyncio.create_task(
+            _heartbeat_loop(
+                websocket,
+                WEBSOCKET_PING_INTERVAL_SEC,
+                stop_heartbeat,
+                execution_id,
+            )
+        )
         if tenant_id:
             async for event in experience_sdk.subscribe(execution_id, tenant_id):
                 await websocket.send_json(event)
@@ -69,3 +150,11 @@ async def stream_execution(
             await websocket.close(code=1011, reason="Internal server error")
         except Exception:
             logger.debug("WebSocket already closed, ignoring close error")
+    finally:
+        stop_heartbeat.set()
+        if heartbeat_task and not heartbeat_task.done():
+            heartbeat_task.cancel()
+            try:
+                await heartbeat_task
+            except asyncio.CancelledError:
+                pass

@@ -1,176 +1,167 @@
 """
-Developer View API - Developer Tools Endpoints
+Developer View API - Platform SDK Documentation & Developer Tools
+
+This is a thin routing layer that submits intents to the Control Tower capability.
+All actual logic lives in Control Tower intent services.
+
+Pattern: API Endpoint → submit_control_tower_intent() → Runtime → Control Tower Capability
 """
 
 import sys
 from pathlib import Path
 
 # Add project root to path
-# Find project root by looking for common markers (pyproject.toml, requirements.txt, etc.)
 current = Path(__file__).resolve()
 project_root = current
-for _ in range(10):  # Max 10 levels up
+for _ in range(10):
     if (project_root / "pyproject.toml").exists() or (project_root / "requirements.txt").exists():
         break
     project_root = project_root.parent
 if str(project_root) not in sys.path:
     sys.path.insert(0, str(project_root))
 
-from fastapi import APIRouter, HTTPException, Depends, Request
-from pydantic import BaseModel
+from fastapi import APIRouter, HTTPException, Request, Query
 from typing import Dict, Any, Optional
 
 from utilities import get_logger
-from ..admin_dashboard_service import AdminDashboardService
+from ..intent_helper import submit_control_tower_intent, get_user_context
 
 
 router = APIRouter(prefix="/api/admin/developer", tags=["admin", "developer"])
 logger = get_logger("AdminDashboardAPI.DeveloperView")
 
 
-class SolutionValidationRequest(BaseModel):
-    """Request to validate a solution."""
-    solution_config: Dict[str, Any]
-
-
-class FeatureRequestSubmission(BaseModel):
-    """Feature request submission."""
-    title: str
-    description: str
-    category: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = None
-
-
-def get_admin_dashboard_service(request: Request) -> AdminDashboardService:
-    """Dependency to get Admin Dashboard Service."""
-    if not hasattr(request.app.state, "admin_dashboard_service"):
-        raise RuntimeError("Admin Dashboard Service not initialized")
-    return request.app.state.admin_dashboard_service
-
-
-@router.get("/docs")
+@router.get("/documentation")
 async def get_documentation(
-    section: Optional[str] = None,
-    admin_service: AdminDashboardService = Depends(get_admin_dashboard_service),
-    user_id: str = "admin"  # TODO: Get from auth context
-):
-    """Get Platform SDK documentation."""
-    # Check access
-    has_access = await admin_service.check_access(user_id, "developer")
-    if not has_access:
-        raise HTTPException(status_code=403, detail="Access denied")
+    request: Request,
+    section: Optional[str] = Query(None, description="Documentation section"),
+    session_id: Optional[str] = Query(None, description="Session ID"),
+    tenant_id: Optional[str] = Query(None, description="Tenant ID")
+) -> Dict[str, Any]:
+    """
+    Get Platform SDK documentation.
     
-    try:
-        docs = await admin_service.developer_view_service.get_documentation(section)
-        return docs
-    except Exception as e:
-        logger.error(f"Failed to get documentation: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    Submits `get_documentation` intent to Control Tower.
+    """
+    user_ctx = await get_user_context(request)
+    
+    return await submit_control_tower_intent(
+        request=request,
+        intent_type="get_documentation",
+        parameters={"section": section} if section else {},
+        session_id=session_id or user_ctx["session_id"],
+        tenant_id=tenant_id or user_ctx["tenant_id"]
+    )
 
 
-@router.get("/examples")
+@router.get("/code-examples")
 async def get_code_examples(
-    category: Optional[str] = None,
-    admin_service: AdminDashboardService = Depends(get_admin_dashboard_service),
-    user_id: str = "admin"  # TODO: Get from auth context
-):
-    """Get code examples."""
-    # Check access
-    has_access = await admin_service.check_access(user_id, "developer")
-    if not has_access:
-        raise HTTPException(status_code=403, detail="Access denied")
+    request: Request,
+    category: Optional[str] = Query(None, description="Example category"),
+    session_id: Optional[str] = Query(None, description="Session ID"),
+    tenant_id: Optional[str] = Query(None, description="Tenant ID")
+) -> Dict[str, Any]:
+    """
+    Get code examples.
     
-    try:
-        examples = await admin_service.developer_view_service.get_code_examples(category)
-        return examples
-    except Exception as e:
-        logger.error(f"Failed to get code examples: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    Submits `get_code_examples` intent to Control Tower.
+    """
+    user_ctx = await get_user_context(request)
+    
+    return await submit_control_tower_intent(
+        request=request,
+        intent_type="get_code_examples",
+        parameters={"category": category} if category else {},
+        session_id=session_id or user_ctx["session_id"],
+        tenant_id=tenant_id or user_ctx["tenant_id"]
+    )
 
 
 @router.get("/patterns")
 async def get_patterns(
-    admin_service: AdminDashboardService = Depends(get_admin_dashboard_service),
-    user_id: str = "admin"  # TODO: Get from auth context
-):
-    """Get patterns and best practices."""
-    # Check access
-    has_access = await admin_service.check_access(user_id, "developer")
-    if not has_access:
-        raise HTTPException(status_code=403, detail="Access denied")
+    request: Request,
+    session_id: Optional[str] = Query(None, description="Session ID"),
+    tenant_id: Optional[str] = Query(None, description="Tenant ID")
+) -> Dict[str, Any]:
+    """
+    Get patterns and best practices.
     
-    try:
-        patterns = await admin_service.developer_view_service.get_patterns()
-        return patterns
-    except Exception as e:
-        logger.error(f"Failed to get patterns: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    Submits `get_patterns` intent to Control Tower.
+    """
+    user_ctx = await get_user_context(request)
+    
+    return await submit_control_tower_intent(
+        request=request,
+        intent_type="get_patterns",
+        parameters={},
+        session_id=session_id or user_ctx["session_id"],
+        tenant_id=tenant_id or user_ctx["tenant_id"]
+    )
 
 
-@router.post("/solution-builder/validate")
+@router.post("/validate-solution")
 async def validate_solution(
-    request: SolutionValidationRequest,
-    admin_service: AdminDashboardService = Depends(get_admin_dashboard_service),
-    user_id: str = "admin"  # TODO: Get from auth context
-):
-    """Validate a solution configuration (Playground - gated)."""
-    # Check access to playground feature
-    has_access = await admin_service.check_access(user_id, "developer", "playground")
-    if not has_access:
-        raise HTTPException(status_code=403, detail="Playground feature not available")
+    request: Request,
+    solution_config: Dict[str, Any],
+    session_id: Optional[str] = Query(None, description="Session ID"),
+    tenant_id: Optional[str] = Query(None, description="Tenant ID")
+) -> Dict[str, Any]:
+    """
+    Validate a solution configuration (Solution Builder Playground).
     
-    try:
-        result = await admin_service.developer_view_service.validate_solution(
-            request.solution_config
-        )
-        return result
-    except Exception as e:
-        logger.error(f"Failed to validate solution: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    Submits `validate_solution` intent to Control Tower.
+    """
+    user_ctx = await get_user_context(request)
+    
+    return await submit_control_tower_intent(
+        request=request,
+        intent_type="validate_solution",
+        parameters={"solution_config": solution_config},
+        session_id=session_id or user_ctx["session_id"],
+        tenant_id=tenant_id or user_ctx["tenant_id"]
+    )
 
 
-@router.post("/solution-builder/preview")
+@router.post("/preview-solution")
 async def preview_solution(
-    request: SolutionValidationRequest,
-    admin_service: AdminDashboardService = Depends(get_admin_dashboard_service),
-    user_id: str = "admin"  # TODO: Get from auth context
-):
-    """Preview a solution structure (Playground - gated)."""
-    # Check access to playground feature
-    has_access = await admin_service.check_access(user_id, "developer", "playground")
-    if not has_access:
-        raise HTTPException(status_code=403, detail="Playground feature not available")
+    request: Request,
+    solution_config: Dict[str, Any],
+    session_id: Optional[str] = Query(None, description="Session ID"),
+    tenant_id: Optional[str] = Query(None, description="Tenant ID")
+) -> Dict[str, Any]:
+    """
+    Preview a solution structure (Solution Builder Playground).
     
-    try:
-        preview = await admin_service.developer_view_service.preview_solution(
-            request.solution_config
-        )
-        return preview
-    except Exception as e:
-        logger.error(f"Failed to preview solution: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    Submits `validate_solution` intent with preview flag to Control Tower.
+    """
+    user_ctx = await get_user_context(request)
+    
+    return await submit_control_tower_intent(
+        request=request,
+        intent_type="validate_solution",
+        parameters={"solution_config": solution_config, "preview": True},
+        session_id=session_id or user_ctx["session_id"],
+        tenant_id=tenant_id or user_ctx["tenant_id"]
+    )
 
 
-@router.post("/features/submit")
+@router.post("/submit-feature-request")
 async def submit_feature_request(
-    request: FeatureRequestSubmission,
-    admin_service: AdminDashboardService = Depends(get_admin_dashboard_service),
-    user_id: str = "admin"  # TODO: Get from auth context
-):
-    """Submit a feature request (gated - 'Coming Soon' for MVP)."""
-    # Check access to feature submission
-    has_access = await admin_service.check_access(user_id, "developer", "feature_submission")
-    if not has_access:
-        return {
-            "status": "coming_soon",
-            "message": "Feature submission is coming soon! This will enable developers to submit feature proposals for platform team review."
-        }
+    request: Request,
+    feature_request: Dict[str, Any],
+    session_id: Optional[str] = Query(None, description="Session ID"),
+    tenant_id: Optional[str] = Query(None, description="Tenant ID")
+) -> Dict[str, Any]:
+    """
+    Submit a feature request (gated - "Coming Soon" for MVP).
     
-    try:
-        result = await admin_service.developer_view_service.submit_feature_request(
-            request.dict()
-        )
-        return result
-    except Exception as e:
-        logger.error(f"Failed to submit feature request: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+    For MVP, returns a placeholder response. In future, this would
+    submit a governance intent.
+    """
+    # For MVP: Return "Coming Soon" message
+    # This is intentionally NOT an intent - it's a placeholder
+    return {
+        "status": "coming_soon",
+        "message": "Feature submission is coming soon! This will enable developers to submit feature proposals for platform team review.",
+        "feature_request": feature_request
+    }

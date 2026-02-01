@@ -16,10 +16,16 @@ from symphainy_platform.civic_systems.platform_sdk import (
 
 
 class CreatePOCService(PlatformIntentService):
-    """Create POC Service using Platform SDK."""
+    """
+    Create POC Service using Platform SDK.
+    
+    Returns unavailable status if AI agent not available (no fake data).
+    """
+    
+    intent_type = "create_poc"
     
     def __init__(self, service_id: str = "create_poc_service"):
-        super().__init__(service_id=service_id)
+        super().__init__(service_id=service_id, intent_type="create_poc")
         self.logger = get_logger(self.__class__.__name__)
     
     async def execute(self, ctx: PlatformContext) -> Dict[str, Any]:
@@ -56,5 +62,13 @@ class CreatePOCService(PlatformIntentService):
                 if result.get("status") == "completed":
                     return result.get("result", {})
             except Exception as e:
-                self.logger.warning(f"Agent failed: {e}")
-        return {"components": [], "effort": "TBD", "note": "POC requires AI agent"}
+                self.logger.error(f"Agent failed: {e}")
+                return {"status": "error", "error": str(e)}
+        
+        # Agent not available - return unavailable status (NO FAKE DATA)
+        self.logger.warning("AI reasoning service not available for POC creation")
+        return {
+            "status": "unavailable",
+            "error": "AI reasoning service not configured",
+            "note": "POC creation requires AI agent - please ensure reasoning service is configured"
+        }

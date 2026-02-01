@@ -28,9 +28,11 @@ class ListArtifactsService(PlatformIntentService):
     - Returns structured artifact with file list
     """
     
+    intent_type = "list_artifacts"
+    
     def __init__(self, service_id: str = "list_artifacts_service"):
         """Initialize List Artifacts Service."""
-        super().__init__(service_id=service_id)
+        super().__init__(service_id=service_id, intent_type="list_artifacts")
         self.logger = get_logger(self.__class__.__name__)
     
     async def execute(self, ctx: PlatformContext) -> Dict[str, Any]:

@@ -25,11 +25,15 @@ class InterpretDataGuidedService(PlatformIntentService):
     - Answer specific questions about the data
     - Focus analysis on user-specified areas
     - Validate user hypotheses
+    
+    Returns unavailable status if AI agent not available (no fake data).
     """
+    
+    intent_type = "interpret_data_guided"
     
     def __init__(self, service_id: str = "interpret_data_guided_service"):
         """Initialize Interpret Data Guided Service."""
-        super().__init__(service_id=service_id)
+        super().__init__(service_id=service_id, intent_type="interpret_data_guided")
         self.logger = get_logger(self.__class__.__name__)
     
     async def execute(self, ctx: PlatformContext) -> Dict[str, Any]:
@@ -118,41 +122,21 @@ class InterpretDataGuidedService(PlatformIntentService):
                     return result
                     
             except Exception as e:
-                self.logger.warning(f"BusinessAnalysisAgent invocation failed: {e}")
+                self.logger.error(f"BusinessAnalysisAgent invocation failed: {e}")
+                return {
+                    "status": "error",
+                    "error": str(e),
+                    "questions_received": questions,
+                    "used_real_llm": False
+                }
         
-        # Fallback to basic guided analysis
-        return self._basic_guided_analysis(parsed_content, questions, focus_areas)
-    
-    def _basic_guided_analysis(
-        self,
-        parsed_content: Dict[str, Any],
-        questions: List[str],
-        focus_areas: List[str]
-    ) -> Dict[str, Any]:
-        """Basic guided analysis fallback."""
-        content = parsed_content.get("content", {})
-        
-        # Generate basic answers
-        answers = []
-        for question in questions[:5]:  # Limit to 5 questions
-            answers.append({
-                "question": question,
-                "answer": "Analysis requires AI agent - please ensure agents are configured",
-                "confidence": 0.3
-            })
-        
-        # Generate focus area summaries
-        focus_summaries = []
-        for area in focus_areas[:3]:  # Limit to 3 areas
-            focus_summaries.append({
-                "area": area,
-                "summary": f"Found references to '{area}' in data structure",
-                "relevance": 0.5
-            })
-        
+        # Agent not available - return unavailable status (NO FAKE DATA)
+        self.logger.warning("AI reasoning service not available for guided analysis")
         return {
-            "answers": answers,
-            "focus_summaries": focus_summaries,
-            "overall_summary": "Guided analysis limited - real agent required for full insights",
-            "used_real_llm": False
+            "status": "unavailable",
+            "error": "AI reasoning service not configured",
+            "questions_received": questions,
+            "focus_areas_received": focus_areas,
+            "used_real_llm": False,
+            "note": "Guided analysis requires AI agent - please ensure reasoning service is configured"
         }

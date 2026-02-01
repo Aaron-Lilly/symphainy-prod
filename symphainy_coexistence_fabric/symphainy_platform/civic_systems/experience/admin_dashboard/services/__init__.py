@@ -1,15 +1,16 @@
 """
-Admin Dashboard Services - Specialized Services for Each View
+Admin Dashboard Services - Access Control
+
+The view-specific services (ControlRoomService, DeveloperViewService, 
+BusinessUserViewService) have been removed. Their functionality now
+lives in Control Tower intent services, following the platform 
+architecture where everything flows through intents.
+
+Only AccessControlService remains for permission checking.
 """
 
-from .control_room_service import ControlRoomService
-from .developer_view_service import DeveloperViewService
-from .business_user_view_service import BusinessUserViewService
 from .access_control_service import AccessControlService
 
 __all__ = [
-    "ControlRoomService",
-    "DeveloperViewService",
-    "BusinessUserViewService",
     "AccessControlService",
 ]

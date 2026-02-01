@@ -22,11 +22,14 @@ class CreateWorkflowService(PlatformIntentService):
     Create Workflow Service using Platform SDK.
     
     Creates optimized workflows using WorkflowOptimizationAgent.
+    Returns unavailable status if AI agent not available (no fake data).
     """
+    
+    intent_type = "create_workflow"
     
     def __init__(self, service_id: str = "create_workflow_service"):
         """Initialize Create Workflow Service."""
-        super().__init__(service_id=service_id)
+        super().__init__(service_id=service_id, intent_type="create_workflow")
         self.logger = get_logger(self.__class__.__name__)
     
     async def execute(self, ctx: PlatformContext) -> Dict[str, Any]:
@@ -89,10 +92,18 @@ class CreateWorkflowService(PlatformIntentService):
                     return agent_result.get("result", {})
                     
             except Exception as e:
-                self.logger.warning(f"Agent invocation failed: {e}")
+                self.logger.error(f"Agent invocation failed: {e}")
+                return {
+                    "status": "error",
+                    "error": str(e),
+                    "type": workflow_type
+                }
         
+        # Agent not available - return unavailable status (NO FAKE DATA)
+        self.logger.warning("AI reasoning service not available for workflow creation")
         return {
-            "steps": [],
+            "status": "unavailable",
+            "error": "AI reasoning service not configured",
             "type": workflow_type,
-            "note": "Template workflow - invoke real agent for optimization"
+            "note": "Workflow creation requires AI agent - please ensure reasoning service is configured"
         }

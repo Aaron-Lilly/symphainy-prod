@@ -31,6 +31,8 @@ class ArchiveFileService(PlatformIntentService):
     This is a soft delete - file remains in storage but marked as archived.
     """
     
+    intent_type = "archive_file"
+    
     def __init__(self, service_id: str = "archive_file_service"):
         """Initialize Archive File Service."""
         super().__init__(service_id=service_id)

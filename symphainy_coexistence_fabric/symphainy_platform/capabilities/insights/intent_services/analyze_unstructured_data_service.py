@@ -25,11 +25,15 @@ class AnalyzeUnstructuredDataService(PlatformIntentService):
     - Topic extraction
     - Sentiment analysis
     - Key phrase detection
+    
+    Returns unavailable status if AI agent not available (no fake data).
     """
+    
+    intent_type = "analyze_unstructured_data"
     
     def __init__(self, service_id: str = "analyze_unstructured_data_service"):
         """Initialize Analyze Unstructured Data Service."""
-        super().__init__(service_id=service_id)
+        super().__init__(service_id=service_id, intent_type="analyze_unstructured_data")
         self.logger = get_logger(self.__class__.__name__)
     
     async def execute(self, ctx: PlatformContext) -> Dict[str, Any]:
@@ -104,12 +108,19 @@ class AnalyzeUnstructuredDataService(PlatformIntentService):
                     return result
                     
             except Exception as e:
-                self.logger.warning(f"Agent invocation failed: {e}")
+                self.logger.error(f"Agent invocation failed: {e}")
+                return {
+                    "status": "error",
+                    "error": str(e),
+                    "used_real_llm": False
+                }
         
-        # Fallback
+        # Agent not available - return unavailable status (NO FAKE DATA)
+        self.logger.warning("AI reasoning service not available for unstructured data analysis")
         return {
-            "topics": [],
-            "key_phrases": [],
-            "summary": "Analysis requires AI agent for full results",
-            "used_real_llm": False
+            "status": "unavailable",
+            "error": "AI reasoning service not configured",
+            "analysis_type": analysis_type,
+            "used_real_llm": False,
+            "note": "Unstructured data analysis requires AI agent - please ensure reasoning service is configured"
         }

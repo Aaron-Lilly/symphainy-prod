@@ -28,9 +28,11 @@ class ValidateTokenService(PlatformIntentService):
     - Returns user context if valid
     """
     
+    intent_type = "validate_token"
+    
     def __init__(self, service_id: str = "validate_token_service"):
         """Initialize Validate Token Service."""
-        super().__init__(service_id=service_id)
+        super().__init__(service_id=service_id, intent_type="validate_token")
         self.logger = get_logger(self.__class__.__name__)
     
     async def execute(self, ctx: PlatformContext) -> Dict[str, Any]:

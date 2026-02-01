@@ -29,11 +29,14 @@ class InterpretDataSelfDiscoveryService(PlatformIntentService):
     - Semantic meaning extraction
     
     NO MORE SIMULATED ANALYSIS - This uses actual LLM reasoning.
+    Returns unavailable status if agent not available (no fake data).
     """
+    
+    intent_type = "interpret_data_self_discovery"
     
     def __init__(self, service_id: str = "interpret_data_self_discovery_service"):
         """Initialize Interpret Data Self Discovery Service."""
-        super().__init__(service_id=service_id)
+        super().__init__(service_id=service_id, intent_type="interpret_data_self_discovery")
         self.logger = get_logger(self.__class__.__name__)
     
     async def execute(self, ctx: PlatformContext) -> Dict[str, Any]:
@@ -128,46 +131,18 @@ class InterpretDataSelfDiscoveryService(PlatformIntentService):
                     return result
                     
             except Exception as e:
-                self.logger.warning(f"InsightsEDAAgent invocation failed: {e}")
+                self.logger.error(f"InsightsEDAAgent invocation failed: {e}")
+                return {
+                    "status": "error",
+                    "error": str(e),
+                    "used_real_llm": False
+                }
         
-        # Fallback to basic heuristic analysis
-        self.logger.warning("Falling back to heuristic analysis")
-        return self._heuristic_discovery(parsed_content, options)
-    
-    def _heuristic_discovery(
-        self,
-        parsed_content: Dict[str, Any],
-        options: Dict[str, Any]
-    ) -> Dict[str, Any]:
-        """Heuristic fallback when agent unavailable."""
-        content = parsed_content.get("content", {})
-        structure = parsed_content.get("structure", {})
-        
-        # Basic entity extraction from structure
-        entities = []
-        if isinstance(structure, dict):
-            for field_name, field_info in structure.items():
-                entities.append({
-                    "name": field_name,
-                    "type": field_info.get("type", "unknown") if isinstance(field_info, dict) else "field",
-                    "confidence": 0.6
-                })
-        
-        # Basic relationship inference
-        relationships = []
-        if len(entities) > 1:
-            relationships.append({
-                "source": entities[0]["name"],
-                "target": entities[-1]["name"],
-                "type": "related_to",
-                "confidence": 0.4
-            })
-        
+        # Agent not available - return unavailable status (NO FAKE DATA)
+        self.logger.warning("AI reasoning service not available for self-discovery")
         return {
-            "entities": entities[:10],  # Limit
-            "relationships": relationships,
-            "semantic_summary": "Heuristic analysis - invoke real agent for deeper insights",
-            "confidence": 0.5,
+            "status": "unavailable",
+            "error": "AI reasoning service not configured",
             "used_real_llm": False,
-            "fallback_reason": "Agent unavailable"
+            "note": "Self-discovery requires AI agent - please ensure reasoning service is configured"
         }

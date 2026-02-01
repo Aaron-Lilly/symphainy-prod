@@ -30,6 +30,8 @@ class GetParsedFileService(PlatformIntentService):
     This is a read-only query intent.
     """
     
+    intent_type = "get_parsed_file"
+    
     def __init__(self, service_id: str = "get_parsed_file_service"):
         """Initialize Get Parsed File Service."""
         super().__init__(service_id=service_id)

@@ -31,9 +31,11 @@ class VisualizeLineageService(PlatformIntentService):
     - AI-powered lineage insights (optional)
     """
     
+    intent_type = "visualize_lineage"
+    
     def __init__(self, service_id: str = "visualize_lineage_service"):
         """Initialize Visualize Lineage Service."""
-        super().__init__(service_id=service_id)
+        super().__init__(service_id=service_id, intent_type="visualize_lineage")
         self.logger = get_logger(self.__class__.__name__)
     
     async def execute(self, ctx: PlatformContext) -> Dict[str, Any]:
