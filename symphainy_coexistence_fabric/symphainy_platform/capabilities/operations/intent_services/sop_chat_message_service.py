@@ -23,11 +23,14 @@ class SOPChatMessageService(PlatformIntentService):
     
     Processes messages in SOP generation conversation.
     Uses real SOPGenerationAgent for intelligent responses.
+    Returns unavailable status if AI agent not available (no fake data).
     """
+    
+    intent_type = "sop_chat_message"
     
     def __init__(self, service_id: str = "sop_chat_message_service"):
         """Initialize SOP Chat Message Service."""
-        super().__init__(service_id=service_id)
+        super().__init__(service_id=service_id, intent_type="sop_chat_message")
         self.logger = get_logger(self.__class__.__name__)
     
     async def execute(self, ctx: PlatformContext) -> Dict[str, Any]:
@@ -94,9 +97,18 @@ class SOPChatMessageService(PlatformIntentService):
                     return agent_result.get("result", {})
                     
             except Exception as e:
-                self.logger.warning(f"Agent invocation failed: {e}")
+                self.logger.error(f"Agent invocation failed: {e}")
+                return {
+                    "status": "error",
+                    "error": str(e),
+                    "completion_status": "error"
+                }
         
+        # Agent not available - return unavailable status (NO FAKE DATA)
+        self.logger.warning("AI reasoning service not available for SOP chat")
         return {
-            "response": "I understand. Please continue describing the process.",
-            "completion_status": "in_progress"
+            "status": "unavailable",
+            "error": "AI reasoning service not configured",
+            "completion_status": "unavailable",
+            "note": "SOP chat requires AI agent - please ensure reasoning service is configured"
         }

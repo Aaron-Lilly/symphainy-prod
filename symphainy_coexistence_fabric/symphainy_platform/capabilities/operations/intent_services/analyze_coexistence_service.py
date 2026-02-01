@@ -22,11 +22,14 @@ class AnalyzeCoexistenceService(PlatformIntentService):
     Analyze Coexistence Service using Platform SDK.
     
     Analyzes coexistence patterns using CoexistenceAnalysisAgent.
+    Returns unavailable status if AI agent not available (no fake data).
     """
+    
+    intent_type = "analyze_coexistence"
     
     def __init__(self, service_id: str = "analyze_coexistence_service"):
         """Initialize Analyze Coexistence Service."""
-        super().__init__(service_id=service_id)
+        super().__init__(service_id=service_id, intent_type="analyze_coexistence")
         self.logger = get_logger(self.__class__.__name__)
     
     async def execute(self, ctx: PlatformContext) -> Dict[str, Any]:
@@ -85,10 +88,16 @@ class AnalyzeCoexistenceService(PlatformIntentService):
                     return agent_result.get("result", {})
                     
             except Exception as e:
-                self.logger.warning(f"Agent invocation failed: {e}")
+                self.logger.error(f"Agent invocation failed: {e}")
+                return {
+                    "status": "error",
+                    "error": str(e)
+                }
         
+        # Agent not available - return unavailable status (NO FAKE DATA)
+        self.logger.warning("AI reasoning service not available for coexistence analysis")
         return {
-            "patterns": [],
-            "recommendations": [],
-            "summary": "Analysis requires AI agent"
+            "status": "unavailable",
+            "error": "AI reasoning service not configured",
+            "note": "Coexistence analysis requires AI agent - please ensure reasoning service is configured"
         }

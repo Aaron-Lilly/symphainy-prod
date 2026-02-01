@@ -22,11 +22,14 @@ class GenerateSOPFromChatService(PlatformIntentService):
     Generate SOP From Chat Service using Platform SDK.
     
     Initiates interactive SOP generation session.
+    Returns unavailable status if AI agent not available (no fake data).
     """
+    
+    intent_type = "generate_sop_from_chat"
     
     def __init__(self, service_id: str = "generate_sop_from_chat_service"):
         """Initialize Generate SOP From Chat Service."""
-        super().__init__(service_id=service_id)
+        super().__init__(service_id=service_id, intent_type="generate_sop_from_chat")
         self.logger = get_logger(self.__class__.__name__)
     
     async def execute(self, ctx: PlatformContext) -> Dict[str, Any]:
@@ -67,10 +70,18 @@ class GenerateSOPFromChatService(PlatformIntentService):
                     session["questions"] = result.get("questions", [])
                     
             except Exception as e:
-                self.logger.warning(f"Agent invocation failed: {e}")
+                self.logger.error(f"Agent invocation failed: {e}")
+                session["agent_status"] = "error"
+                session["agent_error"] = str(e)
+        else:
+            self.logger.warning("AI reasoning service not available for SOP chat")
+            session["agent_status"] = "unavailable"
+            session["agent_error"] = "AI reasoning service not configured"
         
+        # Record whether we have real AI guidance or not (NO FAKE DATA)
         if "initial_guidance" not in session:
-            session["initial_guidance"] = "Let's create your SOP. Please describe the process you want to document, including key steps and responsibilities."
+            session["agent_status"] = session.get("agent_status", "unavailable")
+            session["initial_guidance"] = None  # No fake guidance
         
         # Store session
         if ctx.state_surface:

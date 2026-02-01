@@ -36,11 +36,14 @@ class ProcessGuideAgentMessageService(PlatformIntentService):
     - Returns AI-generated responses with routing recommendations
     
     NO MORE KEYWORD MATCHING - This is real AI chat.
+    No fake fallbacks - if AI unavailable, returns unavailable status.
     """
+    
+    intent_type = "process_guide_agent_message"
     
     def __init__(self, service_id: str = "process_guide_agent_message_service"):
         """Initialize Process Guide Agent Message Service."""
-        super().__init__(service_id=service_id)
+        super().__init__(service_id=service_id, intent_type="process_guide_agent_message")
         self.logger = get_logger(self.__class__.__name__)
     
     async def execute(self, ctx: PlatformContext) -> Dict[str, Any]:
@@ -148,24 +151,24 @@ class ProcessGuideAgentMessageService(PlatformIntentService):
                     return response_data
                     
                 else:
-                    self.logger.warning(f"GuideAgent invocation failed: {agent_result.get('error')}")
+                    error_msg = agent_result.get('error', 'Agent returned non-completed status')
+                    self.logger.warning(f"GuideAgent invocation failed: {error_msg}")
+                    response_data["status"] = "agent_error"
+                    response_data["error"] = error_msg
+                    response_data["used_real_llm"] = False
+                    return response_data
                     
             except Exception as e:
                 self.logger.error(f"Error invoking GuideAgent: {e}", exc_info=True)
+                response_data["status"] = "error"
+                response_data["error"] = str(e)
+                response_data["used_real_llm"] = False
+                return response_data
         
-        # Fallback if agent invocation fails (but indicate it's not the preferred path)
-        self.logger.warning("Falling back to basic response - real agent unavailable")
-        response_data["agent_response"] = (
-            "I'm having trouble accessing my full capabilities right now. "
-            "Let me help you with basic navigation. What would you like to do? "
-            "You can ask about uploading files, analyzing data, creating workflows, or generating outcomes."
-        )
+        # No reasoning service available - return unavailable status (NOT fake data)
+        self.logger.warning("Reasoning service not available - cannot process message")
+        response_data["status"] = "unavailable"
+        response_data["error"] = "AI reasoning service not configured"
         response_data["used_real_llm"] = False
-        response_data["fallback_reason"] = "Agent invocation failed"
-        response_data["handoff_recommended"] = False
-        response_data["suggested_actions"] = [
-            {"action": "show_solution_catalog", "source": "fallback"},
-            {"action": "introduce_platform", "source": "fallback"}
-        ]
         
         return response_data

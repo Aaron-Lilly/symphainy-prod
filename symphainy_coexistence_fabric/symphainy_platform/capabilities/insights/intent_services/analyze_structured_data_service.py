@@ -30,11 +30,14 @@ class AnalyzeStructuredDataService(PlatformIntentService):
     - Anomaly identification with explanations
     
     NO MORE FIELD COUNTING - This uses actual LLM reasoning.
+    Returns unavailable status if agent not available (no fake data).
     """
+    
+    intent_type = "analyze_structured_data"
     
     def __init__(self, service_id: str = "analyze_structured_data_service"):
         """Initialize Analyze Structured Data Service."""
-        super().__init__(service_id=service_id)
+        super().__init__(service_id=service_id, intent_type="analyze_structured_data")
         self.logger = get_logger(self.__class__.__name__)
     
     async def execute(self, ctx: PlatformContext) -> Dict[str, Any]:
@@ -136,89 +139,19 @@ class AnalyzeStructuredDataService(PlatformIntentService):
                     return result
                     
             except Exception as e:
-                self.logger.warning(f"InsightsEDAAgent invocation failed: {e}")
+                self.logger.error(f"InsightsEDAAgent invocation failed: {e}")
+                return {
+                    "status": "error",
+                    "error": str(e),
+                    "used_real_llm": False
+                }
         
-        # Fallback to basic structural analysis (still better than nothing)
-        self.logger.warning("Falling back to basic structural analysis")
-        return self._basic_structural_analysis(parsed_content, include_patterns, include_anomalies)
-    
-    def _basic_structural_analysis(
-        self,
-        parsed_content: Dict[str, Any],
-        include_patterns: bool,
-        include_anomalies: bool
-    ) -> Dict[str, Any]:
-        """
-        Basic structural analysis fallback when agent unavailable.
-        
-        Still provides useful metadata even without AI.
-        """
-        content = parsed_content.get("content", {})
-        structure = parsed_content.get("structure", {})
-        
-        # Calculate structural statistics
-        field_count = len(structure) if isinstance(structure, dict) else 0
-        record_count = len(content) if isinstance(content, list) else 1
-        
-        # Analyze data types
-        data_types = {}
-        if isinstance(structure, dict):
-            for field, info in structure.items():
-                field_type = info.get("type", "unknown") if isinstance(info, dict) else "field"
-                data_types[field_type] = data_types.get(field_type, 0) + 1
-        
-        # Basic pattern detection (heuristic)
-        patterns = []
-        if include_patterns and isinstance(content, list) and len(content) > 1:
-            patterns.append({
-                "pattern_type": "tabular_data",
-                "description": f"Data appears to be tabular with {record_count} records",
-                "confidence": 0.7,
-                "source": "heuristic"
-            })
-        
-        # Basic anomaly detection (heuristic - check for nulls, empty values)
-        anomalies = []
-        if include_anomalies:
-            null_fields = self._count_null_fields(content)
-            if null_fields > 0:
-                anomalies.append({
-                    "anomaly_type": "missing_data",
-                    "description": f"Found {null_fields} fields with null/empty values",
-                    "severity": "medium" if null_fields < 5 else "high",
-                    "source": "heuristic"
-                })
-        
+        # Agent not available - return unavailable status (NO FAKE DATA)
+        self.logger.warning("AI reasoning service not available for structured data analysis")
         return {
-            "statistics": {
-                "field_count": field_count,
-                "record_count": record_count,
-                "data_types": data_types
-            },
-            "patterns": patterns,
-            "anomalies": anomalies,
-            "insights": [
-                "Full AI-powered analysis requires agent configuration",
-                "Structural analysis completed - invoke with agent for deeper insights"
-            ],
-            "summary": f"Analyzed {record_count} records with {field_count} fields (basic analysis)",
+            "status": "unavailable",
+            "error": "AI reasoning service not configured",
+            "analysis_type": analysis_type,
             "used_real_llm": False,
-            "fallback_reason": "AI agent unavailable"
+            "note": "Structured data analysis requires AI agent - please ensure reasoning service is configured"
         }
-    
-    def _count_null_fields(self, content: Any) -> int:
-        """Count null/empty fields in content."""
-        null_count = 0
-        
-        if isinstance(content, dict):
-            for value in content.values():
-                if value is None or value == "" or value == []:
-                    null_count += 1
-        elif isinstance(content, list) and content:
-            # Sample first record
-            sample = content[0] if isinstance(content[0], dict) else {}
-            for value in sample.values():
-                if value is None or value == "" or value == []:
-                    null_count += 1
-        
-        return null_count

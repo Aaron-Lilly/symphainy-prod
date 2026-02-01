@@ -6,6 +6,9 @@ Starts a Guide Agent session for AI-assisted platform navigation.
 Uses ctx.reasoning.agents.invoke() to call the REAL GuideAgent with LLM.
 
 Contract: docs/intent_contracts/coexistence/intent_initiate_guide_agent.md
+
+ARCHITECTURE: No fake fallbacks. If AI unavailable, session still created but
+guidance_status indicates unavailability. Frontend can handle gracefully.
 """
 
 from typing import Dict, Any, Optional
@@ -25,15 +28,18 @@ class InitiateGuideAgentService(PlatformIntentService):
     
     Handles the `initiate_guide_agent` intent:
     - Creates a guide session with session state
-    - Optionally invokes GuideAgent for initial journey guidance
+    - Invokes GuideAgent for initial journey guidance
     - Returns session info with available capabilities
     
     KEY: Uses ctx.reasoning.agents.invoke("guide_agent", ...) for real AI.
+    No fake fallbacks - if AI unavailable, guidance_status indicates this.
     """
+    
+    intent_type = "initiate_guide_agent"
     
     def __init__(self, service_id: str = "initiate_guide_agent_service"):
         """Initialize Initiate Guide Agent Service."""
-        super().__init__(service_id=service_id)
+        super().__init__(service_id=service_id, intent_type="initiate_guide_agent")
         self.logger = get_logger(self.__class__.__name__)
     
     async def execute(self, ctx: PlatformContext) -> Dict[str, Any]:
@@ -79,6 +85,9 @@ class InitiateGuideAgentService(PlatformIntentService):
         
         # Get initial guidance from REAL GuideAgent via ctx.reasoning
         initial_guidance = None
+        guidance_status = "unavailable"
+        guidance_error = None
+        
         if ctx.reasoning and ctx.reasoning.agents:
             try:
                 # Invoke the real GuideAgent for journey guidance
@@ -97,16 +106,23 @@ class InitiateGuideAgentService(PlatformIntentService):
                 if agent_result.get("status") == "completed":
                     initial_guidance = agent_result.get("result", {})
                     session["initial_guidance"] = initial_guidance
+                    guidance_status = "available"
                     self.logger.info("✅ Got initial guidance from real GuideAgent")
+                else:
+                    guidance_error = agent_result.get("error", "Agent returned non-completed status")
+                    self.logger.warning(f"GuideAgent invocation incomplete: {guidance_error}")
                     
             except Exception as e:
+                guidance_error = str(e)
                 self.logger.warning(f"Could not get initial guidance from GuideAgent: {e}")
-                # Fall back to default guidance
-                initial_guidance = {
-                    "recommended_pillar": "content",
-                    "recommended_action": "upload_files",
-                    "reasoning": "Start by uploading your files to begin your journey"
-                }
+        else:
+            guidance_error = "Reasoning service not available"
+            self.logger.warning("Reasoning service not available for initial guidance")
+        
+        # Record guidance status (NO FAKE DATA)
+        session["guidance_status"] = guidance_status
+        if guidance_error:
+            session["guidance_error"] = guidance_error
         
         # Build greeting with real or fallback guidance
         greeting = self._build_greeting(initial_guidance)
@@ -160,7 +176,8 @@ class InitiateGuideAgentService(PlatformIntentService):
                 "type": "guide_agent_initiated",
                 "event_id": generate_event_id(),
                 "guide_session_id": guide_session_id,
-                "uses_real_llm": True
+                "guidance_status": guidance_status,
+                "ai_available": guidance_status == "available"
             }]
         }
     
